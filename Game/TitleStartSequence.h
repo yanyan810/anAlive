@@ -1,10 +1,10 @@
 #pragma once
 #include <cmath>
 
-// Only the transition timer is title-specific; Enemy owns hits and destruction.
+// Only the explosion hold is title-specific; SceneManager owns fading.
 class TitleStartSequence {
 public:
-    float delay = .75f;
+    float delay = .45f;
     bool Starting() const { return starting_; }
     bool Finished() const { return starting_ && elapsed_ >= delay; }
     float Elapsed() const { return elapsed_; }

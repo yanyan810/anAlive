@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 6, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 7, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -255,7 +255,7 @@ def build_level(scene, depsgraph):
         weapon_id = settings.title_weapon.strip()
         if weapon_id not in definitions(scene, 'weapons'):
             raise ValueError('Unknown Title Weapon ID')
-        data['title'] = {'weaponId': weapon_id, 'startDelay': settings.title_start_delay,
+        data['title'] = {'weaponId': weapon_id, 'explosionDelay': settings.title_start_delay,
                          'startObject': dict(id=object_id(letters[0]), partAsset='resources/levels/title/game_start.enemy.json')}
     elif letters:
         raise ValueError('Game Start objects require Stage ID title')
@@ -447,7 +447,7 @@ class YAN_SceneSettings(bpy.types.PropertyGroup):
     fixed_seed: BoolProperty(name="Fixed Seed", default=False)
     seed: IntProperty(name="Seed", default=12345, min=0)
     title_weapon: StringProperty(name='Title Weapon ID', default='pistol')
-    title_start_delay: FloatProperty(name='Start Explosion Duration', default=.75, min=.5, max=1.0)
+    title_start_delay: FloatProperty(name='Explosion Hold Before Fade', default=.45, min=.4, max=.5)
 
 
 class YAN_CatalogEntry(bpy.types.PropertyGroup):

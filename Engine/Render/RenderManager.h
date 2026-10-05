@@ -10,6 +10,7 @@
 
 class DirectXCommon;
 class SrvManager;
+class GameApp;
 
 enum class PostEffectMode {
     FullScreen = 0,
@@ -79,6 +80,9 @@ public:
     OffscreenPass* GetOffscreen() const { return offscreen_.get(); }
 
 private:
+#ifdef _DEBUG
+    friend void RunTitleSceneTests(GameApp& app);
+#endif
     void CreateCopyImageRootSignature();
     void CreatePipelineState(
         const wchar_t* psPath,

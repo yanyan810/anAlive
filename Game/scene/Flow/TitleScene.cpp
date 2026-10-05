@@ -25,9 +25,9 @@ bool TitleScene::LoadLayout() {
         const auto& title = data.at("title");
         weaponId_ = title.value("weaponId",std::string("pistol"));
         if (!weapons_.Find(weaponId_)) throw std::runtime_error("Unknown title weapon: "+weaponId_);
-        start_.delay = title.value("startDelay",.75f);
-        if (!std::isfinite(start_.delay) || start_.delay<.5f || start_.delay>1.0f)
-            throw std::runtime_error("Title startDelay must be between 0.5 and 1 second");
+        start_.delay = title.value("explosionDelay",.45f);
+        if (!std::isfinite(start_.delay) || start_.delay<.4f || start_.delay>.5f)
+            throw std::runtime_error("Title explosionDelay must be between 0.4 and 0.5 second");
         const auto assetPath = title.at("startObject").at("partAsset").get<std::string>();
         const std::filesystem::path path(assetPath);
         if (path.is_absolute() || !assetPath.starts_with("resources/levels/title/"))
@@ -56,6 +56,7 @@ void TitleScene::OnEnter(GameApp& app) {
 #endif
     ready_ = false; initialCapturePending_ = true; suppressFireUntilRelease_ = true;
     start_ = TitleStartSequence{};
+    transitionRequested_ = false;
     enemies_.clear(); respawnTime_ = 0; nextEnemyId_ = 0;
     if (!LoadLayout()) {
         OutputDebugStringA(("Title configuration error: "+error_+"\n").c_str());
@@ -162,7 +163,8 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     auto& input = *app.GetInput();
     // Do not charge the impact frame's preceding time to the new explosion.
     start_.Update(dt);
-    if (start_.Finished()) { RequestChangeScene_("Game"); return; } // Game loads Stage01.
+    if (start_.Finished() && !transitionRequested_)
+        transitionRequested_ = app.Scenes().TransitionTo("Game", .75f, .75f); // Game loads Stage01.
     for (auto* enemy : enemies_) enemy->UpdateVisuals(dt); // No AI/attacks/player damage.
     if (!start_.Starting() && !enemies_.empty() && enemies_[0]->CanReturnToPool()) {
         respawnTime_ += dt;

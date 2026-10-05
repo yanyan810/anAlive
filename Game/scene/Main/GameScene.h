@@ -35,6 +35,7 @@ public:
 private:
 #ifdef _DEBUG
     friend void RunEnemyPoolTests(GameApp& app);
+    friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
     void OnBulletImpact(const BulletEnemyImpact& impact);

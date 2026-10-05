@@ -229,6 +229,7 @@
     <ClCompile Include="Engine\Particle\ParticleManager.cpp" />
     <ClCompile Include="Engine\Effect\EffectManager.cpp" />
     <ClCompile Include="Engine\Core\SceneManager.cpp" />
+    <ClCompile Include="Engine\Core\FadeManager.cpp" />
     <ClCompile Include="Engine\Level\LevelLoader.cpp" />
     <ClCompile Include="Game\scene\Debug\DebugScene.cpp" />
     <ClCompile Include="Game\scene\Debug\DebugAITestScene.cpp" />
@@ -512,6 +513,7 @@
     <ClInclude Include="Engine\Effect\EffectManager.h" />
     <ClInclude Include="Engine\Core\ImGuiManagaer.h" />
     <ClInclude Include="Engine\Core\SceneManager.h" />
+    <ClInclude Include="Engine\Core\FadeManager.h" />
     <ClInclude Include="Engine\Level\LevelLoader.h" />
     <ClInclude Include="Engine\Core\GameApp.h" />
     <ClInclude Include="Game\scene\Test\CGTestScene.h" />

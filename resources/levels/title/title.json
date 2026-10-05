@@ -142,7 +142,7 @@
   "goalTriggers": [],
   "title": {
     "weaponId": "pistol",
-    "startDelay": 0.75,
+    "explosionDelay": 0.45,
     "startObject": {
       "id": "GAME_START",
       "partAsset": "resources/levels/title/game_start.enemy.json"

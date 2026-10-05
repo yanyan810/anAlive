@@ -44,6 +44,7 @@ private:
     std::string weaponId_ = "pistol", error_;
     uint64_t nextEnemyId_ = 0;
     float respawnTime_ = 0;
+    bool transitionRequested_ = false;
     bool ready_ = false, initialCapturePending_ = true, suppressFireUntilRelease_ = true;
     int savedMouseFlags_ = 0;
 };

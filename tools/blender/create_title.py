@@ -15,7 +15,7 @@ scene.yan_level.project_root = str(root)
 scene.yan_level.stage_id = 'title'
 scene.yan_level.output_directory = 'resources/levels/title'
 scene.yan_level.title_weapon = 'pistol'
-scene.yan_level.title_start_delay = .75
+scene.yan_level.title_start_delay = .45
 
 
 def material(name, color):

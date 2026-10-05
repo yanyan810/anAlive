@@ -19,6 +19,7 @@ scene.yan_level.project_root = str(project)
 bpy.context.view_layer.update()
 data, geometry = e.build_level(scene,bpy.context.evaluated_depsgraph_get())
 assert 'startLetters' not in data['title'] and data['title']['startObject']['id']=='GAME_START'
+assert abs(data['title']['explosionDelay']-.45)<1e-5 and 'startDelay' not in data['title']
 assert len(data['spawnPoints'])==1
 assert not data['spawnTriggers'] and not data['weaponSpawnPoints'] and not data['goalTriggers']
 assert all(not obj.name.startswith('GAME_START') for obj in geometry)

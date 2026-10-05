@@ -9,6 +9,8 @@ class Player {
 public:
     void Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera);
     void Update(const Input& input, float dt);
+    // Prepare camera/model transforms without consuming input or moving.
+    void RefreshVisuals() { SyncVisuals(0); }
     void SetMovementEnabled(bool enabled) { movementEnabled_ = enabled; }
     bool IsMovementEnabled() const { return movementEnabled_; }
     int UpdateShooting(const Input& input, float dt, bool allowFire, bool allowReload,
@@ -29,7 +31,7 @@ public:
         WeaponRuntime weapon;
         float hp=100, sensitivity=1;
     };
-    void RefreshDebug() { SyncVisuals(0); }
+    void RefreshDebug() { RefreshVisuals(); }
     DebugState CaptureDebug() const { return {transform_,settings_,currentWeapon_,hp_,lookSensitivityMultiplier_}; }
     void RestoreDebug(const DebugState& state) {
         transform_=state.transform; settings_=state.settings; currentWeapon_=state.weapon;

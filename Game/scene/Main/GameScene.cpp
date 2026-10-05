@@ -134,7 +134,14 @@ void GameScene::OnEnter(GameApp& app) {
         weaponPreview_->SetEnableLighting(0);
     }
 #endif
-    Update(app, 0.0f);
+    if (app.Scenes().IsTransitioning()) {
+        // Prepare a drawable first frame without processing the outgoing shot,
+        // mouse delta, spawn triggers or goals while the incoming view is black.
+        player_.RefreshVisuals(); ground_.Update(0);
+        suppressFireUntilRelease_ = true;
+    } else {
+        Update(app, 0.0f);
+    }
 #ifdef _DEBUG
     if (debugHistory_.Size()==0) debugHistory_.Push(CaptureDebug());
 #endif

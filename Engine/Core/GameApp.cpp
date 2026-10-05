@@ -178,6 +178,7 @@ bool GameApp::Initialize_() {
 
     // SceneManager
     sceneMgr_ = std::make_unique<SceneManager>();
+    sceneMgr_->Initialize(*this);
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });

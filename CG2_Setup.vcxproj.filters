@@ -262,6 +262,9 @@
       <Filter>Engine\Effect</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\SceneManager.cpp" />
+    <ClCompile Include="Engine\Core\FadeManager.cpp">
+      <Filter>Engine\Core</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Level\LevelLoader.cpp" />
     <ClCompile Include="Game\scene\Debug\DebugScene.cpp">
       <Filter>Game\Scene\Debug</Filter>
@@ -499,6 +502,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Core\ImGuiManagaer.h" />
     <ClInclude Include="Engine\Core\SceneManager.h" />
+    <ClInclude Include="Engine\Core\FadeManager.h">
+      <Filter>Engine\Core</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Level\LevelLoader.h" />
     <ClInclude Include="Engine\Core\GameApp.h" />
     <ClInclude Include="Game\scene\Debug\DebugScene.h">

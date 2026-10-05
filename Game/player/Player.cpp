@@ -3,6 +3,7 @@
 
 void Player::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera) {
     hp_ = 100.0f;
+    movementEnabled_ = true;
     camera_ = camera;
     object_.Initialize(common, dx);
     object_.SetCamera(camera);
@@ -24,10 +25,16 @@ void Player::Update(const Input& input, float dt) {
 
         const float forward = static_cast<float>(input.IsKeyPressed(DIK_W)) - static_cast<float>(input.IsKeyPressed(DIK_S));
         const float right = static_cast<float>(input.IsKeyPressed(DIK_D)) - static_cast<float>(input.IsKeyPressed(DIK_A));
-        FPSMotion::Move(transform_, right, forward, dt, settings_);
+        if (movementEnabled_) FPSMotion::Move(transform_, right, forward, dt, settings_);
     }
-    if (stageWorld_) transform_.translate=stageWorld_->Move(previous,transform_.translate);
+    if (movementEnabled_ && stageWorld_) transform_.translate=stageWorld_->Move(previous,transform_.translate);
     SyncVisuals(dt);
+}
+int Player::UpdateShooting(const Input& input, float dt, bool allowFire, bool allowReload, bool cancelBurst) {
+    if (!allowFire && cancelBurst) currentWeapon_.CancelBurst();
+    return currentWeapon_.Step(dt,
+        allowFire && input.IsLeftMouseTrigger(), allowFire && input.IsLeftMousePressed(),
+        allowReload && input.IsKeyTrigger(DIK_R));
 }
 void Player::SyncVisuals(float dt) {
     object_.SetTranslate(transform_.translate + Vector3{0.0f, 1.0f, 0.0f});

@@ -1,5 +1,6 @@
 #include "Bullet.h"
 #include "EnemyExplosion.h"
+#include "TitleStartSequence.h"
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -55,6 +56,33 @@ int main() {
     world.colliders.push_back(Wall(closest->distance));
     assert(trace(bullet.position,bullet.direction,100)->wall);
     world.colliders.clear();
+
+    // Additional scene shootables use the same nearest-hit ordering as enemies.
+    const BulletTrace startTarget=[](const Vector3& origin,const Vector3& direction,float range) -> std::optional<BulletHit> {
+        float distance;
+        if (!RaycastAABB(origin,direction,{{-1,0,4},{1,3,4.1f}},range,distance)) return {};
+        BulletHit hit; hit.distance=distance; hit.position=origin+direction*distance;
+        hit.wall=false; hit.targetIndex=7; return hit;
+    };
+    const auto customTrace=[&](const Vector3& origin,const Vector3& direction,float range) {
+        return TraceBulletPath(origin,direction,range,world,targets.size(),
+            [&](size_t i,const Vector3& o,const Vector3& d,float r,EnemyPartHit& hit) {
+                return RaycastEnemyParts(targets[i].parts,targets[i].world,o,d,r,hit);
+            },startTarget);
+    };
+    assert(customTrace({0,1.5f,0},{0,0,1},100)->targetIndex==7);
+    world.colliders.push_back(Wall(4));
+    assert(customTrace({0,1.5f,0},{0,0,1},100)->wall); // wall wins exact tie
+    world.colliders.clear();
+    targets[0].world=Matrix4x4::Translation({0,0,2});
+    assert(customTrace({0,1.5f,0},{0,0,1},100)->targetIndex==std::numeric_limits<size_t>::max());
+    targets[0].world=Matrix4x4::Translation({0,0,10});
+    int startImpacts=0;
+    assert(simulation.Spawn(bullet));
+    simulation.Update(.016f,customTrace,[&](const Bullet&,const BulletHit& hit) { assert(hit.targetIndex==7); ++startImpacts; });
+    assert(startImpacts==1 && simulation.Bullets().empty());
+    simulation.Update(1,customTrace,[&](const Bullet&,const BulletHit&) { ++startImpacts; });
+    assert(startImpacts==1);
 
     // Sweep each of the six real part boxes with rotation + nonuniform scale.
     targets[0]=Target{};

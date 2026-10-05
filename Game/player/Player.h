@@ -9,6 +9,10 @@ class Player {
 public:
     void Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera);
     void Update(const Input& input, float dt);
+    void SetMovementEnabled(bool enabled) { movementEnabled_ = enabled; }
+    bool IsMovementEnabled() const { return movementEnabled_; }
+    int UpdateShooting(const Input& input, float dt, bool allowFire, bool allowReload,
+        bool cancelBurst = true);
     void SetStage(const StageWorld* world,const Vector3& position,const Vector3& rotation) {
         stageWorld_=world; transform_.translate=position; transform_.rotate=rotation;
     }
@@ -52,5 +56,6 @@ private:
     Object3d object_; 
 
     float lookSensitivityMultiplier_ = 1.0f;
+    bool movementEnabled_ = true;
 
 };

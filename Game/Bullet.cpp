@@ -11,7 +11,8 @@ namespace {
 }
 
 std::optional<BulletHit> TraceBulletPath(const Vector3& origin, const Vector3& direction,
-    float distance, const StageWorld& world, size_t enemyCount, const BulletEnemyRaycast& raycastEnemy) {
+    float distance, const StageWorld& world, size_t enemyCount, const BulletEnemyRaycast& raycastEnemy,
+    const BulletTrace& raycastTarget) {
     std::optional<BulletHit> closest;
     // 壁までに探索範囲を絞り、壁と同距離の敵より壁を優先して遮蔽物越しの命中を防ぐ。
     StageHit wall;
@@ -26,6 +27,10 @@ std::optional<BulletHit> TraceBulletPath(const Vector3& origin, const Vector3& d
             distance = part.distance;
             closest = BulletHit{distance, origin+direction*distance, part.part, i, false, part.partIndex};
         }
+    }
+    if (raycastTarget) {
+        const auto target = raycastTarget(origin, direction, distance);
+        if (target && (!closest || target->distance < distance)) closest = target;
     }
     return closest;
 }

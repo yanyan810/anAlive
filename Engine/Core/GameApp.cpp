@@ -29,6 +29,7 @@
 #include <algorithm>
 #ifdef _DEBUG
 #include "../../tests/EnemyPoolTests.h"
+#include "../../tests/TitleSceneTests.h"
 #endif
 
 GameApp::GameApp() = default;
@@ -40,6 +41,16 @@ int GameApp::Run() {
         return -1;
     }
 #ifdef _DEBUG
+    if (std::wstring(GetCommandLineW()).find(L"--title-scene-test")!=std::wstring::npos) {
+        int result=0;
+        std::filesystem::create_directories("generated/title-tests");
+        try { RunTitleSceneTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/title-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result=1;
+        }
+        Finalize_(); return result;
+    }
     if (std::wstring(GetCommandLineW()).find(L"--enemy-pool-test")!=std::wstring::npos) {
         int result=0;
         try { RunEnemyPoolTests(*this); }

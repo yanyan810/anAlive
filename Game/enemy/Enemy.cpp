@@ -78,6 +78,9 @@ void Enemy::PreloadAssets() {
                         faces.push_back(vertices);
                     }
                     faceData_[i]=std::move(faces);
+                    auto geometry=std::make_shared<EnemyPartGeometry>();
+                    geometry->faces=faceData_[i];
+                    legacyPartGeometry_[i]=std::move(geometry);
                 } catch (const std::exception&) { }
             }
         } catch (const std::exception&) { /* Face -> Chunk -> whole part. */ }
@@ -95,6 +98,7 @@ void Enemy::PreloadAssets() {
 void Enemy::ReleasePreloadedAssets() {
     // GameApp calls this only after all scenes/enemies have been destroyed.
     for (auto& faces : faceData_) faces = {};
+    for (auto& geometry : legacyPartGeometry_) geometry.reset();
     for (auto& files : fragmentFiles_) files = {};
     assetModels_.clear();
     assetsPreloaded_ = false;
@@ -179,6 +183,7 @@ void Enemy::PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* came
 void Enemy::RetireFromPool() {
     faceShards_.clear(); detachedParts_.clear();
     explosionTime_=0; blastHitTime_=0;
+    animation_.Reset();
 }
 void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vector3& position,const Vector3& rotation) {
     RetireFromPool();
@@ -206,6 +211,7 @@ void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vect
 }
 void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
     definition_=definition;
+    animation_.Reset();
     ai_={}; exploded_=false;
     ai_.settings={definition.detectionRange,definition.attackRange,definition.moveSpeed,
         definition.attackDamage,definition.attackInterval,definition.IsRanged(),definition.minRange,definition.maxRange};
@@ -240,6 +246,14 @@ void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
             }
         }
         ApplyEnemyHpMultiplier(parts_,definition.hpMultiplier);
+        ConfigureLegacyPartCollision();
+    }
+    if (!splitVisuals_ && !fallbackVisual_) {
+        fallbackVisual_=std::make_unique<Object3d>();
+        fallbackVisual_->Initialize(common_,dx_); fallbackVisual_->SetCamera(camera_);
+        fallbackVisual_->SetModel(object_.GetModel()); fallbackVisual_->StopAnimation();
+        fallbackVisual_->SetDirection({.3f,-1,.5f}); fallbackVisual_->SetIntensity(1);
+        fallbackVisual_->SetPointLightIntensity(0); fallbackVisual_->SetSpotLightIntensity(0);
     }
     PrepareExplosionVisual();
     RebuildTypeMarker();
@@ -284,17 +298,36 @@ void Enemy::RebuildTypeMarker() {
 
 }
 
+void Enemy::ConfigureLegacyPartCollision() {
+    if (!splitVisuals_) return;
+    for (size_t i=0;i<parts_.size() && i<legacyPartGeometry_.size();++i) {
+        if (!visuals_[i].object || !visuals_[i].object->GetModel()) continue;
+        // Use the actual split mesh bounds/faces rather than T-pose partitions.
+        visuals_[i].object->GetModel()->GetLocalAABB(parts_[i].bounds);
+        parts_[i].geometry=legacyPartGeometry_[i];
+    }
+}
+const Matrix4x4& Enemy::PartWorldMatrix(size_t index) const {
+    if (splitVisuals_ && index<visuals_.size() && visuals_[index].object)
+        return visuals_[index].object->GetWorldMatrix();
+    if (!splitVisuals_ && fallbackVisual_) return fallbackVisual_->GetWorldMatrix();
+    return object_.GetWorldMatrix();
+}
 bool Enemy::Raycast(const Vector3& origin, const Vector3& direction, float maxDistance, RaycastHit& hit) const {
     hit = {};
-    return hasHitBox_ && RaycastEnemyParts(parts_,object_.GetWorldMatrix(),origin,direction,maxDistance,hit);
+    return hasHitBox_ && !IsDead() && RaycastEnemyPartsTransformed(parts_,[this](size_t index) -> const Matrix4x4* {
+        if (splitVisuals_ && (index>=visuals_.size() || !visuals_[index].visible || !visuals_[index].object)) return nullptr;
+        return &PartWorldMatrix(index);
+    },origin,direction,maxDistance,hit);
 }
 // 表示と起爆で同じ中心を使い、モデルの拡縮や部位位置による範囲のずれを防ぐ。
 Vector3 Enemy::ExplosionCenter() const {
     Vector3 center = position_ + Vector3{0, definition_.collisionHeight * .5f, 0};
-    for (const auto& body : parts_) {
+    for (size_t i=0;i<parts_.size();++i) {
+        const auto& body=parts_[i];
         if (body.role == EnemyPartRole::Body) {
             center = EnemyPartTransformPoint((body.bounds.min + body.bounds.max) * .5f,
-                object_.GetWorldMatrix());
+                PartWorldMatrix(i));
             break;
         }
     }
@@ -444,7 +477,10 @@ void Enemy::ShowHitFeedback(size_t index) {
     if (index<parts_.size()) parts_[index].flashRemaining=0.2f;
 }
 float Enemy::Update(float dt, const Vector3& playerPosition) {
+    const auto previous = position_;
     const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead());
+    const bool moving = !IsDead() && std::hypot(position_.x-previous.x, position_.z-previous.z) > 1e-6f;
+    animation_.Advance(dt, moving, parts_);
     UpdateVisuals(dt);
     return attackDamage;
 }
@@ -477,11 +513,23 @@ void Enemy::UpdateVisuals(float dt) {
         typeMarker_->SetScale({marker.scale.x*visualScale.x,marker.scale.y*visualScale.y,marker.scale.z*visualScale.z});
         typeMarker_->Update(dt);
     }
+    // The base object retains the gameplay transform. Part raycasts and debug
+    // boxes use the same animated matrices as the following render objects.
+    const auto pose = animation_.Sample(parts_, visualScale, !IsDead());
+    if (!splitVisuals_ && fallbackVisual_) {
+        const auto render = animation_.TransformFor(pose, nullptr, visualScale, rotation_, position_);
+        fallbackVisual_->SetTranslate(render.translate); fallbackVisual_->SetRotate(render.rotate);
+        fallbackVisual_->SetScale(visualScale);
+        fallbackVisual_->SetMaterialColor(blastHitTime_ > 0 ? Vector4{1,.08f,.02f,1} : Vector4{1,1,1,1});
+        fallbackVisual_->SetEnableLighting(blastHitTime_ > 0 ? 0 : 1);
+        fallbackVisual_->Update(dt);
+    }
     for (size_t i = 0; i < visuals_.size(); ++i) {
         if (!visuals_[i].object) continue;
         auto& obj = *visuals_[i].object;
-        obj.SetTranslate(position_);
-        obj.SetRotate(rotation_);
+        const auto render = animation_.TransformFor(pose, &parts_[i], visualScale, rotation_, position_);
+        obj.SetTranslate(render.translate);
+        obj.SetRotate(render.rotate);
         obj.SetScale(visualScale);
         Vector4 color{1,1,1,1};
         switch (parts_[i].DamageState()) {
@@ -517,7 +565,7 @@ void Enemy::Draw(bool showMarker) {
     DrawFaces();
     for (auto& detached : detachedParts_) detached.object->Draw();
     if (!splitVisuals_) {
-        if (!IsDead()) object_.Draw();
+        if (!IsDead()) (fallbackVisual_ ? *fallbackVisual_ : object_).Draw();
         return;
     }
     for (size_t i = 0; i < visuals_.size(); ++i) {
@@ -578,6 +626,27 @@ void Enemy::DrawImGui() {
         ImGui::Text("Body shot detonates | Explosion Radius: %.2f | Damage: %.2f (player + enemies)", definition_.explosionRadius, definition_.explosionDamage);
     }
     ImGui::Text("Enemy State: %s | Distance: %.2f", EnemyStateName(GetState()), ai_.distance);
+    if (ImGui::Checkbox("Procedural Animation", &animation_.settings.enabled)) UpdateVisuals(0);
+    if (ImGui::TreeNode("Arm Pose Tuning")) {
+        bool changed = ImGui::SliderFloat("Arm Lower Angle (radians)", &animation_.settings.armLowerAngle, 0, 1.5707963f);
+        changed |= ImGui::SliderFloat("Arm Swing (radians)", &animation_.settings.armSwing, 0, .35f);
+        if (changed) UpdateVisuals(0);
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Crawl Pose Tuning")) {
+        auto& tuning = animation_.settings;
+        bool changed = ImGui::SliderFloat("Prone Angle (radians)", &tuning.crawlForwardLean, 1.0f, 1.5707963f);
+        changed |= ImGui::SliderFloat("Crawl Ground Clearance", &tuning.crawlGroundClearance, 0, .10f);
+        changed |= ImGui::SliderFloat("Crawl Arm Reach", &tuning.crawlArmReach, .5f, 1.4f);
+        changed |= ImGui::SliderFloat("Crawl Arm Stroke", &tuning.crawlArmStroke, 0, .4f);
+        changed |= ImGui::SliderFloat("Crawl Speed (Hz)", &tuning.crawlHz, .2f, 3);
+        if (changed) UpdateVisuals(0);
+        ImGui::TreePop();
+    }
+    const auto locomotion = EnemyProceduralAnimation::Classify(parts_);
+    ImGui::Text("Movement Pose: %s", locomotion == EnemyLocomotionPose::Normal ? "Normal" :
+        locomotion == EnemyLocomotionPose::Crawl ? "Crawl" :
+        locomotion == EnemyLocomotionPose::MissingLeftLeg ? "Missing Left Leg" : "Missing Right Leg");
     ImGui::Text("Last Enemy Attack: %s | Attack Count: %llu", attackFlash_ > 0 ? "HIT" : "-", attackCount_);
     ImGui::Text("Last applied damage: %.0f | Attack Cooldown: %.2f", lastAttackDamage_, ai_.cooldown);
     ImGui::SliderFloat("Detection Range", &ai_.settings.detectionRange, 1, 50);
@@ -691,10 +760,12 @@ void Enemy::DrawPartDebug(const Matrix4x4& vp,const Vector2& screenMin,const Vec
         }
     }
     if (rangeOnly) { draw->PopClipRect(); return; }
-    const auto matrix=Matrix4x4::Multiply(object_.GetWorldMatrix(),vp);
-    for (const auto& part:parts_) {
+    for (size_t index=0;index<parts_.size();++index) {
+        const auto& part=parts_[index];
         if (part.DamageState() == EnemyPartDamageState::Destroyed) continue;
+        if (splitVisuals_ && (index>=visuals_.size() || !visuals_[index].visible || !visuals_[index].object)) continue;
         if (!(showPartColliders_ || forceParts) && part.flashRemaining<=0) continue;
+        const auto matrix=Matrix4x4::Multiply(PartWorldMatrix(index),vp);
         struct Clip { float x,y,z,w; } corners[8];
         for (int i=0;i<8;++i) {
             const Vector3 p{(i&1)?part.bounds.max.x:part.bounds.min.x,
@@ -814,6 +885,7 @@ void Enemy::DrawFaces() {
 Enemy::DebugState Enemy::CaptureDebug() const {
     DebugState state;
     state.definition=definition_; state.ai=ai_; state.parts=parts_;
+    state.animation=animation_;
     state.position=position_; state.rotation=rotation_; state.scale=scale_;
     state.spawnId=spawnId_; state.trigger=spawnTriggerId_; state.nextOrder=nextSpawnOrder_;
     state.blastHitTime=blastHitTime_; state.lastBlastDamage=lastBlastDamage_;
@@ -821,9 +893,12 @@ Enemy::DebugState Enemy::CaptureDebug() const {
     state.attacks=attackCount_; state.damage=lastAttackDamage_; state.flash=attackFlash_; state.random=random_;
     state.exploded=exploded_; state.splitVisuals=splitVisuals_; state.hasHitBox=hasHitBox_;
     state.asset=asset_; state.models.resize(visuals_.size()); state.visible.resize(visuals_.size());
+    state.visualTransforms.resize(visuals_.size());
     for (size_t i=0;i<visuals_.size();++i) {
         state.models[i]=visuals_[i].object ? visuals_[i].object->GetModel() : nullptr;
         state.visible[i]=visuals_[i].visible;
+        if (visuals_[i].object) state.visualTransforms[i]={visuals_[i].object->GetScale(),
+            visuals_[i].object->GetRotate(),visuals_[i].object->GetTranslate()};
     }
     for (const auto& part : detachedParts_) state.detached.push_back({part.object->GetModel(),part.motion,part.spawnOrder});
     state.faces=faceShards_; state.breakMode=breakMode_; state.detachedSettings=detachedSettings_;
@@ -833,6 +908,7 @@ Enemy::DebugState Enemy::CaptureDebug() const {
 }
 void Enemy::RestoreDebug(const DebugState& state) {
     definition_=state.definition; ai_=state.ai; parts_=state.parts;
+    animation_=state.animation;
     asset_=state.asset; visuals_.resize(parts_.size());
     exploded_=state.exploded; splitVisuals_=state.splitVisuals; hasHitBox_=state.hasHitBox;
     position_=state.position; rotation_=state.rotation; scale_=state.scale;

@@ -177,29 +177,33 @@ inline EnemyParts MakeEnemyParts(const AABB& model) {
         {EnemyPartType::LeftLeg,box(0,.45f,.50f,.64f)},
         {EnemyPartType::RightLeg,box(0,.45f,.36f,.50f)}};
 }
-inline bool RaycastEnemyParts(const EnemyParts& parts, const Matrix4x4& world,
+// The provider returns each part's current render matrix, or nullptr when hidden.
+template<class WorldForPart>
+inline bool RaycastEnemyPartsTransformed(const EnemyParts& parts, WorldForPart worldForPart,
     const Vector3& origin,const Vector3& direction,float range,EnemyPartHit& hit) {
     hit = {};
     const float length=std::hypot(direction.x,direction.y,direction.z);
     if (!std::isfinite(length)||length<=0||!std::isfinite(range)||range<0) return false;
-    // Reject singular transforms before inversion (including collapsed scale axes).
-    const float determinant=world.m[0][0]*(world.m[1][1]*world.m[2][2]-world.m[1][2]*world.m[2][1])
-        -world.m[0][1]*(world.m[1][0]*world.m[2][2]-world.m[1][2]*world.m[2][0])
-        +world.m[0][2]*(world.m[1][0]*world.m[2][1]-world.m[1][1]*world.m[2][0]);
-    if (!std::isfinite(determinant)||std::abs(determinant)<1e-8f) return false;
-    const auto inverse=Matrix4x4::Inverse(world);
     const Vector3 unit=direction*(1.0f/length);
-    const Vector3 localOrigin=EnemyPartTransformPoint(origin,inverse);
-    const Vector3 localDirection{unit.x*inverse.m[0][0]+unit.y*inverse.m[1][0]+unit.z*inverse.m[2][0],
-        unit.x*inverse.m[0][1]+unit.y*inverse.m[1][1]+unit.z*inverse.m[2][1],
-        unit.x*inverse.m[0][2]+unit.y*inverse.m[1][2]+unit.z*inverse.m[2][2]};
-    const float factor=std::hypot(localDirection.x,localDirection.y,localDirection.z);
-    if (!std::isfinite(factor)||factor<=0) return false;
     float closest=range;
     for (size_t index=0;index<parts.size();++index) {
         const auto& part=parts[index];
-        // Removed body parts must not occlude targets behind their former position.
-        if (part.DamageState() == EnemyPartDamageState::Destroyed) continue;
+        if (part.Destroyed()) continue;
+        const auto* currentWorld=worldForPart(index);
+        if (!currentWorld) continue;
+        const auto& world=*currentWorld;
+        // Reject singular transforms before inversion (including collapsed scale axes).
+        const float determinant=world.m[0][0]*(world.m[1][1]*world.m[2][2]-world.m[1][2]*world.m[2][1])
+            -world.m[0][1]*(world.m[1][0]*world.m[2][2]-world.m[1][2]*world.m[2][0])
+            +world.m[0][2]*(world.m[1][0]*world.m[2][1]-world.m[1][1]*world.m[2][0]);
+        if (!std::isfinite(determinant)||std::abs(determinant)<1e-8f) continue;
+        const auto inverse=Matrix4x4::Inverse(world);
+        const Vector3 localOrigin=EnemyPartTransformPoint(origin,inverse);
+        const Vector3 localDirection{unit.x*inverse.m[0][0]+unit.y*inverse.m[1][0]+unit.z*inverse.m[2][0],
+            unit.x*inverse.m[0][1]+unit.y*inverse.m[1][1]+unit.z*inverse.m[2][1],
+            unit.x*inverse.m[0][2]+unit.y*inverse.m[1][2]+unit.z*inverse.m[2][2]};
+        const float factor=std::hypot(localDirection.x,localDirection.y,localDirection.z);
+        if (!std::isfinite(factor)||factor<=0) continue;
         float localDistance;
         if (!RaycastAABB(localOrigin,localDirection,part.bounds,closest*factor,localDistance)) continue;
         if (part.geometry) {
@@ -231,4 +235,9 @@ inline bool RaycastEnemyParts(const EnemyParts& parts, const Matrix4x4& world,
         hit={true,distance,origin+unit*distance,part.type,index};
     }
     return hit.hit;
+}
+// Bind-pose/shared-transform adapter for tools and existing callers.
+inline bool RaycastEnemyParts(const EnemyParts& parts, const Matrix4x4& world,
+    const Vector3& origin,const Vector3& direction,float range,EnemyPartHit& hit) {
+    return RaycastEnemyPartsTransformed(parts,[&world](size_t) { return &world; },origin,direction,range,hit);
 }

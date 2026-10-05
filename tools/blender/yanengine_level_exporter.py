@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 4, 3),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 6, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -246,6 +246,19 @@ def build_level(scene, depsgraph):
             maxAlive=cfg.max_alive, selection=cfg.selection, oneShot=cfg.one_shot))
     if not geometry:
         raise ValueError("At least one Static Mesh is required")
+    letters = [obj for obj in objects if obj.yan_level.role == 'START_LETTER']
+    if stage_id == 'title':
+        if len(data['spawnPoints']) != 1:
+            raise ValueError('Title requires exactly one Enemy Spawn (no Spawn Trigger needed)')
+        if len(letters) != 1 or letters[0].type != 'MESH':
+            raise ValueError('Title requires one Game Start Mesh: convert Text to Mesh, then join all letters (Ctrl+J)')
+        weapon_id = settings.title_weapon.strip()
+        if weapon_id not in definitions(scene, 'weapons'):
+            raise ValueError('Unknown Title Weapon ID')
+        data['title'] = {'weaponId': weapon_id, 'startDelay': settings.title_start_delay,
+                         'startObject': dict(id=object_id(letters[0]), partAsset='resources/levels/title/game_start.enemy.json')}
+    elif letters:
+        raise ValueError('Game Start objects require Stage ID title')
     json.dumps(data, allow_nan=False)
     return data, geometry
 
@@ -264,6 +277,35 @@ def output_path(scene):
     if root and output != root / 'resources' / 'levels' / cfg.stage_id:
         raise ValueError("Use Project Root/resources/levels/StageID as output so game model paths resolve")
     return output
+
+
+def export_start_head(obj, filepath):
+    """World-baked single mesh -> existing EnemyAsset format, entirely Head.
+
+    The level exporter assigns all faces automatically; no Enemy Parts add-on
+    or per-letter objects are required for the title start target.
+    """
+    mesh = obj.data
+    mesh.calc_loop_triangles()
+    basis = ENGINE_BASIS.to_3x3()
+    uv = mesh.uv_layers.active
+    triangles = []
+    for triangle in mesh.loop_triangles:
+        vertices = []
+        for loop_index in reversed(triangle.loops):
+            loop = mesh.loops[loop_index]
+            p = basis @ mesh.vertices[loop.vertex_index].co
+            n = basis @ mesh.corner_normals[loop_index].vector
+            texcoord = uv.data[loop_index].uv if uv else (0, 0)
+            finite(list(p)+list(n)+list(texcoord), obj.name)
+            vertices.append(dict(p=list(p), n=list(n), uv=[float(texcoord[0]), 1-float(texcoord[1])]))
+        triangles.append(dict(face=triangle.polygon_index, vertices=vertices))
+    if not triangles or len(triangles)>1000000:
+        raise ValueError('GAME START requires 1..1000000 triangles')
+    data = dict(version=1, coordinateSystem='yanengine', texture='resources/white1x1.png', hpGroups=[],
+        parts=[dict(name='Head', role='Head', localHp=1, sharedHpGroup='', sharedDamageRate=1,
+                    breakable=True, deathOnZero=True, faces=[p.index for p in mesh.polygons], triangles=triangles)])
+    filepath.write_text(json.dumps(data, separators=(',', ':'), allow_nan=False), encoding='utf-8')
 
 
 def export_level(context):
@@ -287,7 +329,9 @@ def export_level(context):
         context.window.scene = temporary_scene
         # Bake evaluated geometry to world space, isolated from parent/helper visibility.
         # glTF conversion then Model.cpp's X reflection equals ENGINE_BASIS exactly.
-        for source in geometry:
+        letters = sorted((obj for obj in source_scene.objects if obj.yan_level.role == 'START_LETTER'), key=lambda obj: obj.name)
+        exported = {}
+        for source in geometry + letters:
             mesh = bpy.data.meshes.new_from_object(source.evaluated_get(depsgraph), depsgraph=depsgraph)
             finite([v for vertex in mesh.vertices for v in vertex.co], source.name)
             mesh.transform(source.matrix_world)
@@ -295,10 +339,14 @@ def export_level(context):
                 mesh.flip_normals()
             obj = bpy.data.objects.new(source.name, mesh)
             temporary_scene.collection.objects.link(obj)
+            exported[source.name] = obj
         context.view_layer.update()
+        static_objects = {exported[source.name] for source in geometry}
+        for obj in temporary_scene.objects:
+            obj.select_set(obj in static_objects)
         path = scratch / f"{data['stage']['id']}.gltf"
         result = bpy.ops.export_scene.gltf(filepath=str(path), export_format='GLTF_SEPARATE',
-            use_active_scene=True, export_yup=True, export_animations=False, export_skins=False,
+            use_active_scene=True, use_selection=True, export_yup=True, export_animations=False, export_skins=False,
             export_cameras=False, export_lights=False, export_extras=False)
         if 'FINISHED' not in result:
             raise RuntimeError("glTF export did not finish")
@@ -309,6 +357,14 @@ def export_level(context):
             uri = entry.get('uri', '')
             if uri and not uri.startswith('data:') and not (scratch / uri).is_file():
                 raise ValueError(f"Missing exported dependency: {uri}")
+        # GAME START is one Head asset, rendered and shattered by the ordinary Enemy.
+        for source in letters:
+            export_start_head(exported[source.name], scratch/'game_start.enemy.json')
+        if letters:
+            # Remove only the previous exporter's per-letter generated files.
+            for old_file in scratch.iterdir():
+                if re.fullmatch(r'start_\d{2,3}\.(gltf|bin)', old_file.name):
+                    old_file.unlink()
         (scratch / f"{data['stage']['id']}.json").write_text(json.dumps(data, indent=2, allow_nan=False)+'\n', encoding='utf-8')
         # Publish the entire dependency set together, with rollback on rename failure.
         if target.exists():
@@ -363,7 +419,8 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     role: EnumProperty(name="YanEngine Object Type", default='IGNORE', update=role_changed, items=[
         ('STATIC', 'Static Mesh', ''), ('COLLIDER', 'Collider', ''), ('PLAYER', 'Player Spawn', ''),
         ('ENEMY', 'Enemy Spawn', ''), ('TRIGGER', 'Spawn Trigger', ''), ('WEAPON', 'Weapon Spawn', ''),
-        ('GOAL', 'Goal', ''), ('IGNORE', 'Ignore', '')])
+        ('GOAL', 'Goal', ''), ('IGNORE', 'Ignore', ''),
+        ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh')])
     identifier: StringProperty(name="ID", description="Blank uses Object name")
     group: StringProperty(name="Spawn Group", default="A")
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
@@ -389,6 +446,8 @@ class YAN_SceneSettings(bpy.types.PropertyGroup):
     output_directory: StringProperty(name="Output Directory", default="resources/levels/stage01", subtype='DIR_PATH')
     fixed_seed: BoolProperty(name="Fixed Seed", default=False)
     seed: IntProperty(name="Seed", default=12345, min=0)
+    title_weapon: StringProperty(name='Title Weapon ID', default='pistol')
+    title_start_delay: FloatProperty(name='Start Explosion Duration', default=.75, min=.5, max=1.0)
 
 
 class YAN_CatalogEntry(bpy.types.PropertyGroup):
@@ -1136,6 +1195,9 @@ class YAN_PT_level(bpy.types.Panel):
         layout.operator('yanengine.refresh_definitions', icon='FILE_REFRESH')
         if cfg.fixed_seed:
             layout.prop(cfg, 'seed')
+        if cfg.stage_id == 'title':
+            layout.prop(cfg, 'title_weapon')
+            layout.prop(cfg, 'title_start_delay')
         layout.separator()
         obj = context.object
         if obj:
@@ -1143,6 +1205,8 @@ class YAN_PT_level(bpy.types.Panel):
             layout.prop(settings, 'role')
             if settings.role != 'IGNORE':
                 layout.prop(settings, 'identifier')
+            if settings.role == 'START_LETTER':
+                layout.label(text='One combined Mesh; all faces are Head, 1 HP')
             if settings.role == 'STATIC':
                 layout.prop(settings, 'collision')
                 if settings.collision == 'CUSTOM':

@@ -18,6 +18,7 @@ struct BulletHit {
     size_t enemyIndex = 0;
     bool wall = true;
     size_t partIndex=kNoEnemyPart;
+    size_t targetIndex=std::numeric_limits<size_t>::max(); // Optional scene-owned shootable.
 };
 using BulletTrace = std::function<std::optional<BulletHit>(const Vector3&, const Vector3&, float)>;
 using BulletImpact = std::function<void(const Bullet&, const BulletHit&)>;
@@ -25,7 +26,8 @@ using BulletEnemyRaycast = std::function<bool(size_t, const Vector3&, const Vect
 
 // Shared by aiming and movement sweeps. Walls win equal-distance ties.
 std::optional<BulletHit> TraceBulletPath(const Vector3& origin, const Vector3& direction,
-    float distance, const StageWorld& world, size_t enemyCount, const BulletEnemyRaycast& raycastEnemy);
+    float distance, const StageWorld& world, size_t enemyCount, const BulletEnemyRaycast& raycastEnemy,
+    const BulletTrace& raycastTarget = {});
 
 // CPU-only simulation; rendering and game-specific impact reactions live in BulletManager.
 // Copying this state also supports Debug timeline rewind without copying GPU resources.

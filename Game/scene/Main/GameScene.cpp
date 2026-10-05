@@ -414,13 +414,12 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     const bool pickedUp = allowPickup && controls && input.IsKeyTrigger(DIK_E) && weapons_.TryPickup(player_.GetTransform().translate,weapon);
     const bool allowFire = controls && !pickedUp && !suppressFireUntilRelease_;
 #ifdef _DEBUG
-    if (!debugPaused_ && !allowFire) weapon.CancelBurst();
+    const bool cancelBurst = !debugPaused_;
 #else
-    if (!allowFire) weapon.CancelBurst();
+    const bool cancelBurst = true;
 #endif
-    const int weaponShots = weapon.Step(pickedUp ? 0.0f : dt,
-        allowFire && input.IsLeftMouseTrigger(), allowFire && input.IsLeftMousePressed(),
-        controls && input.IsKeyTrigger(DIK_R));
+    const int weaponShots = player_.UpdateShooting(input, pickedUp ? 0.0f : dt,
+        allowFire, controls, cancelBurst);
     if (showroom_ && pickedUp) weapons_.ResetPickups();
     if (!showroom_) spawnSystem_.Update(dt, player_.GetTransform().translate,
         [&](const EnemySpawnPoint& point, const std::string& trigger) {

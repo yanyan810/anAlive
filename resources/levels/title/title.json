@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "stage": {
+    "id": "title",
+    "model": "levels/title/title.gltf"
+  },
+  "playerSpawn": {
+    "position": [
+      0.0,
+      0.0,
+      -5.0
+    ],
+    "rotation": [
+      -0.060000013560056686,
+      0.0,
+      0.0
+    ]
+  },
+  "colliders": [
+    {
+      "id": "Backdrop",
+      "position": [
+        0.0,
+        4.0,
+        14.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        14.0,
+        4.0,
+        0.25
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Floor",
+      "position": [
+        0.0,
+        -0.25,
+        8.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        14.0,
+        0.25,
+        14.0
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Start_Platform",
+      "position": [
+        4.199999809265137,
+        0.699999988079071,
+        10.800000190734863
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        3.5,
+        0.699999988079071,
+        1.0
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  ],
+  "enemyRandom": {
+    "useFixedSeed": false,
+    "seed": 12345
+  },
+  "spawnPoints": [
+    {
+      "id": "EnemySpawn_Title",
+      "position": [
+        -4.0,
+        0.0,
+        10.5
+      ],
+      "rotation": [
+        0.0,
+        -1.570796251296997,
+        0.0
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1.0
+        }
+      ]
+    }
+  ],
+  "spawnTriggers": [],
+  "weaponRandom": {
+    "useFixedSeed": false,
+    "seed": 12345
+  },
+  "weaponSpawnPoints": [],
+  "goalTriggers": [],
+  "title": {
+    "weaponId": "pistol",
+    "startDelay": 0.75,
+    "startObject": {
+      "id": "GAME_START",
+      "partAsset": "resources/levels/title/game_start.enemy.json"
+    }
+  }
+}

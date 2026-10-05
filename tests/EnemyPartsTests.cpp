@@ -257,5 +257,41 @@ int main() {
     assert(!RaycastEnemyParts(parts,identity,{},{},100,hit));
     const auto singular=Matrix4x4::MakeAffineMatrix({0,1,1},{},{});
     assert(!RaycastEnemyParts(parts,singular,{},{1,0,0},100,hit));
+    // Each part has its own animated matrix. Mesh triangles, not the surrounding
+    // box, define the silhouette; nearest ordering stays in world-space units.
+    auto surface=std::make_shared<EnemyPartGeometry>();
+    surface->faces.push_back({Vector3{0,0,0},Vector3{0,1,0},Vector3{0,0,1}});
+    EnemyParts surfaces(2);
+    for (auto& part:surfaces) {
+        part={EnemyPartType::LeftArm,{{0,0,0},{0,1,1}}}; part.geometry=surface;
+    }
+    std::array<Matrix4x4,2> matrices{Matrix4x4::Translation({5,0,0}),Matrix4x4::Translation({2,0,0})};
+    const auto matrixFor=[&](size_t index) { return &matrices[index]; };
+    assert(RaycastEnemyPartsTransformed(surfaces,matrixFor,{0,.2f,.2f},{7,0,0},10,hit));
+    assert(hit.partIndex==1 && std::abs(hit.distance-2)<1e-5f);
+    assert(!RaycastEnemyPartsTransformed(surfaces,matrixFor,{0,.2f,.2f},{7,0,0},1.99f,hit));
+    assert(!RaycastEnemyPartsTransformed(surfaces,matrixFor,{0,.8f,.8f},{1,0,0},10,hit));
+    DamageEnemyPart(surfaces,size_t{1},1000);
+    assert(RaycastEnemyPartsTransformed(surfaces,matrixFor,{0,.2f,.2f},{1,0,0},10,hit) && hit.partIndex==0);
+    surfaces[1].hp=surfaces[1].maxHp;
+    assert(RaycastEnemyPartsTransformed(surfaces,[&](size_t index) -> const Matrix4x4* {
+        return index==1 ? nullptr : &matrices[index];
+    },{0,.2f,.2f},{1,0,0},10,hit) && hit.partIndex==0);
+    matrices[1]=singular;
+    assert(RaycastEnemyPartsTransformed(surfaces,matrixFor,{0,.2f,.2f},{1,0,0},10,hit) && hit.partIndex==0);
+    for (const auto& transform:transforms) {
+        matrices[1]=Matrix4x4::MakeAffineMatrix(transform.scale,transform.rotate,transform.translate);
+        const auto& triangle=surface->faces[0];
+        const auto a=EnemyPartTransformPoint(triangle[0],matrices[1]);
+        const auto b=EnemyPartTransformPoint(triangle[1],matrices[1]);
+        const auto c=EnemyPartTransformPoint(triangle[2],matrices[1]);
+        const auto target=(a+b+c)*(1.0f/3);
+        const auto normal=Matrix4x4::Normalize(Matrix4x4::Cross(b-a,c-a));
+        assert(RaycastEnemyPartsTransformed(surfaces,[&](size_t index) -> const Matrix4x4* {
+            return index==1 ? &matrices[index] : nullptr;
+        },target+normal*.01f,normal*-3,1,hit));
+        assert(hit.partIndex==1 && std::abs(hit.distance-.01f)<.001f);
+    }
+    std::puts("Animated part raycasts passed: separate matrices, mesh silhouettes, world distance, range, hidden/destroyed pass-through, mixed singular/nonuniform/mirrored transforms.");
     std::puts("Enemy part tests passed: all six parts, translation, rotation, nonuniform/mirrored scale, world distance, range, nearest-order independence, misses, singular transform.");
 }

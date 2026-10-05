@@ -51,11 +51,111 @@ inline void RunEnemyPoolTests(GameApp& app) {
         for (size_t i=0;i<state.parts.hpGroups.size();++i)
             check(state.parts.hpGroups[i].hp==original.parts.hpGroups[i].hp,"shared HP reset");
     };
+    const auto verifyRenderedCollision=[&](Enemy* enemy) {
+        const auto state=enemy->CaptureDebug();
+        std::vector<Matrix4x4> matrices;
+        for (size_t i=0;i<state.parts.size();++i) {
+            const auto& tr=state.visualTransforms[i];
+            matrices.push_back(Matrix4x4::Multiply(state.models[i]->GetRootLocalMatrix(),
+                Matrix4x4::MakeAffineMatrix(tr.scale,tr.rotate,tr.translate)));
+        }
+        for (size_t i=0;i<state.parts.size();++i) {
+            if (state.parts[i].Destroyed() || !state.visible[i]) continue;
+            check(state.parts[i].geometry && !state.parts[i].geometry->faces.empty(),"surface collision data missing");
+            const auto& face=state.parts[i].geometry->faces[0];
+            const auto a=EnemyPartTransformPoint(face[0],matrices[i]);
+            const auto b=EnemyPartTransformPoint(face[1],matrices[i]);
+            const auto c=EnemyPartTransformPoint(face[2],matrices[i]);
+            const auto normal=Matrix4x4::Normalize(Matrix4x4::Cross(b-a,c-a));
+            const auto origin=(a+b+c)*(1.0f/3)+normal*.001f;
+            const auto direction=normal*-1;
+            EnemyPartHit expected,actual;
+            check(RaycastEnemyPartsTransformed(state.parts,[&](size_t part) -> const Matrix4x4* {
+                return state.visible[part] ? &matrices[part] : nullptr;
+            },origin,direction,.1f,expected),"animated surface fixture ray");
+            check(enemy->Raycast(origin,direction,.1f,actual) && expected.partIndex==actual.partIndex
+                && std::abs(expected.distance-actual.distance)<.001f,"raycast disagrees with rendered part matrices");
+        }
+    };
     for (const auto& [id,definition]:definitions.All()) {
         (void)definition;
         const auto gpuBefore=Object3d::debugInitializationCount;
         auto* enemy=pool.Acquire(id,next++,"first",{0,0,12},{});
         const auto original=enemy->CaptureDebug();
+        verifyRenderedCollision(enemy);
+        if (id=="normal") {
+            const auto closeEnough=[](float a,float b) { return std::abs(a-b)<.001f; };
+            const auto verifyCollision=[&]() { verifyRenderedCollision(enemy); };
+            auto expectedAI=original.ai; auto expectedPosition=original.position; auto expectedRotation=original.rotation;
+            const Vector3 target{6,0,5};
+            expectedAI.Update(expectedPosition,expectedRotation,target,.125f,false);
+            enemy->Update(.125f,target);
+            const auto walking=enemy->CaptureDebug();
+            check(closeEnough(walking.position.x,expectedPosition.x) && closeEnough(walking.position.z,expectedPosition.z)
+                && closeEnough(walking.position.y,expectedPosition.y),"animation changed AI movement");
+            check(!closeEnough(walking.visualTransforms[1].translate.y,walking.position.y),"normal render bob missing");
+            for (size_t i=0;i<walking.parts.size();++i) {
+                const auto type=EnemyProceduralAnimation::AnimationPart(walking.parts[i]);
+                if (type!=EnemyPartType::LeftArm && type!=EnemyPartType::RightArm) continue;
+                const auto& arm=walking.parts[i]; const auto& render=walking.visualTransforms[i];
+                const auto center=(arm.bounds.min+arm.bounds.max)*.5f;
+                const auto drawn=EnemyPartTransformPoint(center,Matrix4x4::MakeAffineMatrix(render.scale,render.rotate,render.translate));
+                const auto bind=EnemyPartTransformPoint(center,Matrix4x4::MakeAffineMatrix(render.scale,walking.rotation,walking.position));
+                const float armSpan=(arm.bounds.max.z-arm.bounds.min.z)*render.scale.z;
+                check(drawn.y<bind.y-armSpan*.25f,"actual model arm remained horizontal");
+            }
+            verifyCollision();
+            enemy->ApplyDamage(EnemyPartType::LeftLeg,10000,{0,0,1}); enemy->UpdateVisuals(0);
+            check(EnemyProceduralAnimation::Classify(enemy->CaptureDebug().parts)==EnemyLocomotionPose::MissingLeftLeg,"one-leg render mode");
+            verifyCollision();
+            enemy->ApplyDamage(EnemyPartType::RightLeg,10000,{0,0,1}); enemy->UpdateVisuals(0);
+            const auto crawling=enemy->CaptureDebug();
+            check(!enemy->IsDead() && EnemyProceduralAnimation::Classify(crawling.parts)==EnemyLocomotionPose::Crawl,"crawl render mode");
+            float minY=crawling.parts[0].bounds.min.y,maxY=crawling.parts[0].bounds.max.y;
+            for (const auto& part:crawling.parts) { minY=std::min(minY,part.bounds.min.y); maxY=std::max(maxY,part.bounds.max.y); }
+            const float modelHeight=(maxY-minY)*crawling.definition.VisualScale(crawling.scale).y;
+            const auto bodyCenter=(crawling.parts[1].bounds.min+crawling.parts[1].bounds.max)*.5f;
+            const auto& render=crawling.visualTransforms[1];
+            const auto renderedCenter=EnemyPartTransformPoint(bodyCenter,Matrix4x4::MakeAffineMatrix(render.scale,render.rotate,render.translate));
+            const auto bindCenter=EnemyPartTransformPoint(bodyCenter,Matrix4x4::MakeAffineMatrix(render.scale,crawling.rotation,crawling.position));
+            check(renderedCenter.y<bindCenter.y-modelHeight*.15f,"crawl height missing");
+            const auto torsoMatrix=Matrix4x4::MakeAffineMatrix(render.scale,render.rotate,render.translate);
+            check(std::abs(torsoMatrix.m[1][1]/render.scale.y)<.2f,"crawl torso remained upright");
+            float lowest=std::numeric_limits<float>::max();
+            for (size_t i=0;i<crawling.parts.size();++i) {
+                const auto& part=crawling.parts[i]; if (part.Destroyed()) continue;
+                const auto& tr=crawling.visualTransforms[i];
+                const auto matrix=Matrix4x4::MakeAffineMatrix(tr.scale,tr.rotate,tr.translate);
+                for (int corner=0;corner<8;++corner) {
+                    const Vector3 p{(corner&1)?part.bounds.max.x:part.bounds.min.x,
+                        (corner&2)?part.bounds.max.y:part.bounds.min.y,(corner&4)?part.bounds.max.z:part.bounds.min.z};
+                    lowest=std::min(lowest,EnemyPartTransformPoint(p,matrix).y);
+                }
+            }
+            check(lowest>=crawling.position.y && lowest<crawling.position.y+modelHeight*.03f,"crawl base-plane clearance");
+            enemy->Update(.125f,target);
+            const auto stroke=enemy->CaptureDebug();
+            for (size_t i : {size_t{2},size_t{3}}) {
+                const auto& before=crawling.visualTransforms[i]; const auto& after=stroke.visualTransforms[i];
+                check(!closeEnough(before.rotate.x,after.rotate.x) || !closeEnough(before.rotate.z,after.rotate.z),"crawl arm remained still");
+            }
+            verifyCollision();
+            const auto upright=Matrix4x4::MakeAffineMatrix(crawling.definition.VisualScale(crawling.scale),crawling.rotation,crawling.position);
+            const auto oldHead=EnemyPartTransformPoint((crawling.parts[0].bounds.min+crawling.parts[0].bounds.max)*.5f,upright);
+            EnemyPartHit oldHit;
+            check(!enemy->Raycast(oldHead+Vector3{0,0,-2},{0,0,1},4,oldHit),"old upright head still collides during crawl");
+            enemy->RestoreDebug(walking); enemy->UpdateVisuals(0);
+            const auto restored=enemy->CaptureDebug();
+            for (size_t i=0;i<walking.visualTransforms.size();++i) {
+                const auto& a=walking.visualTransforms[i]; const auto& b=restored.visualTransforms[i];
+                check(closeEnough(a.translate.x,b.translate.x) && closeEnough(a.translate.y,b.translate.y) && closeEnough(a.translate.z,b.translate.z)
+                    && closeEnough(a.rotate.x,b.rotate.x) && closeEnough(a.rotate.y,b.rotate.y) && closeEnough(a.rotate.z,b.rotate.z),"rewind lost animation pose");
+            }
+            enemy->ResetForSpawn(enemy->GetSpawnId(),"first",original.position,original.rotation);
+            verifyReset(enemy,original);
+            const auto reset=enemy->CaptureDebug();
+            check(closeEnough(reset.visualTransforms[1].translate.y,reset.position.y),"pool retained animation offset");
+        }
         check(Object3d::debugInitializationCount==gpuBefore,"Acquire initialized Object3d");
         check(!pool.Release(enemy),"living enemy released");
         enemy->Update(.5f,{0,0,12}); enemy->ConfirmAttack(10);
@@ -203,5 +303,5 @@ inline void RunEnemyPoolTests(GameApp& app) {
     showroom.ResetShowroomEnemies(app);
     check(showroom.enemies_==showroomPointers,"reset after recycle");
     showroom.OnExit(app);
-    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, Showroom reset, rewind.\n";
+    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, Showroom reset, rewind, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
 }

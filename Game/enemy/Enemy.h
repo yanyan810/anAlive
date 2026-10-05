@@ -1,6 +1,7 @@
 #pragma once
 #include "Object3d.h"
 #include "EnemyParts.h"
+#include "EnemyProceduralAnimation.h"
 #include "EnemyAI.h"
 #include "EnemyDefinition.h"
 #include "EnemyExplosion.h"
@@ -62,15 +63,15 @@ public:
     void ApplyDefinition(const EnemyDefinition& definition);
 #ifdef _DEBUG
     Vector3 HeadCenterForDebug() const {
-        for (const auto& part : parts_) if (part.role==EnemyPartRole::Head)
-            return EnemyPartTransformPoint((part.bounds.min+part.bounds.max)*.5f,
-                Matrix4x4::MakeAffineMatrix(definition_.VisualScale(scale_),rotation_,position_));
+        for (size_t i=0;i<parts_.size();++i) if (parts_[i].role==EnemyPartRole::Head && !parts_[i].Destroyed())
+            return EnemyPartTransformPoint((parts_[i].bounds.min+parts_[i].bounds.max)*.5f,PartWorldMatrix(i));
         return position_;
     }
     struct DebugDetached { Model* model=nullptr; DetachedPartMotion motion; uint64_t order=0; };
     struct DebugState {
         EnemyDefinition definition;
         EnemyAI ai;
+        EnemyProceduralAnimation animation;
         EnemyParts parts;
         Vector3 position{},rotation{},scale{};
         uint64_t spawnId=0,nextOrder=0;
@@ -85,6 +86,7 @@ public:
         std::vector<Model*> models;
         std::shared_ptr<const EnemyRenderAsset> asset;
         std::vector<bool> visible;
+        std::vector<Transform> visualTransforms; // Diagnostics; restored from animation + bind pose.
         std::vector<DebugDetached> detached;
         std::vector<FaceShard> faces;
         FragmentMode breakMode=FragmentMode::Face;
@@ -136,16 +138,20 @@ private:
         return kNoEnemyPart;
     }
     Vector3 ExplosionCenter() const;
+    const Matrix4x4& PartWorldMatrix(size_t index) const;
+    void ConfigureLegacyPartCollision();
     void RebuildTypeMarker();
     uint64_t spawnId_ = 0;
     std::string id_;
     std::string spawnTriggerId_;
     EnemyDefinition definition_{};
     EnemyAI ai_{};
+    EnemyProceduralAnimation animation_{};
     unsigned long long attackCount_ = 0;
     float lastAttackDamage_ = 0;
     float attackFlash_ = 0;
     Object3d object_;
+    std::unique_ptr<Object3d> fallbackVisual_; // Whole-model drawing, independent of collision object_.
     ModelCommon explosionModelCommon_;
     std::unique_ptr<Model> explosionModel_;
     std::unique_ptr<Object3d> explosionVisual_;
@@ -160,6 +166,7 @@ private:
     inline static bool assetsPreloaded_ = false;
     inline static bool splitAssetsAvailable_ = false;
     inline static std::array<std::vector<std::array<Vector3,3>>,6> faceData_{};
+    inline static std::array<std::shared_ptr<const EnemyPartGeometry>,6> legacyPartGeometry_{};
     std::vector<FaceShard> faceShards_;
     ModelCommon faceModelCommon_;
     std::unique_ptr<Model> faceModel_;

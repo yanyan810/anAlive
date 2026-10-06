@@ -24,6 +24,16 @@ inline void RunTitleSceneTests(GameApp& app) {
     fade.Reset(); check(fade.Alpha()==0,"Fade reset");
     auto* title = dynamic_cast<TitleScene*>(app.Scenes().Current());
     check(title && title->ready_, "Title layout failed to load");
+    const auto spotIntensity=[&](size_t index) {
+        void* mapped=nullptr;
+        const D3D12_RANGE readRange{0,sizeof(Object3dLight::SpotLights)};
+        auto* resource=title->sceneLight_.GetSpotLightResource();
+        check(SUCCEEDED(resource->Map(0,&readRange,&mapped)),"Spot light constant buffer read failed");
+        const float intensity=static_cast<const Object3dLight::SpotLights*>(mapped)->at(index).intensity;
+        const D3D12_RANGE writtenRange{0,0};
+        resource->Unmap(0,&writtenRange);
+        return intensity;
+    };
     const auto lighting = title->lighting_;
     check(TitleLighting::FromJson(lighting.ToJson()).ToJson()==lighting.ToJson(),"Lighting JSON round trip");
     auto legacyLight=lighting.ToJson();
@@ -257,6 +267,9 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(capture(L"generated/title-tests/lamp-flicker-disabled.png")==flickerOnEnergy,"Disabled flicker failed to restore base light");
     title->lighting_=lighting; title->flickerRandom_=savedFlickerRandom;
     title->ResetLightFlicker(); title->ApplyLighting();
+    auto steadyLighting=lighting;
+    for (auto& spot : steadyLighting.spots) spot.flicker.enabled=false;
+    title->lighting_=steadyLighting; title->ResetLightFlicker(); title->ApplyLighting();
     check(title->enemies_.size()==2 && title->startTarget_->CaptureDebug().parts.size()==1,"Title prototype objects");
     check(title->player_.IsMovementEnabled(),"Title WASD movement disabled");
     const float hp = title->player_.GetHP();
@@ -280,13 +293,20 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->bullets_.Update(.2f,empty,title->enemies_,[&](const BulletEnemyImpact& hit) {
         check(hit.result.damage>0,"Title enemy received no part damage"); ++enemyHits;
     });
+    title->ApplyLighting();
     check(enemyHits==1 && !title->start_.Starting(),"Enemy shot started game or missed");
+    check(!enemy->IsDead() && spotIntensity(1)==steadyLighting.spots[1].intensity,
+        "Nonfatal enemy damage extinguished its spotlight");
     enemy->Die();
     check(enemy->IsDead() && !enemy->CanReturnToPool(),"Title enemy death/debris");
+    title->UpdateWorld(app,0,false);
+    check(spotIntensity(1)==0 && spotIntensity(0)==steadyLighting.spots[0].intensity &&
+        spotIntensity(2)==steadyLighting.spots[2].intensity,"Enemy death failed to extinguish only its spotlight");
     const auto allocations = Object3d::debugInitializationCount;
     for (int i=0; i<80; ++i) title->UpdateWorld(app,.1f,false);
     check(title->enemies_.size()==2 && title->enemies_[0]==enemy && !enemy->IsDead(),"Title pool respawn");
     check(Object3d::debugInitializationCount==allocations,"Title respawn allocated renderers");
+    check(spotIntensity(1)==steadyLighting.spots[1].intensity,"Enemy respawn failed to restore its spotlight");
     check(title->player_.GetHP()==hp,"Title death explosion damaged player");
 
     check(title->unaliveExplosion_.letters.size()==7 && title->unaliveExplosion_.fragments.size()==40,
@@ -328,6 +348,13 @@ inline void RunTitleSceneTests(GameApp& app) {
         title->environment_.GetModel()==title->environmentTextVariants_[1] && title->enemies_.size()==2,
         "UNALIVE impact did not explode independently from GAME START");
     check(!title->TraceUnalive(unaliveFirePosition,{0,0,1},5),"Destroyed UNALIVE still blocks shots");
+    check(spotIntensity(0)==0 && spotIntensity(1)==steadyLighting.spots[1].intensity &&
+        spotIntensity(2)==steadyLighting.spots[2].intensity,"UNALIVE impact failed to extinguish only its spotlight immediately");
+    title->lighting_.spots[0].flicker.enabled=true;
+    title->lighting_.spots[0].flicker.offBrightness=1;
+    title->ResetLightFlicker(); title->UpdateLightFlicker(1);
+    check(spotIntensity(0)==0,"Lamp flicker relit destroyed UNALIVE");
+    title->lighting_=steadyLighting; title->ResetLightFlicker(); title->ApplyLighting();
     for (const auto& letter : title->unaliveExplosion_.letters) {
         check(StageLength(letter.motion.velocity)>0 && StageLength(letter.motion.angularVelocity)>0 && letter.motion.age==0 &&
             letter.object->GetEnableLighting()==0,"UNALIVE glyph launch/spin/impact flash failed");
@@ -344,11 +371,18 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(title->unaliveExplosion_.destroyed && !title->unaliveExplosion_.active && !title->start_.Starting() && !app.Scenes().IsTransitioning() &&
         title->environment_.GetModel()==title->environmentTextVariants_[1] && title->startTarget_->CaptureDebug().parts[0].hp==1,
         "UNALIVE restored itself, began fading, or damaged GAME START");
-    capture(L"generated/title-tests/unalive-destroyed.png");
+    check(spotIntensity(0)==0 && title->lighting_.ToJson()==steadyLighting.ToJson(),
+        "Destroyed UNALIVE relit after fragment lifetime or modified saved lighting");
+    const auto destroyedEnergy=capture(L"generated/title-tests/unalive-destroyed.png");
+    steadyLighting.Apply(title->sceneLight_);
+    check(capture(L"generated/title-tests/unalive-destroyed-lamp-forced-on.png")>destroyedEnergy+100,
+        "Destruction spotlight shutoff had no rendered effect");
+    title->ApplyLighting();
     title->BeginUnaliveExplosion(true);
     title->UpdateWorld(app,2,false);
     check(!title->unaliveExplosion_.destroyed && !title->unaliveExplosion_.preview && title->environment_.GetModel()==title->environmentFull_ &&
         title->TraceUnalive(unaliveFirePosition,{0,0,1},5).has_value(),"UNALIVE preview failed to restore mesh/raycast");
+    check(spotIntensity(0)==steadyLighting.spots[0].intensity,"UNALIVE preview restoration failed to relight its lamp");
     // Destroy each background word independently, including shots in front of the plinth.
     title->BeginUnaliveExplosion();
     title->UpdateWorld(app,2,false);
@@ -396,6 +430,8 @@ inline void RunTitleSceneTests(GameApp& app) {
         title->environment_.GetModel()==title->environmentTextVariants_[3] && !title->start_.Starting() && !title->transitionRequested_,
         "SHOOT TO START impact failed, restored UNALIVE, or started the game");
     check(!title->TraceInstruction(instructionFirePosition,{0,0,1},5),"Destroyed SHOOT TO START still blocks shots");
+    check(spotIntensity(0)==0 && spotIntensity(2)==0 && spotIntensity(1)==steadyLighting.spots[1].intensity,
+        "SHOOT TO START impact failed to turn off its shared GAME START lamp");
     for (const auto& letter : instruction.letters) {
         check(StageLength(letter.motion.velocity)>0 && StageLength(letter.motion.angularVelocity)>0 && letter.motion.age==0 &&
             letter.object->GetEnableLighting()==0,"SHOOT TO START launch/spin/impact flash failed");
@@ -412,6 +448,8 @@ inline void RunTitleSceneTests(GameApp& app) {
         "SHOOT TO START restored itself, began fading, or damaged GAME START");
     capture(L"generated/title-tests/instruction-destroyed.png");
     title->RestoreUnalive();
+    check(spotIntensity(0)==steadyLighting.spots[0].intensity && spotIntensity(2)==0,
+        "Restoring UNALIVE relit the destroyed instruction's lamp");
     check(instruction.destroyed && title->environment_.GetModel()==title->environmentTextVariants_[2],
         "Restoring UNALIVE also restored SHOOT TO START");
     title->BeginUnaliveExplosion(true);
@@ -430,8 +468,10 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->RestoreInstruction();
     check(!instruction.destroyed && title->unaliveExplosion_.destroyed && title->environment_.GetModel()==title->environmentTextVariants_[1],
         "SHOOT TO START restore changed UNALIVE destruction");
-    // Both decorative words stay destroyed during the GAME START / fade regression checks.
-    title->BeginInstructionExplosion();
+    check(spotIntensity(0)==0 && spotIntensity(2)==steadyLighting.spots[2].intensity,
+        "Instruction restoration failed to relight only its own spotlight");
+    // Restore the shared-lamp target while testing GAME START preview and impact.
+    // UNALIVE stays destroyed during the GAME START / fade regression checks.
     title->UpdateWorld(app,2,false);
 
     check(title->startExplosion_.letters.size()==9 && title->startExplosion_.fragments.size()==40,"Whole-letter/fragment renderers were not prepared");
@@ -444,10 +484,12 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->UpdateWorld(app,0,false);
     check(title->explosionPreview_ && !title->start_.Starting() && !title->startTarget_->IsDead() &&
         !app.Scenes().IsTransitioning() && title->startExplosion_.fragmentCount==30,"Preview damaged target or started transition");
+    check(spotIntensity(2)==0,"GAME START preview left its spotlight on");
     capture(L"generated/title-tests/explosion-preview-flash.png");
     title->UpdateWorld(app,2,false);
     check(!title->explosionPreview_ && !title->startTarget_->IsDead() && !app.Scenes().IsTransitioning() &&
         Object3d::debugInitializationCount==previewAllocations,"Preview failed to restore title or allocated renderers");
+    check(spotIntensity(2)==steadyLighting.spots[2].intensity,"GAME START preview failed to restore its spotlight");
     const auto settings=title->explosionSettings_;
     title->explosionSettings_.fragmentCount=40;
     title->explosionSettings_.flashDuration=0;
@@ -499,6 +541,9 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(title->startTarget_->IsDead() && dead.faces.empty() && !dead.visible[0] && title->startExplosion_.fragmentCount==30,
         "GAME START failed to replace hidden generic shards with title burst");
     check(Object3d::debugInitializationCount==gpuCount,"GAME START impact allocated renderers");
+    check(spotIntensity(2)==0 && spotIntensity(1)==steadyLighting.spots[1].intensity,
+        "GAME START impact failed to extinguish its spotlight on the impact frame");
+    check(title->lighting_.ToJson()==steadyLighting.ToJson(),"Destruction modified saved lighting settings");
     const auto blastCenter=(startState.parts[0].bounds.min+startState.parts[0].bounds.max)*.5f;
     for (const auto& letter : title->startExplosion_.letters) {
         const auto outward=letter.motion.position-blastCenter;
@@ -578,10 +623,22 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(app.Scenes().TransitionTo("Title",0,0),"Common transition cannot target another scene");
     app.Scenes().Change(app,"Title");
     check(!app.Scenes().IsTransitioning() && app.Scenes().Fade().Alpha()==0,"Immediate Change left stale fade");
-    const auto* freshTitle=dynamic_cast<TitleScene*>(app.Scenes().Current());
+    auto* freshTitle=dynamic_cast<TitleScene*>(app.Scenes().Current());
     check(freshTitle && !freshTitle->unaliveExplosion_.destroyed && !freshTitle->instructionExplosion_.destroyed &&
         freshTitle->environment_.GetModel()==freshTitle->environmentFull_,
         "Background text destruction leaked into the next title scene");
-    std::ofstream("generated/title-tests/result.txt") << "PASS: independent lamp off/relight GPU renders, finite bursts / frame-rate consistency, base intensity preservation, disable restores light, separate gameplay randomness, flicker JSON validation / legacy steady lighting; SHOOT TO START twelve original glyphs / 30 fragments, actual stage/plinth bullet impact, gap and wall occlusion, launch/spin/flash, no game start or allocations, independent destruction and preview/restore of both decorative words, GAME START transitions after both are destroyed; UNALIVE seven glyphs / 30 fragments, actual bullet impact / gap and wall occlusion, no game start or fade, duplicate impact guard, destruction persists after lifetime, preview restores mesh/raycast, fresh title restores UNALIVE, GAME START still transitions after UNALIVE destruction; nine whole glyphs with original geometry and impact positions preserved, 30 title fragments / 40 preallocated slots, preview without damage/transition and automatic restore, maximum count / zero flash and shake durations, radial letter launch / XYZ spin / deferred impact-frame time, short flash and lit-material restoration, camera shake and no residual offset, small fragments near camera, shadow size filtering, no impact/preview renderer allocations, foreground floor ambient visibility under full shadows, room shadow exclusion with object shadows retained, legacy lighting defaults, directional shadow depth readback/range/geometry, shadow ON/OFF render comparison, shadow frustum validation, lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
+    title=freshTitle;
+    for (size_t i=0;i<title->lighting_.spots.size();++i)
+        check(spotIntensity(i)==title->lighting_.spots[i].intensity,"Fresh title failed to restore spotlight brightness");
+    // Keep the regression where both decorative words are destroyed before starting.
+    title->BeginUnaliveExplosion(); title->BeginInstructionExplosion();
+    title->UpdateWorld(app,2,false);
+    title->bullets_.Spawn(weapon,Matrix4x4::Translation(firePosition),0,title->random_,empty,title->enemies_);
+    title->UpdateWorld(app,.1f,false);
+    check(title->start_.Starting() && spotIntensity(0)==0 && spotIntensity(2)==0,
+        "GAME START failed after both decorative words were destroyed");
+    title->UpdateWorld(app,.45f,false);
+    check(app.Scenes().IsTransitioning(),"Both decorative words' destruction blocked the GAME START fade");
+    std::ofstream("generated/title-tests/result.txt") << "PASS: destruction spotlight impact-frame shutoff / GPU render difference, flicker cannot relight destroyed text, shared instruction/start lamp, saved tuning preservation, enemy respawn and text preview/restore relight; independent lamp off/relight GPU renders, finite bursts / frame-rate consistency, base intensity preservation, disable restores light, separate gameplay randomness, flicker JSON validation / legacy steady lighting; SHOOT TO START twelve original glyphs / 30 fragments, actual stage/plinth bullet impact, gap and wall occlusion, launch/spin/flash, no game start or allocations, independent destruction and preview/restore of both decorative words, GAME START transitions after both are destroyed; UNALIVE seven glyphs / 30 fragments, actual bullet impact / gap and wall occlusion, no game start or fade, duplicate impact guard, destruction persists after lifetime, preview restores mesh/raycast, fresh title restores UNALIVE, GAME START still transitions after UNALIVE destruction; nine whole glyphs with original geometry and impact positions preserved, 30 title fragments / 40 preallocated slots, preview without damage/transition and automatic restore, maximum count / zero flash and shake durations, radial letter launch / XYZ spin / deferred impact-frame time, short flash and lit-material restoration, camera shake and no residual offset, small fragments near camera, shadow size filtering, no impact/preview renderer allocations, foreground floor ambient visibility under full shadows, room shadow exclusion with object shadows retained, legacy lighting defaults, directional shadow depth readback/range/geometry, shadow ON/OFF render comparison, shadow frustum validation, lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
 }
 

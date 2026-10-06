@@ -125,11 +125,13 @@ void TitleScene::BeginBackgroundTextExplosion(TextExplosion& burst,const Vector3
     burst.destroyed=!preview; burst.preview=preview; burst.active=true;
     RefreshTitleEnvironment();
     LaunchTextExplosion(burst,tint);
+    ApplyLighting();
 }
 
 void TitleScene::RestoreBackgroundText(TextExplosion& burst) {
     burst.destroyed=false; burst.preview=false; burst.active=false;
     RefreshTitleEnvironment();
+    ApplyLighting();
 }
 
 void TitleScene::RefreshTitleEnvironment() {
@@ -216,6 +218,7 @@ void TitleScene::BeginStartExplosion(bool preview) {
     // burst. Discard its hidden generic face burst via the existing pool API.
     if (!preview) startTarget_->RetireFromPool();
     LaunchTextExplosion(startExplosion_,lighting_.spots[2].color);
+    ApplyLighting();
 }
 
 void TitleScene::LaunchTextExplosion(TextExplosion& burst,const Vector3& tint) {
@@ -415,6 +418,12 @@ void TitleScene::ApplyLighting() {
     for (size_t i=0;i<lightFlicker_.size();++i)
         if (current.spots[i].flicker.enabled && lightFlicker_[i].off)
             current.spots[i].intensity*=current.spots[i].flicker.offBrightness;
+    // Destruction overrides flicker without changing the saved tuning values.
+    if (unaliveExplosion_.destroyed || unaliveExplosion_.preview) current.spots[0].intensity=0;
+    if (enemies_.empty() || enemies_[0]->IsDead()) current.spots[1].intensity=0;
+    // GAME START and SHOOT TO START share one lamp; either destruction turns it off.
+    if (StartExplosionActive() || (startTarget_ && startTarget_->IsDead()) ||
+        instructionExplosion_.destroyed || instructionExplosion_.preview) current.spots[2].intensity=0;
     current.Apply(sceneLight_); // Saved base intensities and ambient/directional lighting stay intact.
 }
 
@@ -535,11 +544,13 @@ void TitleScene::SpawnEnemy() {
     if (enemies_.empty()) enemies_.push_back(enemy);
     else enemies_[0] = enemy; // Preserve the GAME START target at index 1.
     enemies_[0]->UpdateVisuals(0);
+    ApplyLighting();
 }
 void TitleScene::OnBulletImpact(const BulletEnemyImpact& impact) {
     if (enemies_[impact.enemyIndex] == startTarget_.get() && impact.result.damage>0 && startTarget_->IsDead()) {
         if (start_.Begin()) BeginStartExplosion();
     }
+    ApplyLighting();
 }
 void TitleScene::OnExit(GameApp& app) {
     app.Render()->GetOffscreen()->SetClearColor(savedClearColor_);
@@ -621,6 +632,7 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     ApplyStartCameraShake();
     UpdateStartExplosionVisuals();
     environment_.Update(dt);
+    ApplyLighting(); // Include this frame's impacts, respawns and preview restoration.
 }
 void TitleScene::DrawShadow(GameApp&) {
     if (!ready_) return;

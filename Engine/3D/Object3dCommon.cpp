@@ -1,4 +1,4 @@
-﻿#include "Object3dCommon.h"
+#include "Object3dCommon.h"
 
 void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 	// 初期化処理
@@ -30,7 +30,7 @@ void Object3dCommon::CreateRootSignature() {
     rangeMask.BaseShaderRegister = 3; // t3
     rangeMask.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    D3D12_ROOT_PARAMETER params[10]{};
+    D3D12_ROOT_PARAMETER params[11]{};
 
     // b0 material
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -85,6 +85,15 @@ void Object3dCommon::CreateRootSignature() {
     params[9].DescriptorTable.NumDescriptorRanges = 1;
     params[9].DescriptorTable.pDescriptorRanges = &rangeMask;
 
+    D3D12_DESCRIPTOR_RANGE rangeShadow{};
+    rangeShadow.RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    rangeShadow.NumDescriptors=1; rangeShadow.BaseShaderRegister=4;
+    rangeShadow.OffsetInDescriptorsFromTableStart=D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    params[10].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[10].ShaderVisibility=D3D12_SHADER_VISIBILITY_PIXEL;
+    params[10].DescriptorTable.NumDescriptorRanges=1;
+    params[10].DescriptorTable.pDescriptorRanges=&rangeShadow;
+
     D3D12_STATIC_SAMPLER_DESC samp{};
     samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     samp.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -95,12 +104,19 @@ void Object3dCommon::CreateRootSignature() {
     samp.ShaderRegister = 0;
     samp.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+    D3D12_STATIC_SAMPLER_DESC samplers[2]{samp,samp};
+    samplers[1].Filter=D3D12_FILTER_MIN_MAG_MIP_POINT;
+    samplers[1].ShaderRegister=1;
+    samplers[1].AddressU=D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].AddressV=D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].AddressW=D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    samplers[1].BorderColor=D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
     D3D12_ROOT_SIGNATURE_DESC desc{};
     desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     desc.NumParameters = _countof(params);
     desc.pParameters = params;
-    desc.NumStaticSamplers = 1;
-    desc.pStaticSamplers = &samp;
+    desc.NumStaticSamplers = 2;
+    desc.pStaticSamplers = samplers;
 
     ID3DBlob* sig = nullptr;
     ID3DBlob* err = nullptr;

@@ -6,6 +6,8 @@ void Object3dLight::Initialize(DirectXCommon* dx) {
 	// 平行光源
 	directionalLightResource_ = dx_->CreateBufferResource(sizeof(DirectionalLight));
 	directionalLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData_));
+	*directionalLightData_ = {};
+	directionalLightData_->shadowViewProjection = Matrix4x4::MakeIdentity4x4();
 	// 初期化
 	directionalLightData_->color = { 1.0f, 1.0f, 1.0f, 1.0f }; // ライトの色
 	directionalLightData_->direction = { 0.0f, -1.0f, 0.0f };

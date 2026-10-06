@@ -20,6 +20,7 @@
 //class Object3dCommon;
 
 class PrimitiveCommon;
+class DirectionalShadowMap;
 
 class Object3d
 {
@@ -69,6 +70,7 @@ public:
 	void Update(float dt);
 
 	void Draw();
+	void DrawDirectionalShadow(DirectionalShadowMap& shadow, const std::vector<uint32_t>& excludedMeshes = {});
 
 	void SetModel(Model* model) { this->model_ = model; }
 
@@ -211,6 +213,7 @@ public:
 
 private:
 	void EnsureInstanceMaterial_();
+	void BindDirectionalShadow_(ID3D12GraphicsCommandList* cmd, UINT rootIndex=10);
     void PrepareInstanceMeshMaterials_();
 
 	bool useEnvironmentMap_ = false;

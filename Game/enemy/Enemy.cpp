@@ -589,6 +589,19 @@ void Enemy::Draw(bool showMarker) {
     }
 }
 
+void Enemy::DrawDirectionalShadow(DirectionalShadowMap& shadow) {
+    if (!faceShards_.empty() && faceBatch_) faceBatch_->DrawDirectionalShadow(shadow);
+    for (auto& detached : detachedParts_) detached.object->DrawDirectionalShadow(shadow);
+    if (!splitVisuals_) {
+        if (!IsDead()) (fallbackVisual_ ? *fallbackVisual_ : object_).DrawDirectionalShadow(shadow);
+        return;
+    }
+    for (size_t i=0;i<visuals_.size();++i) {
+        const auto& visual=visuals_[i];
+        if (visual.object && visual.visible && !parts_[i].Destroyed()) visual.object->DrawDirectionalShadow(shadow);
+    }
+}
+
 #ifdef USE_IMGUI
 #include "imgui.h"
 #endif

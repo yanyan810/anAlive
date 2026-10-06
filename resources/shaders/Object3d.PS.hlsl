@@ -15,12 +15,7 @@ struct Material
     float3 _pad1;
 };
 
-struct DirectionalLight
-{
-    float4 color;
-    float3 direction;
-    float intensity;
-};
+#include "DirectionalLighting.hlsli"
 
 struct Camera
 {
@@ -140,6 +135,10 @@ PixelShaderOutput main(VertexShaderOutput input)
     float3 Hd = normalize(Ld + V);
     float specD = pow(saturate(dot(N, Hd)), max(gMaterial.shininess, 1.0f));
     float3 specularD = gDirectionalLight.color.rgb * gDirectionalLight.intensity * specD;
+    float visibilityD = DirectionalVisibility(gDirectionalLight, input.worldPosition, N);
+    diffuseD *= visibilityD;
+    specularD *= visibilityD;
+    diffuseD += AmbientFill(gDirectionalLight, gMaterial.color.rgb * tex.rgb);
 
     // =====================
     // Point Light

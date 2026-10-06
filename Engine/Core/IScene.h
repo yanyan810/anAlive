@@ -13,6 +13,7 @@ public:
     virtual void Update(GameApp& app, float dt) = 0;
 
     // RenderTexture向け
+    virtual void DrawShadow(GameApp& app) {}
     virtual void DrawRender(GameApp& app) {}
 
     // 3D

@@ -10,7 +10,10 @@ public:
 		Vector4 color;
 		Vector3 direction;
 		float intensity;
+		Matrix4x4 shadowViewProjection;
+		Vector4 shadowParameters;
 	};
+	static_assert(sizeof(DirectionalLight) == 112, "DirectionalLight must match HLSL");
 
 	struct PointLight {
 		Vector4 color;
@@ -43,12 +46,18 @@ public:
 	void SetDirectionalLightColor(const Vector4& color) { if (directionalLightData_) directionalLightData_->color = color; }
 	void SetDirectionalLightDirection(const Vector3& dir) { if (directionalLightData_) directionalLightData_->direction = dir; }
 	void SetDirectionalLightIntensity(float intensity) { if (directionalLightData_) directionalLightData_->intensity = intensity; }
+	void SetAmbientFillIntensity(float intensity) { if (directionalLightData_) directionalLightData_->shadowParameters.w = intensity; }
 
 	const Vector4& GetDirectionalLightColor() const { return directionalLightData_->color; }
 	const Vector3& GetDirectionalLightDirection() const { return directionalLightData_->direction; }
 	float GetDirectionalLightIntensity() const { return directionalLightData_->intensity; }
 
 	ID3D12Resource* GetDirectionalLightResource() const { return directionalLightResource_.Get(); }
+	void SetDirectionalShadow(const Matrix4x4& vp, const Vector4& parameters, D3D12_GPU_DESCRIPTOR_HANDLE srv) {
+		if (directionalLightData_) { directionalLightData_->shadowViewProjection=vp; directionalLightData_->shadowParameters=parameters; }
+		shadowSrv_=srv;
+	}
+	D3D12_GPU_DESCRIPTOR_HANDLE GetDirectionalShadowSrv() const { return shadowSrv_; }
 
 	// ===== Point Light =====
 	void SetPointLightColor(const Vector4& c) { if (pointLightData_) pointLightData_->color = c; }
@@ -78,6 +87,7 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource_;
 	DirectionalLight* directionalLightData_ = nullptr;
+	D3D12_GPU_DESCRIPTOR_HANDLE shadowSrv_{};
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> pointLightResource_;
 	PointLight* pointLightData_ = nullptr;

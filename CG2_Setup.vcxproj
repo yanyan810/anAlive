@@ -452,6 +452,7 @@
     <ClInclude Include="Engine\3D\VideoPlayerMF.h" />
     <ClInclude Include="Engine\3D\GeometryGenerator.h" />
     <ClInclude Include="Engine\3D\LightingParam.h" />
+    <ClInclude Include="Engine\Render\DirectionalShadowMap.h" />
     <ClInclude Include="Engine\math\MathStruct.h" />
     <ClInclude Include="Engine\math\Quaternion.h" />
     <ClInclude Include="Engine\Render\OffscreenPass.h" />

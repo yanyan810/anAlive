@@ -1,6 +1,7 @@
 #include "Object3d.h"
 #include "Object3dCommon.h"
 #include "PrimitiveCommon.h"
+#include "DirectionalShadowMap.h"
 
 
 //Vector3 Normalize(const Vector3& v) {
@@ -82,6 +83,7 @@ void Object3d::Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx, Srv
 
 	light_ = std::make_unique<Object3dLight>();
 	light_->Initialize(dx);
+	TextureManager::GetInstance()->LoadTexture("resources/white1x1.png");
 
 	animator_ = std::make_unique<Animator>();
 	if (model_) {
@@ -409,6 +411,8 @@ void Object3d::Draw()
 		// Transform (Root 1)
 		cmd->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceModel->GetGPUVirtualAddress());
 
+		BindDirectionalShadow_(cmd);
+
 		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
@@ -457,6 +461,8 @@ void Object3d::Draw()
 			};
 
 			SetNormalPipelineState();
+
+			BindDirectionalShadow_(cmd);
 
 			cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 			cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
@@ -567,6 +573,7 @@ void Object3d::Draw()
 		SetNormalPipelineState();
 
 		// light/camera CBV
+		BindDirectionalShadow_(cmd);
 		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
@@ -693,6 +700,32 @@ void Object3d::Draw()
 	}
 }
 
+void Object3d::BindDirectionalShadow_(ID3D12GraphicsCommandList* cmd, UINT rootIndex) {
+    const auto* light=sceneLight_ ? sceneLight_ : light_.get();
+    auto srv=light->GetDirectionalShadowSrv();
+    if (!srv.ptr) srv=TextureManager::GetInstance()->GetSrvHandleGPU("resources/white1x1.png");
+    cmd->SetGraphicsRootDescriptorTable(rootIndex,srv);
+}
+
+void Object3d::DrawDirectionalShadow(DirectionalShadowMap& shadow, const std::vector<uint32_t>& excludedMeshes) {
+    if (!isVisible_ || !model_) return;
+    const auto world=CalculateWorldMatrix();
+    const auto casts=[&](uint32_t index) { return std::find(excludedMeshes.begin(),excludedMeshes.end(),index)==excludedMeshes.end(); };
+    if (animator_ && animator_->HasAnimation() && !model_->HasSkinning()) {
+        const auto& animations=model_->GetAnimations();
+        const Animation* animation=nullptr;
+        const auto found=animations.find(animator_->GetPlayingAnimName());
+        if (found!=animations.end()) animation=&found->second;
+        if (!animation && !animations.empty()) animation=&animations.begin()->second;
+        std::vector<Matrix4x4> nodes;
+        model_->ComputeNodeGlobalMatrices(animation,animator_->GetTime(),nodes);
+        for (const auto& instance : model_->GetNodeInstances())
+            if (casts(instance.meshIndex)) shadow.DrawMesh(*model_,instance.meshIndex,Matrix4x4::Multiply(nodes[instance.nodeIndex],world));
+    } else {
+        for (uint32_t i=0;i<model_->GetMeshCount();++i) if (casts(i)) shadow.DrawMesh(*model_,i,world);
+    }
+}
+
 void Object3d::DrawWithOverrideSrv(const D3D12_GPU_DESCRIPTOR_HANDLE& srv)
 {
 	if (!isVisible_) {
@@ -723,6 +756,8 @@ void Object3d::DrawWithOverrideSrv(const D3D12_GPU_DESCRIPTOR_HANDLE& srv)
 			object3dCommon->SetGraphicsPipelineState(blendMode_);
 		}
 	}
+
+	BindDirectionalShadow_(cmd);
 
 	cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 	cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());

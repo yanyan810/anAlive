@@ -1,43 +1,103 @@
 {
-  "version": 1,
   "directional": {
-    "direction": [0.25, -1.0, 0.5],
-    "color": [1.0, 1.0, 1.0],
-    "intensity": 0.22
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "direction": [
+      0.25,
+      -0.23000000417232513,
+      0.5
+    ],
+    "intensity": 0.2199999988079071,
+    "ambientIntensity": 0.08
+  },
+  "shadow": {
+    "center": [
+      0.0,
+      2.0,
+      8.0
+    ],
+    "depthBias": 0.0007999999797903001,
+    "enabled": true,
+    "farClip": 100.0,
+    "lightDistance": 40.0,
+    "nearClip": 0.10000000149011612,
+    "strength": 0.6,
+    "roomCastsShadows": false,
+    "viewSize": 40.0
   },
   "spots": {
-    "UNALIVE": {
-      "position": [-3.2, 9.0, 6.0],
-      "direction": [0.0, -2.9, 7.7],
-      "color": [1.0, 1.0, 1.0],
-      "intensity": 0.9,
-      "distance": 24.0,
-      "decay": 1.5,
-      "outerAngleDegrees": 46.0,
-      "innerAngleDegrees": 32.0,
-      "specularStrength": 0.12
-    },
     "Enemy": {
-      "position": [-6.5, 4.8, 6.5],
-      "direction": [2.5, -3.8, 4.0],
-      "color": [1.0, 1.0, 1.0],
-      "intensity": 1.1,
-      "distance": 20.0,
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
       "decay": 1.5,
-      "outerAngleDegrees": 23.0,
+      "direction": [
+        2.5,
+        -3.799999952316284,
+        4.0
+      ],
+      "distance": 20.0,
       "innerAngleDegrees": 15.0,
-      "specularStrength": 0.12
+      "intensity": 2.490000009536743,
+      "outerAngleDegrees": 23.0,
+      "position": [
+        -6.5,
+        4.800000190734863,
+        6.5
+      ],
+      "specularStrength": 0.11999999731779099
     },
     "GAME START": {
-      "position": [5.0, 5.4, 1.5],
-      "direction": [0.0, -3.7, 9.1],
-      "color": [1.0, 1.0, 1.0],
-      "intensity": 2.2,
-      "distance": 26.0,
+      "color": [
+        1.0,
+        0.9610105156898499,
+        0.38396626710891724
+      ],
       "decay": 1.5,
-      "outerAngleDegrees": 32.0,
-      "innerAngleDegrees": 25.0,
-      "specularStrength": 0.12
+      "direction": [
+        0.0,
+        -3.700000047683716,
+        9.100000381469727
+      ],
+      "distance": 26.0,
+      "innerAngleDegrees": 24.0,
+      "intensity": 2.200000047683716,
+      "outerAngleDegrees": 38.0,
+      "position": [
+        4.550000190734863,
+        4.349999904632568,
+        1.5
+      ],
+      "specularStrength": 0.11999999731779099
+    },
+    "UNALIVE": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "decay": 1.5,
+      "direction": [
+        0.0,
+        -2.9000000953674316,
+        7.699999809265137
+      ],
+      "distance": 24.0,
+      "innerAngleDegrees": 32.0,
+      "intensity": 0.8999999761581421,
+      "outerAngleDegrees": 46.0,
+      "position": [
+        -3.200000047683716,
+        9.899999618530273,
+        6.0
+      ],
+      "specularStrength": 0.11999999731779099
     }
-  }
+  },
+  "version": 1
 }

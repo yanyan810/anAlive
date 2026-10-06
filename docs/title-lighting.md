@@ -21,6 +21,22 @@ DirectionalにはDirection / Color / Intensity / Ambient Fillがあります。�
 
 初期IntensityはDirectional **0.22**、UNALIVE **0.9**、Enemy **1.1**、GAME START **2.2**です。背景を暗く保ち、GAME STARTとSHOOT TO STARTを優先して照らします。
 
+## ランプの点滅
+
+UNALIVEとGAME STARTのSpotには、接触不良のランプのように不規則に消灯・再点灯する演出を追加しています。SHOOT TO STARTと台座もGAME STARTのSpotで照らされるため、一緒に暗くなります。初期設定は2.5～6秒点灯した後、0.04～0.12秒の消灯を3回繰り返す短い点滅です。点滅中の再点灯は0.06～0.16秒で、ライトごとに独立したタイミングを使います。EnemyのSpotは初期状態で点滅OFFです。
+
+**Title Lighting → UNALIVE / Enemy / GAME START** の各項目で調整します。
+
+| 項目 | 内容 |
+| --- | --- |
+| Lamp Flicker | 点滅のON／OFF。OFFにするとその場で通常の明るさへ戻る |
+| Flicker Interval (s) | 点滅が終わってから次の点滅まで点灯する時間のMin／Max |
+| Off Duration (s) | 一度消灯する時間のMin／Max |
+| Burst Flashes | 一度の点滅で消灯する回数。1～6 |
+| Off Brightness | 消灯中の明るさ。0でそのSpotを完全に消灯、1で通常の明るさ |
+
+**Save Lighting**で点滅設定も保存し、**Reload Lighting**で読み直せます。通常点灯時のIntensityは元の値を保持し、消灯中に保存してもIntensityは0に変わりません。点滅で変えるのは各SpotのIntensityだけです。Directional LightとAmbient Fillは残るため、光が消えても部屋がすべて真っ暗になるわけではありません。点滅設定のない既存JSONでは従来の常時点灯を維持します。
+
 ## Directional Shadow Map
 
 **Directional Shadow Map**を展開すると、**Enable Shadow / Room Casts Shadows / Shadow Strength / Depth Bias / Shadow Center / View Size / Light Distance / Near Clip / Far Clip**を調整できます。これらもSave Lightingで同じJSONへ保存されます。

@@ -166,6 +166,10 @@ private:
 
 private:
 
+#ifdef _DEBUG
+	friend void RunClothRuntimeTests(class GameApp& app);
+#endif
+
 	//WindowsApi
 	WinApp* winApp_ = nullptr;
 

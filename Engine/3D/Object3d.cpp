@@ -185,6 +185,9 @@ void Object3d::Update(float dt)
 
 	if (animator_) {
 		animator_->Update(dt);
+		if (poseModifier_ && animator_->IsPoseReady()) {
+			poseModifier_(animator_->GetPoseSkeleton(), worldMatrixModel, dt);
+		}
 		animator_->UpdateSkinCluster(dx_);
 	}
 
@@ -806,6 +809,7 @@ void Object3d::SetTexture(const std::string& path)
 }
 
 void Object3d::SetModel(const std::string& filePath) {
+	poseModifier_ = {};
 	auto* mgr = ModelManager::GetInstance();
 	
 	Model* m = mgr->FindModel(filePath);

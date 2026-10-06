@@ -673,6 +673,9 @@ void TitleScene::DrawImGui(GameApp& app) {
 #ifdef USE_IMGUI
     if (!ready_) return;
     if (ImGui::Begin("Title Lighting")) {
+#ifdef _DEBUG
+        if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
+#endif
         ImGui::TextUnformatted("Esc: release mouse to edit. Click Scene to resume shooting.");
         const bool captured = app.GetInput()->IsCameraControlEnabled();
         ImGui::BeginDisabled(captured);

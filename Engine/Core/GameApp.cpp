@@ -4,6 +4,7 @@
 #include "Enemy.h"
 #ifdef _DEBUG
 #include "scene/Main/ShowroomScene.h"
+#include "scene/Main/ClothShowroomScene.h"
 #endif
 #include "GameApp.h"
 #include "SceneManager.h"
@@ -30,6 +31,7 @@
 #ifdef _DEBUG
 #include "../../tests/EnemyPoolTests.h"
 #include "../../tests/TitleSceneTests.h"
+#include "../../tests/ClothRuntimeTests.h"
 #endif
 
 GameApp::GameApp() = default;
@@ -41,6 +43,16 @@ int GameApp::Run() {
         return -1;
     }
 #ifdef _DEBUG
+    if (std::wstring(GetCommandLineW()).find(L"--cloth-test")!=std::wstring::npos) {
+        int result=0;
+        std::filesystem::create_directories("generated/cloth-tests");
+        try { RunClothRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/cloth-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result=1;
+        }
+        Finalize_(); return result;
+    }
     if (std::wstring(GetCommandLineW()).find(L"--title-scene-test")!=std::wstring::npos) {
         int result=0;
         std::filesystem::create_directories("generated/title-tests");
@@ -184,8 +196,13 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
     #ifdef _DEBUG
     sceneMgr_->Register("Showroom", [] { return std::make_unique<ShowroomScene>(); });
+    sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
     #endif
     sceneMgr_->Change(*this, "Title");
+#ifdef _DEBUG
+    if (std::wstring(GetCommandLineW()).find(L"--cloth-showroom")!=std::wstring::npos)
+        sceneMgr_->Change(*this, "ClothShowroom");
+#endif
 
     OutputDebugStringA("[GameApp] Initialize END\n");
     return true;

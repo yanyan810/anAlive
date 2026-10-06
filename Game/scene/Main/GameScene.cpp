@@ -1092,6 +1092,8 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         weaponPreviewAspect_=std::max(size.x,1.0f)/std::max(size.y,1.0f);
         app.ImGui()->DrawScenePreview(true);
     },[&] {
+        if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
+        ImGui::SameLine();
         if (ImGui::Button("Reset Showroom (F5)")) resetEnemiesPending_=true;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Respawn enemies and restore HP, ammo and pickups. Clear projectiles and hit stats. Weapon drafts are preserved.");
         ImGui::SameLine();

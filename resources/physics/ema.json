@@ -1,0 +1,230 @@
+{
+  "groups": [
+    {
+      "name": "Skirt",
+      "gravity": [
+        0,
+        -9.8,
+        0
+      ],
+      "damping": 0.15,
+      "stiffness": 0.8,
+      "iterations": 16,
+      "closedRing": true,
+      "chains": [
+        [
+          "Skt_0_0",
+          "Skt_1_0",
+          "Skt_2_0",
+          "Skt_3_0",
+          "Skt_4_0",
+          "Skt_5_0"
+        ],
+        [
+          "Skt_0_1",
+          "Skt_1_1",
+          "Skt_2_1",
+          "Skt_3_1",
+          "Skt_4_1",
+          "Skt_5_1"
+        ],
+        [
+          "Skt_0_2",
+          "Skt_1_2",
+          "Skt_2_2",
+          "Skt_3_2",
+          "Skt_4_2",
+          "Skt_5_2"
+        ],
+        [
+          "Skt_0_3",
+          "Skt_1_3",
+          "Skt_2_3",
+          "Skt_3_3",
+          "Skt_4_3",
+          "Skt_5_3"
+        ],
+        [
+          "Skt_0_4",
+          "Skt_1_4",
+          "Skt_2_4",
+          "Skt_3_4",
+          "Skt_4_4",
+          "Skt_5_4"
+        ],
+        [
+          "Skt_0_5",
+          "Skt_1_5",
+          "Skt_2_5",
+          "Skt_3_5",
+          "Skt_4_5",
+          "Skt_5_5"
+        ],
+        [
+          "Skt_0_6",
+          "Skt_1_6",
+          "Skt_2_6",
+          "Skt_3_6",
+          "Skt_4_6",
+          "Skt_5_6"
+        ],
+        [
+          "Skt_0_7",
+          "Skt_1_7",
+          "Skt_2_7",
+          "Skt_3_7",
+          "Skt_4_7",
+          "Skt_5_7"
+        ],
+        [
+          "Skt_0_8",
+          "Skt_1_8",
+          "Skt_2_8",
+          "Skt_3_8",
+          "Skt_4_8",
+          "Skt_5_8"
+        ],
+        [
+          "Skt_0_9",
+          "Skt_1_9",
+          "Skt_2_9",
+          "Skt_3_9",
+          "Skt_4_9",
+          "Skt_5_9"
+        ],
+        [
+          "Skt_0_10",
+          "Skt_1_10",
+          "Skt_2_10",
+          "Skt_3_10",
+          "Skt_4_10",
+          "Skt_5_10"
+        ],
+        [
+          "Skt_0_11",
+          "Skt_1_11",
+          "Skt_2_11",
+          "Skt_3_11",
+          "Skt_4_11",
+          "Skt_5_11"
+        ]
+      ]
+    },
+    {
+      "name": "Hair",
+      "gravity": [
+        0,
+        -2.5,
+        0
+      ],
+      "damping": 0.18,
+      "stiffness": 0.85,
+      "iterations": 12,
+      "chains": [
+        [
+          "SdHair_A01_L",
+          "SdHair_A02_L",
+          "SdHair_A03_L",
+          "SdHair_A04_L"
+        ],
+        [
+          "SdHair_A01_R",
+          "SdHair_AA02_R",
+          "SdHair_AA03_R",
+          "SdHair_AA04_R"
+        ],
+        [
+          "FrHair_A01",
+          "FrHair_AA02",
+          "FrHair_AA03",
+          "FrHair_AAA04",
+          "FrHair_AAA05",
+          "FrHair_AAAA06",
+          "FrHair_AAAA07",
+          "FrHair_AAAAA08"
+        ]
+      ]
+    },
+    {
+      "name": "Ribbon",
+      "gravity": [
+        0,
+        -5,
+        0
+      ],
+      "damping": 0.15,
+      "stiffness": 0.75,
+      "iterations": 12,
+      "chains": [
+        [
+          "ChestRb_B01_L",
+          "ChestRb_B02_L",
+          "ChestRb_B03_L"
+        ],
+        [
+          "ChestRb_B01_R",
+          "ChestRb_B02_R",
+          "ChestRb_B03_R"
+        ],
+        [
+          "HairAcsC_B01",
+          "HairAcsC_B02",
+          "HairAcsC_B03"
+        ],
+        [
+          "HairAcsC_C01",
+          "HairAcsC_C02",
+          "HairAcsC_C03"
+        ]
+      ]
+    }
+  ],
+  "colliders": [
+    {
+      "name": "LeftUpperLeg",
+      "shape": "Capsule",
+      "start": "左足D",
+      "end": "左ひざD",
+      "radius": 0.63
+    },
+    {
+      "name": "LeftLowerLeg",
+      "shape": "Capsule",
+      "start": "左ひざD",
+      "end": "左足首D",
+      "radius": 0.43
+    },
+    {
+      "name": "RightUpperLeg",
+      "shape": "Capsule",
+      "start": "右足D",
+      "end": "右ひざD",
+      "radius": 0.63
+    },
+    {
+      "name": "RightLowerLeg",
+      "shape": "Capsule",
+      "start": "右ひざD",
+      "end": "右足首D",
+      "radius": 0.43
+    },
+    {
+      "name": "Torso",
+      "shape": "Capsule",
+      "start": "上半身",
+      "end": "首",
+      "radius": 0.75
+    },
+    {
+      "name": "Head",
+      "shape": "Sphere",
+      "start": "頭",
+      "startOffset": [
+        0,
+        1,
+        0
+      ],
+      "radius": 0.82
+    }
+  ]
+}

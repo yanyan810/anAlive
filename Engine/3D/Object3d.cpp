@@ -1,3 +1,4 @@
+#include "../Utility/AssetLoadProfile.h"
 #include "Object3d.h"
 #include "Object3dCommon.h"
 #include "PrimitiveCommon.h"
@@ -205,6 +206,7 @@ void Object3d::Update(float dt)
 	}
 
 	if (debugDrawBones_ && model_ && model_->HasSkinning() && animator_ && animator_->IsPoseReady()) {
+		EnsureBoneDebugObjects_();
 		const auto& poseSkeleton = animator_->GetPoseSkeleton();
 		size_t linkIndex = 0;
 		for (size_t i = 0; i < poseSkeleton.joints.size() && i < boneMarkers_.size(); ++i) {
@@ -719,7 +721,7 @@ void Object3d::DrawDirectionalShadow(DirectionalShadowMap& shadow, const std::ve
         const Animation* animation=nullptr;
         const auto found=animations.find(animator_->GetPlayingAnimName());
         if (found!=animations.end()) animation=&found->second;
-        if (!animation && !animations.empty()) animation=&animations.begin()->second;
+        if (!animation && !animations.empty()) animation=&animations.at(model_->GetDefaultAnimationName());
         std::vector<Matrix4x4> nodes;
         model_->ComputeNodeGlobalMatrices(animation,animator_->GetTime(),nodes);
         for (const auto& instance : model_->GetNodeInstances())
@@ -808,35 +810,9 @@ void Object3d::SetTexture(const std::string& path)
 	useOverrideTexture_ = true;
 }
 
-void Object3d::SetModel(const std::string& filePath) {
-	poseModifier_ = {};
-	auto* mgr = ModelManager::GetInstance();
-	
-	Model* m = mgr->FindModel(filePath);
-	if (!m) {
-		mgr->LoadModel(filePath);
-		m = mgr->FindModel(filePath);
-	}
-	model_ = m;
-
-	boneMarkers_.clear();
-	boneLinks_.clear();
-
-	if (!model_) { return; }
-
-	if (animator_) {
-		animator_->Initialize(model_);
-		if (model_->HasSkinning() && srvManager_) {
-			animator_->CreateSkinCluster(
-				dx_->GetDevice(),
-				dx_,
-				srvManager_,
-				TextureManager::GetInstance()->GetSrvDescriptorHeap(),
-				dx_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-			);
-		}
-	}
-
+void Object3d::EnsureBoneDebugObjects_() {
+    if(!model_ || !model_->HasSkinning() || !animator_ || !boneMarkers_.empty()) return;
+    AssetLoading::Timer timer("object.bone-debug-create");
 	if (model_->HasSkinning() && animator_) {
 		const auto& skel = animator_->GetPoseSkeleton();
 		boneMarkers_.reserve(skel.joints.size());
@@ -868,6 +844,41 @@ void Object3d::SetModel(const std::string& filePath) {
 			}
 		}
 	}
+
+    SetDebugSelectedBone(debugSelectedBone_);
+}
+
+void Object3d::SetModel(const std::string& filePath) {
+    AssetLoading::Timer timer("object.set-model",filePath);
+	poseModifier_ = {};
+	auto* mgr = ModelManager::GetInstance();
+
+	Model* m = mgr->FindModel(filePath);
+	if (!m) {
+		mgr->LoadModel(filePath);
+		m = mgr->FindModel(filePath);
+	}
+	model_ = m;
+
+	boneMarkers_.clear();
+	boneLinks_.clear();
+
+	if (!model_) { return; }
+
+	if (animator_) {
+		animator_->Initialize(model_);
+		if (model_->HasSkinning() && srvManager_) {
+			animator_->CreateSkinCluster(
+				dx_->GetDevice(),
+				dx_,
+				srvManager_,
+				TextureManager::GetInstance()->GetSrvDescriptorHeap(),
+				dx_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+			);
+		}
+	}
+
+    if(AssetLoading::Option("YAN_EAGER_BONE_DEBUG",false)) EnsureBoneDebugObjects_();
 
 	swordNodeIndex_ = -1;
 	swordMeshIndex_ = 2;

@@ -10,6 +10,7 @@
 #include <dxcapi.h>
 #include <chrono>
 #include <thread>
+#include <vector>
 #include "MathStruct.h"
 
 class DirectXCommon
@@ -71,6 +72,19 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource>CreateTextureResource(const DirectX::TexMetadata& metadata);
 
 	void UploadTextureData(const Microsoft::WRL::ComPtr<ID3D12Resource>& texture, const DirectX::ScratchImage& mipImages);
+	void BeginTextureUploadBatch();
+	void EndTextureUploadBatch();
+	void FlushTextureUploads();
+	size_t GetTextureUploadSubmissions() const { return textureUploadSubmissions_; }
+	// Nestable, render-thread-only scope. A dedicated list never resets pending draw commands.
+	class TextureUploadBatch {
+		DirectXCommon* dx_;
+	public:
+		explicit TextureUploadBatch(DirectXCommon* dx) : dx_(dx) { dx_->BeginTextureUploadBatch(); }
+		~TextureUploadBatch() { dx_->EndTextureUploadBatch(); }
+		TextureUploadBatch(const TextureUploadBatch&) = delete;
+		TextureUploadBatch& operator=(const TextureUploadBatch&) = delete;
+	};
 
 	// 現在のFPSを取得
 	float GetFPS() const { return fps_; }
@@ -181,6 +195,11 @@ private:
 	Microsoft::WRL::ComPtr < ID3D12CommandQueue> commandQueue = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList = nullptr;
 	Microsoft::WRL::ComPtr < ID3D12CommandAllocator> commandAllocator = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> textureUploadList_;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> textureUploadAllocator_;
+	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> textureUploadStaging_;
+	size_t textureUploadBytes_=0,textureUploadSubmissions_=0;
+	int textureUploadBatchDepth_=0;
 
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> computeCommandList = nullptr;
 	Microsoft::WRL::ComPtr < ID3D12CommandAllocator> computeCommandAllocator = nullptr;

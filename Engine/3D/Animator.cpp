@@ -1,4 +1,5 @@
-﻿#include "Animator.h"
+#include "../Utility/AssetLoadProfile.h"
+#include "Animator.h"
 #include "AnimationEvaluate.h"
 #include <algorithm>
 #include <cassert>
@@ -120,6 +121,9 @@ void Animator::ApplyManualJointTransforms(Model::Skeleton& skeleton)
 
 	for (size_t i = 0; i < skeleton.joints.size(); ++i) {
 		const ManualJointTransform& manual = manualJointTransforms_[i];
+		if(manual.translate.x==0 && manual.translate.y==0 && manual.translate.z==0 &&
+		   manual.rotate.x==0 && manual.rotate.y==0 && manual.rotate.z==0 &&
+		   manual.scale.x==1 && manual.scale.y==1 && manual.scale.z==1) continue;
 		auto& transform = skeleton.joints[i].transform;
 		transform.translate = transform.translate + manual.translate;
 		transform.rotate = MultiplyQuaternion(transform.rotate, MakeEulerQuaternion(manual.rotate));
@@ -156,7 +160,7 @@ void Animator::PlayAnimation(const std::string& animName, bool loop) {
 	if (!model_ || model_->GetAnimations().empty()) return;
 
 	if (animName.empty() || !model_->GetAnimations().contains(animName)) {
-		playingAnimName_ = model_->GetAnimations().begin()->first;
+		playingAnimName_ = model_->GetDefaultAnimationName();
 	}
 	else {
 		playingAnimName_ = animName;
@@ -176,7 +180,7 @@ void Animator::CrossFadeTo(const std::string& animName, float fadeSec, bool loop
 	if (!model_ || model_->GetAnimations().empty()) return;
 	const std::string nextAnimName =
 		(animName.empty() || !model_->GetAnimations().contains(animName))
-		? model_->GetAnimations().begin()->first
+		? model_->GetDefaultAnimationName()
 		: animName;
 	if (nextAnimName == playingAnimName_) return;
 	if (animName == playingAnimName_) return; // 同じアニメならスキップ
@@ -216,7 +220,11 @@ bool Animator::HasAnimation() const {
 void Animator::Update(float dt) {
 	if (!model_ || !poseReady_) return;
 
-	poseSkeleton_ = model_->GetSkeleton();
+	// Topology and names are immutable. Restore only pose data, not strings/maps.
+	const auto& bind=model_->GetSkeleton();
+	for(size_t i=0;i<poseSkeleton_.joints.size();++i) {
+		poseSkeleton_.joints[i].transform=bind.joints[i].transform;
+	}
 
 	if (!isPlayAnimation_) {
 		ApplyManualJointTransforms(poseSkeleton_);
@@ -287,10 +295,13 @@ void Animator::UpdateSkinCluster(DirectXCommon* dx) {
 
 	for (size_t i = 0; i < poseSkeleton_.joints.size(); ++i) {
 		assert(i < skinCluster_.inverseBindPoseMatrices.size());
-		skinCluster_.mappedPalette[i].skeletonSpaceMatrix =
-			Matrix4x4::Multiply(skinCluster_.inverseBindPoseMatrices[i], poseSkeleton_.joints[i].skeletonSpaceMatrix);
-		skinCluster_.mappedPalette[i].skeletonSpaceInverseTransposeMatrix =
-			Matrix4x4::Transpose(Matrix4x4::Inverse(skinCluster_.mappedPalette[i].skeletonSpaceMatrix));
+		// Upload heaps are write-combined memory. Reading a matrix back from the
+		// mapped palette for its inverse is extremely slow on discrete GPUs.
+		// Finish both calculations in ordinary CPU memory before writing them.
+		const auto skinMatrix=Matrix4x4::Multiply(skinCluster_.inverseBindPoseMatrices[i],poseSkeleton_.joints[i].skeletonSpaceMatrix);
+		const auto normalMatrix=Matrix4x4::Transpose(Matrix4x4::Inverse(skinMatrix));
+		skinCluster_.mappedPalette[i].skeletonSpaceMatrix=skinMatrix;
+		skinCluster_.mappedPalette[i].skeletonSpaceInverseTransposeMatrix=normalMatrix;
 	}
 }
 
@@ -302,6 +313,7 @@ void Animator::CreateSkinCluster(
 	uint32_t descriptorSize)
 {
 	if (!model_ || !model_->HasSkinning()) return;
+    AssetLoading::Timer timer("object.skin-cluster");
 
 	const auto& skeleton = model_->GetSkeleton();
 	const auto& skinData = model_->GetSkinClusterData();

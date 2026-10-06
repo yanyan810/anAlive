@@ -101,6 +101,10 @@ public:
 	};
 
 	struct ModelData {
+		struct EmbeddedTexture { std::string key; std::vector<uint8_t> bytes; };
+		std::vector<EmbeddedTexture> embeddedTextures;
+		// Transient CPU preload output, excluded from the binary model cache.
+		std::vector<TextureManager::PreparedTexture> preparedTextures;
 		std::map<std::string, JointWeightData> skinClusterData;
 		std::vector<MaterialData> materials;
 		std::vector<MeshData> meshes;
@@ -113,6 +117,7 @@ public:
 
 		// ★追加：アニメーション（Assimpから読めたもの）
 		std::unordered_map<std::string, Animation> animations;
+		std::string defaultAnimationName; // Preserve the importer's legacy implicit default across cache reloads.
 		std::vector<MeshInstance> instances;
 
 	};
@@ -135,7 +140,9 @@ public:
 
 	void Initialize(ModelCommon* modelCommon,
 		const std::string& directoryPath,
-		const std::string& filename);
+		const std::string& filename, std::optional<ModelData> prepared = std::nullopt);
+	// CPU-only import/cache path; safe for the model preload worker.
+	static ModelData ReadSourceData(const std::string& directoryPath, const std::string& filename);
 
 	void Draw(ID3D12GraphicsCommandList* cmd);
 	//パーティクル用
@@ -207,6 +214,11 @@ public:
 
 	const std::unordered_map<std::string, Animation>& GetAnimations() const {
 		return modelData_.animations;
+	}
+	const std::string& GetDefaultAnimationName() const {
+		if(!modelData_.defaultAnimationName.empty()) return modelData_.defaultAnimationName;
+		static const std::string empty;
+		return modelData_.animations.empty() ? empty : modelData_.animations.begin()->first;
 	}
 
 	const std::vector<MaterialData>& GetMaterials() const { return modelData_.materials; }

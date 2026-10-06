@@ -19,7 +19,7 @@ public:
     void Update(Model::Skeleton& animatedPose,const Matrix4x4& world,float dt);
     void Reset();
     void DrawImGui(const Matrix4x4& viewProjection,const Vector2& lo,const Vector2& hi);
-    bool enabled=true, showColliders=true, showParticles=false, showConstraints=false;
+    bool enabled=true, showColliders=true, showParticles=false, showConstraints=false, showCollisionSamples=false;
     std::vector<Group> groups;
     std::vector<ColliderBinding> colliders;
     std::string error;

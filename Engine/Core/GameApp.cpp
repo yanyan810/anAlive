@@ -1,4 +1,7 @@
-﻿#include "scene/Main/GameScene.h"
+#include "../Utility/AssetPreparation.h"
+#include "../../tests/AssetLoadingTests.h"
+#include "../Utility/AssetLoadProfile.h"
+#include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
 #include "scene/Flow/GameOverScene.h"
 #include "Enemy.h"
@@ -38,11 +41,25 @@ GameApp::GameApp() = default;
 GameApp::~GameApp() = default;
 
 int GameApp::Run() {
+    if(std::wstring(GetCommandLineW()).find(L"--prepare-assets")!=std::wstring::npos) return PrepareAssetCaches();
     if (!Initialize_()) {
         Finalize_();
         return -1;
     }
+    if (std::wstring(GetCommandLineW()).find(L"--asset-loading-test")!=std::wstring::npos) {
+        int result=0;
+        std::filesystem::create_directories("generated/loading-tests");
+        try { RunAssetLoadingTests(*this); }
+        catch(const std::exception& error) { std::ofstream("generated/loading-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1; }
+        Finalize_(); return result;
+    }
 #ifdef _DEBUG
+    if (std::wstring(GetCommandLineW()).find(L"--cloth-performance-test")!=std::wstring::npos) {
+        int result=0;
+        try { RunClothPerformanceTests(*this); }
+        catch(const std::exception& error) { std::ofstream("generated/cloth-tests/performance-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1; }
+        Finalize_(); return result;
+    }
     if (std::wstring(GetCommandLineW()).find(L"--cloth-test")!=std::wstring::npos) {
         int result=0;
         std::filesystem::create_directories("generated/cloth-tests");
@@ -210,6 +227,7 @@ bool GameApp::Initialize_() {
 
 
 void GameApp::Finalize_() {
+
     if (dx_) dx_->WaitForGPU();
     if (sceneMgr_ && sceneMgr_->Current()) sceneMgr_->Current()->OnExit(*this);
     sceneMgr_.reset();
@@ -240,6 +258,7 @@ void GameApp::Finalize_() {
     
     dx_.reset();
     win_.reset();
+    if(AssetLoading::profiling) AssetLoading::SaveProfile("generated/loading/session.csv");
 }
 
 void GameApp::Update(float dt) {

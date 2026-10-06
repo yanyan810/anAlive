@@ -24,6 +24,7 @@ public:
     void Update(GameApp& app, float dt);
 
     void DrawRender(GameApp& app);
+    void DrawShadow(GameApp& app);
     void Draw3D(GameApp& app);
     void Draw2D(GameApp& app);
     void DrawOverlay2D(GameApp& app);

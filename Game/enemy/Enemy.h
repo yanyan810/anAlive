@@ -115,6 +115,7 @@ public:
     bool IsDead() const { return exploded_ || EnemyPartsDead(parts_); }
     EnemyState GetState() const { return IsDead() ? EnemyState::Dead : ai_.state; }
     void Draw(bool showMarker=true);
+    void DrawDirectionalShadow(DirectionalShadowMap& shadow);
     void SetSceneLight(const Object3dLight* light) { sceneLight_ = light; }
     void DrawExplosion();
     void SetPartVisible(EnemyPartType type, bool visible);

@@ -99,6 +99,10 @@ void SceneManager::DrawRender(GameApp& app) {
     current_->DrawRender(app);
 }
 
+void SceneManager::DrawShadow(GameApp& app) {
+    if (current_) current_->DrawShadow(app);
+}
+
 void SceneManager::Draw3D(GameApp& app) {
     if (!current_) return;
     current_->Draw3D(app);

@@ -15,6 +15,14 @@ struct TitleLighting {
     };
     Vector3 direction{.25f,-1,.5f}, color{1,1,1};
     float intensity=.22f;
+    float ambientIntensity=.08f; // Minimum diffuse fill, independent of direct light and shadows.
+    struct Shadow {
+        bool enabled=true;
+        float strength=.6f, bias=.0008f;
+        bool roomCastsShadows=false;
+        Vector3 center{0,2,8};
+        float viewSize=40, lightDistance=40, nearClip=.1f, farClip=100;
+    } shadow;
     std::array<Spot,3> spots{{
         {{-3.2f,9,6},{0,-2.9f,7.7f},{1,1,1},.9f,24,1.5f,46,32},
         {{-6.5f,4.8f,6.5f},{2.5f,-3.8f,4},{1,1,1},1.1f,20,1.5f,23,15},
@@ -30,6 +38,7 @@ struct TitleLighting {
         light.SetDirectionalLightColor({color.x,color.y,color.z,1});
         light.SetDirectionalLightDirection(Unit(direction));
         light.SetDirectionalLightIntensity(intensity);
+        light.SetAmbientFillIntensity(ambientIntensity);
         light.SetPointLightIntensity(0);
         Object3dLight::SpotLights gpu{};
         for (size_t i=0;i<spots.size();++i) {
@@ -44,7 +53,10 @@ struct TitleLighting {
     nlohmann::json ToJson() const {
         const auto vec=[](const Vector3& v) { return nlohmann::json::array({v.x,v.y,v.z}); };
         nlohmann::json data{{"version",1},{"directional",{
-            {"direction",vec(direction)},{"color",vec(color)},{"intensity",intensity}}}};
+            {"direction",vec(direction)},{"color",vec(color)},{"intensity",intensity},{"ambientIntensity",ambientIntensity}}}};
+        data["shadow"]={{"enabled",shadow.enabled},{"strength",shadow.strength},{"depthBias",shadow.bias},
+            {"center",vec(shadow.center)},{"viewSize",shadow.viewSize},{"lightDistance",shadow.lightDistance},
+            {"nearClip",shadow.nearClip},{"farClip",shadow.farClip},{"roomCastsShadows",shadow.roomCastsShadows}};
         for (size_t i=0;i<spots.size();++i) {
             const auto& s=spots[i];
             data["spots"][names[i]]={{"position",vec(s.position)},{"direction",vec(s.direction)},
@@ -76,6 +88,20 @@ struct TitleLighting {
         result.direction=axis(dir.at("direction"));
         result.color=vec(dir.at("color"),0,1);
         result.intensity=number(dir.at("intensity"),0,10);
+        if (dir.contains("ambientIntensity")) result.ambientIntensity=number(dir.at("ambientIntensity"),0,1);
+        if (data.contains("shadow")) {
+            const auto& json=data.at("shadow");
+            auto& s=result.shadow;
+            s.enabled=json.at("enabled").get<bool>();
+            if (json.contains("roomCastsShadows")) s.roomCastsShadows=json.at("roomCastsShadows").get<bool>();
+            s.strength=number(json.at("strength"),0,1);
+            s.bias=number(json.at("depthBias"),0,.02f);
+            s.center=vec(json.at("center"),-1e6f,1e6f);
+            s.viewSize=number(json.at("viewSize"),1,200);
+            s.lightDistance=number(json.at("lightDistance"),1,200);
+            s.nearClip=number(json.at("nearClip"),.01f,999.9f);
+            s.farClip=number(json.at("farClip"),s.nearClip+.1f,1000);
+        }
         const auto& spots=data.at("spots");
         if (!spots.is_object() || spots.size()!=3) throw std::runtime_error("Title requires three named spot lights");
         for (size_t i=0;i<result.spots.size();++i) {

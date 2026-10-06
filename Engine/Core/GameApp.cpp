@@ -262,6 +262,8 @@ void GameApp::Draw() {
 
     srv_->PreDraw();
 
+    sceneMgr_->DrawShadow(*this);
+
     // ① Offscreenへ描く
     render_->BeginOffscreen();
     sceneMgr_->DrawRender(*this);

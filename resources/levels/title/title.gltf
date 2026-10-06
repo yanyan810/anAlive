@@ -423,29 +423,29 @@
 		{
 			"bufferView":17,
 			"componentType":5126,
-			"count":1577,
+			"count":1574,
 			"max":[
 				9.74810791015625,
 				7.316114902496338,
-				13.799705505371094
+				12.696284294128418
 			],
 			"min":[
 				-3.3946895599365234,
 				4.954000473022461,
-				13.53144359588623
+				12.428022384643555
 			],
 			"type":"VEC3"
 		},
 		{
 			"bufferView":18,
 			"componentType":5126,
-			"count":1577,
+			"count":1574,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":19,
 			"componentType":5126,
-			"count":1577,
+			"count":1574,
 			"type":"VEC2"
 		},
 		{
@@ -622,74 +622,74 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":18924,
+			"byteLength":18888,
 			"byteOffset":3984,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":18924,
-			"byteOffset":22908,
+			"byteLength":18888,
+			"byteOffset":22872,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":12616,
-			"byteOffset":41832,
+			"byteLength":12592,
+			"byteOffset":41760,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":14832,
-			"byteOffset":54448,
+			"byteOffset":54352,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":88536,
-			"byteOffset":69280,
+			"byteOffset":69184,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":88536,
-			"byteOffset":157816,
+			"byteOffset":157720,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":59024,
-			"byteOffset":246352,
+			"byteOffset":246256,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":68520,
-			"byteOffset":305376,
+			"byteOffset":305280,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":288,
-			"byteOffset":373896,
+			"byteOffset":373800,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":288,
-			"byteOffset":374184,
+			"byteOffset":374088,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":192,
-			"byteOffset":374472,
+			"byteOffset":374376,
 			"target":34962
 		}
 	],
 	"buffers":[
 		{
-			"byteLength":374664,
+			"byteLength":374568,
 			"uri":"title.bin"
 		}
 	]

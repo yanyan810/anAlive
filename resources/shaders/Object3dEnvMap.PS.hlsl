@@ -16,12 +16,7 @@ struct Material
     float2 _pad1;
 };
 
-struct DirectionalLight
-{
-    float4 color;
-    float3 direction;
-    float intensity;
-};
+#include "DirectionalLighting.hlsli"
 
 struct Camera
 {
@@ -125,6 +120,9 @@ PixelShaderOutput main(VertexShaderOutput input)
     float3 Hd = normalize(Ld + V);
     float specD = pow(saturate(dot(N, Hd)), max(gMaterial.shininess, 1.0f));
     float3 specularD = gDirectionalLight.color.rgb * gDirectionalLight.intensity * specD;
+    float visibilityD = DirectionalVisibility(gDirectionalLight, input.worldPosition, N);
+    diffuseD *= visibilityD;
+    specularD *= visibilityD;
 
     // ---------------------
     // Point
@@ -171,7 +169,7 @@ PixelShaderOutput main(VertexShaderOutput input)
     float3 baseColor = gMaterial.color.rgb * texColor.rgb;
     float3 finalColor = lerp(baseColor, envColor, gMaterial.environmentCoefficient);
 
-    output.color.rgb = finalColor * (finalDiffuse) + finalSpecular;
+    output.color.rgb = finalColor * (finalDiffuse) + finalSpecular + AmbientFill(gDirectionalLight, finalColor);
 
     // Dissolveのエッジ色を加算
     output.color.rgb += edgeFactor * gEffect.dissolveEdgeColor.rgb;

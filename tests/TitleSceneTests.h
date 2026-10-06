@@ -6,6 +6,7 @@
 #include "DirectXTex.h"
 #include "DebugJsonEditor.h"
 #include <fstream>
+#include <cstring>
 #include <stdexcept>
 
 inline void RunTitleSceneTests(GameApp& app) {
@@ -25,9 +26,20 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(title && title->ready_, "Title layout failed to load");
     const auto lighting = title->lighting_;
     check(TitleLighting::FromJson(lighting.ToJson()).ToJson()==lighting.ToJson(),"Lighting JSON round trip");
+    auto legacyLight=lighting.ToJson();
+    legacyLight["directional"].erase("ambientIntensity");
+    legacyLight["shadow"].erase("roomCastsShadows");
+    const auto legacy=TitleLighting::FromJson(legacyLight);
+    check(legacy.ambientIntensity==TitleLighting{}.ambientIntensity && !legacy.shadow.roomCastsShadows,
+        "Legacy lighting settings lost minimum fill/default room shadow selection");
     auto invalidLight=lighting.ToJson();
-    invalidLight["spots"]["Enemy"]["direction"]={0,0,0};
+    invalidLight["directional"]["ambientIntensity"]=-.01f;
     bool rejected=false;
+    try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
+    check(rejected,"Negative ambient fill accepted");
+    invalidLight=lighting.ToJson();
+    invalidLight["spots"]["Enemy"]["direction"]={0,0,0};
+    rejected=false;
     try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
     check(rejected,"Zero spot direction accepted");
     invalidLight=lighting.ToJson();
@@ -35,6 +47,11 @@ inline void RunTitleSceneTests(GameApp& app) {
     rejected=false;
     try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
     check(rejected,"Invalid spot cone accepted");
+    invalidLight=lighting.ToJson();
+    invalidLight["shadow"]["farClip"]=invalidLight["shadow"]["nearClip"];
+    rejected=false;
+    try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
+    check(rejected,"Invalid shadow depth range accepted");
     const std::string tuningPath="generated/title-tests/lighting-save.json";
     { std::ofstream file(tuningPath); file<<lighting.ToJson().dump(2); }
     DebugJsonEditor editor;
@@ -52,6 +69,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     editor.document=lighting.ToJson();
     { std::ofstream file(tuningPath,std::ios::app); file<<'\n'; }
     check(!editor.Save(validate),"Lighting save overwrote external edit");
+    uint64_t floorEnergy=0, floorSamples=0;
     const auto capture=[&](const wchar_t* path, bool expectBlack=false) {
 #ifdef USE_IMGUI
         app.ImGui()->Begin();
@@ -81,13 +99,82 @@ inline void RunTitleSceneTests(GameApp& app) {
         check(SUCCEEDED(DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
             DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path)),"Title PNG failed");
         uint64_t energy=0;
+        floorEnergy=0; floorSamples=0;
         const auto* pixels=image.GetImage(0,0,0);
         for (size_t y=0;y<pixels->height;++y) for (size_t x=0;x<pixels->width;++x) {
             const auto* p=pixels->pixels+y*pixels->rowPitch+x*4;
             energy+=static_cast<uint64_t>(p[0])+p[1]+p[2];
+            // Foreground floor, outside every spotlight and the crosshair.
+            if (x>=pixels->width*2/5 && x<pixels->width*3/5 &&
+                y>=pixels->height*4/5 && y<pixels->height*9/10) {
+                floorEnergy+=static_cast<uint64_t>(p[0])+p[1]+p[2]; ++floorSamples;
+            }
         }
         return energy;
     };
+    check(!title->roomShadowMeshes_.empty(),"Room shadow meshes were not identified from exported nodes");
+    auto roomCheck=lighting;
+    roomCheck.direction={.25f,-.23f,.5f}; // Reproduce the shallow light angle from the reported screenshot.
+    roomCheck.intensity=.22f;
+    roomCheck.ambientIntensity=.08f;
+    for (auto& spot : roomCheck.spots) spot.intensity=0;
+    roomCheck.shadow.enabled=true;
+    roomCheck.shadow.strength=1;
+    roomCheck.shadow.roomCastsShadows=true;
+    title->lighting_=roomCheck; roomCheck.Apply(title->sceneLight_);
+    const auto roomShadowEnergy=capture(L"generated/title-tests/room-shadows-on.png");
+    const auto fullShadowDraws=title->shadowMap_.DrawCount();
+    title->lighting_.shadow.roomCastsShadows=false;
+    const auto filteredEnergy=capture(L"generated/title-tests/room-shadows-off.png");
+    check(fullShadowDraws==title->shadowMap_.DrawCount()+title->roomShadowMeshes_.size() &&
+        title->shadowMap_.DrawCount()>0 && filteredEnergy>roomShadowEnergy+100,
+        "Room shadow exclusion failed or removed all object shadows");
+    roomCheck.intensity=0;
+    roomCheck.ambientIntensity=0;
+    title->lighting_=roomCheck; roomCheck.Apply(title->sceneLight_);
+    capture(L"generated/title-tests/ambient-fill-off.png");
+    check(floorEnergy==0,"Ambient regression fixture still lights the foreground floor");
+    roomCheck.ambientIntensity=.08f;
+    title->lighting_=roomCheck; roomCheck.Apply(title->sceneLight_);
+    const auto ambientShadowed=capture(L"generated/title-tests/ambient-fill-on.png");
+    check(floorSamples>0 && floorEnergy>=floorSamples*18,"Ambient fill failed to preserve floor visibility");
+    title->lighting_.shadow.enabled=false;
+    check(capture(L"generated/title-tests/ambient-fill-without-shadow.png")==ambientShadowed,
+        "Directional shadows darkened the ambient fill");
+    title->lighting_=lighting; lighting.Apply(title->sceneLight_);
+    auto shadowCheck=lighting;
+    shadowCheck.intensity=1;
+    for (auto& spot : shadowCheck.spots) spot.intensity=0;
+    shadowCheck.Apply(title->sceneLight_);
+    title->lighting_.shadow=TitleLighting::Shadow{};
+    title->lighting_.shadow.enabled=false;
+    const auto unshadowed=capture(L"generated/title-tests/directional-without-shadow.png");
+    title->lighting_.shadow.enabled=true;
+    const auto shadowed=capture(L"generated/title-tests/directional-with-shadow.png");
+    check(shadowed+100<unshadowed && title->shadowMap_.DrawCount()>0,"Directional shadow had no rendered effect");
+    DirectX::ScratchImage depth;
+    const auto depthState=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    check(SUCCEEDED(DirectX::CaptureTexture(app.Dx()->GetCommandQueue(),title->shadowMap_.Resource(),false,
+        depth,depthState,depthState)),"Shadow depth readback failed");
+    const auto* pixels=depth.GetImage(0,0,0);
+    check(pixels->width==DirectionalShadowMap::kResolution && pixels->height==DirectionalShadowMap::kResolution,
+        "Shadow texture size");
+    size_t writtenDepth=0;
+    DirectX::ScratchImage preview;
+    check(SUCCEEDED(preview.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM,pixels->width,pixels->height,1,1)),"Depth preview allocation");
+    const auto* gray=preview.GetImage(0,0,0);
+    for (size_t y=0;y<pixels->height;++y) for (size_t x=0;x<pixels->width;++x) {
+        float value=0;
+        std::memcpy(&value,pixels->pixels+y*pixels->rowPitch+x*sizeof(float),sizeof(float));
+        check(std::isfinite(value) && value>=0 && value<=1,"Invalid shadow depth");
+        if (value<1) ++writtenDepth;
+        auto* p=gray->pixels+y*gray->rowPitch+x*4;
+        p[0]=p[1]=p[2]=static_cast<uint8_t>(value*255); p[3]=255;
+    }
+    check(writtenDepth>1000,"Shadow depth pass drew no geometry");
+    check(SUCCEEDED(DirectX::SaveToWICFile(*gray,DirectX::WIC_FLAGS_NONE,
+        DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"generated/title-tests/shadow-depth.png")),"Depth PNG failed");
+    title->lighting_.shadow=lighting.shadow;
     auto fillOnly=lighting;
     for (auto& spot : fillOnly.spots) spot.intensity=0;
     fillOnly.Apply(title->sceneLight_);
@@ -135,6 +222,31 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(Object3d::debugInitializationCount==allocations,"Title respawn allocated renderers");
     check(title->player_.GetHP()==hp,"Title death explosion damaged player");
 
+    check(title->startLetters_.size()==9 && title->startFragments_.size()==40,"Whole-letter/fragment renderers were not prepared");
+    size_t letterVertices=0;
+    for (const auto& letter : title->startLetters_) letterVertices+=letter.object->GetModel()->GetSourceVertexCount();
+    check(letterVertices==title->startDefinition_.partAsset->defaults[0].geometry->triangles.size()*3,
+        "Whole-letter extraction lost or duplicated GAME START geometry");
+    const auto previewAllocations=Object3d::debugInitializationCount;
+    title->BeginStartExplosion(true);
+    title->UpdateWorld(app,0,false);
+    check(title->explosionPreview_ && !title->start_.Starting() && !title->startTarget_->IsDead() &&
+        !app.Scenes().IsTransitioning() && title->activeStartFragments_==30,"Preview damaged target or started transition");
+    capture(L"generated/title-tests/explosion-preview-flash.png");
+    title->UpdateWorld(app,2,false);
+    check(!title->explosionPreview_ && !title->startTarget_->IsDead() && !app.Scenes().IsTransitioning() &&
+        Object3d::debugInitializationCount==previewAllocations,"Preview failed to restore title or allocated renderers");
+    const auto settings=title->explosionSettings_;
+    title->explosionSettings_.fragmentCount=40;
+    title->explosionSettings_.flashDuration=0;
+    title->explosionSettings_.shakeDuration=0;
+    title->BeginStartExplosion(true);
+    title->UpdateWorld(app,0,false);
+    check(title->activeStartFragments_==40 && title->startLetters_[0].object->GetEnableLighting()==2,
+        "Maximum fragment count or disabled flash failed");
+    title->UpdateWorld(app,2,false);
+    title->explosionSettings_=settings;
+
     const auto startState = title->startTarget_->CaptureDebug();
     check(startState.parts[0].role==EnemyPartRole::Head && startState.parts[0].type==EnemyPartType::Head &&
         startState.parts[0].hp==1 && startState.models.size()==1,"GAME START must be one Head model");
@@ -172,13 +284,48 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->UpdateWorld(app,.1f,false);
     check(title->start_.Starting() && title->start_.Elapsed()==0 && title->NextScene().empty(),"Actual Head impact did not begin delayed start");
     const auto dead=title->startTarget_->CaptureDebug();
-    check(title->startTarget_->IsDead() && !dead.faces.empty() && !dead.visible[0],"GAME START did not use Enemy face shatter");
+    check(title->startTarget_->IsDead() && dead.faces.empty() && !dead.visible[0] && title->activeStartFragments_==30,
+        "GAME START failed to replace hidden generic shards with title burst");
     check(Object3d::debugInitializationCount==gpuCount,"GAME START impact allocated renderers");
-    for (const auto& face : dead.faces)
-        check(StageLength(face.motion.velocity)>0 && StageLength(face.motion.angularVelocity)>0,"Enemy shards did not launch/spin");
+    const auto blastCenter=(startState.parts[0].bounds.min+startState.parts[0].bounds.max)*.5f;
+    for (const auto& letter : title->startLetters_) {
+        const auto outward=letter.motion.position-blastCenter;
+        check(outward.x*letter.motion.velocity.x>0 && StageLength(letter.motion.angularVelocity)>0 && letter.motion.age==0,
+            "Letters failed to launch radially/spin, or consumed preceding frame time");
+        check(letter.object->GetEnableLighting()==0 && letter.object->GetMaterialColor().x>1,"Impact flash missing");
+        check(StageLength(letter.motion.Translation())<1e-5f,"Impact moved whole letters before the first simulation frame");
+    }
+    const auto baseCamera=title->player_.GetTransform().translate+Vector3{0,title->player_.Settings().cameraHeight,0};
+    check(StageLength(title->camera_.GetTranslate()-baseCamera)>0 &&
+        StageLength(title->camera_.GetTranslate()-baseCamera)<.06f,"Short camera shake missing or too strong");
+    capture(L"generated/title-tests/explosion-flash.png");
+    size_t shadowFragments=0;
+    for (size_t i=0;i<title->activeStartFragments_;++i) {
+        const auto& fragment=title->startFragments_[i];
+        check(StageLength(fragment.motion.velocity)>0 && StageLength(fragment.motion.angularVelocity)>0 &&
+            fragment.motion.age==0,"Small fragments failed to launch/spin");
+        if (title->fragmentCastsShadow_[i]) ++shadowFragments;
+        if (i<3) check(fragment.motion.velocity.z<0 && !title->fragmentCastsShadow_[i],"Lens pass missing or casts a tiny shadow");
+    }
+    const auto burstShadowDraws=title->shadowMap_.DrawCount();
+    const auto shadowFlags=title->fragmentCastsShadow_;
+    for (size_t i=0;i<title->activeStartFragments_;++i) title->fragmentCastsShadow_[i]=false;
+    capture(L"generated/title-tests/explosion-letter-shadows.png");
+    check(shadowFragments>0 && shadowFragments<title->activeStartFragments_ &&
+        burstShadowDraws==title->shadowMap_.DrawCount()+shadowFragments,"Fragment shadow size filtering failed");
+    title->fragmentCastsShadow_=shadowFlags;
     check(!title->start_.Begin(),"Repeated start reset timer");
-    title->UpdateWorld(app,.4f,false);
-    check(title->NextScene().empty() && title->startTarget_->CaptureDebug().faces[0].motion.age>0,"Explosion delay/animation");
+    title->UpdateWorld(app,.08f,false);
+    check(title->startLetters_[0].object->GetEnableLighting()==2 &&
+        title->startLetters_[0].object->GetMaterialColor().x==1,"Flash did not restore lit letter material");
+    title->UpdateWorld(app,.10f,false);
+    check(StageLength(title->camera_.GetTranslate()-baseCamera)<1e-5f,"Camera shake drifted after duration");
+    title->UpdateWorld(app,.2f,false);
+    for (size_t i=0;i<3;++i)
+        check(StageLength(title->startFragments_[i].motion.position-baseCamera)<2.5f,"Perspective fragments did not pass near camera");
+    capture(L"generated/title-tests/explosion-near-pass.png");
+    title->UpdateWorld(app,.02f,false);
+    check(title->NextScene().empty() && title->startLetters_[0].motion.age>0,"Explosion delay/animation");
     check(!app.Scenes().IsTransitioning() && app.Scenes().Fade().Alpha()==0,"Fade started before explosion hold");
     capture(L"generated/title-tests/explosion.png");
     title->UpdateWorld(app,.05f,false);
@@ -219,6 +366,6 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(app.Scenes().TransitionTo("Title",0,0),"Common transition cannot target another scene");
     app.Scenes().Change(app,"Title");
     check(!app.Scenes().IsTransitioning() && app.Scenes().Fade().Alpha()==0,"Immediate Change left stale fade");
-    std::ofstream("generated/title-tests/result.txt") << "PASS: lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
+    std::ofstream("generated/title-tests/result.txt") << "PASS: nine whole glyphs with original geometry and impact positions preserved, 30 title fragments / 40 preallocated slots, preview without damage/transition and automatic restore, maximum count / zero flash and shake durations, radial letter launch / XYZ spin / deferred impact-frame time, short flash and lit-material restoration, camera shake and no residual offset, small fragments near camera, shadow size filtering, no impact/preview renderer allocations, foreground floor ambient visibility under full shadows, room shadow exclusion with object shadows retained, legacy lighting defaults, directional shadow depth readback/range/geometry, shadow ON/OFF render comparison, shadow frustum validation, lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
 }
 

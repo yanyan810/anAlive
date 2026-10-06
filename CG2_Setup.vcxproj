@@ -161,6 +161,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Engine\Physics\ClothSolver.cpp" />
+    <ClCompile Include="Engine\Physics\ClothComponent.cpp" />
+    <ClCompile Include="Game\scene\Main\ClothShowroomScene.cpp" />
     <ClCompile Include="Engine\2D\Sprite.cpp" />
     <ClCompile Include="Engine\2D\SpriteCommon.cpp" />
     <ClCompile Include="Engine\2D\TextureManager.cpp" />
@@ -432,6 +435,10 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Engine\Physics\ClothSolver.h" />
+    <ClInclude Include="Engine\Physics\ClothComponent.h" />
+    <ClInclude Include="Game\scene\Main\ClothShowroomScene.h" />
+    <ClInclude Include="tests\ClothRuntimeTests.h" />
     <ClInclude Include="Engine\2D\Sprite.h" />
     <ClInclude Include="Engine\2D\SpriteCommon.h" />
     <ClInclude Include="Engine\2D\TextureManager.h" />

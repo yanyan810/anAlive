@@ -16,6 +16,7 @@
 #include "VideoPlayerMF.h"
 #include "Animator.h"
 #include "Object3dLight.h"
+#include <functional>
 
 //class Object3dCommon;
 
@@ -72,7 +73,7 @@ public:
 	void Draw();
 	void DrawDirectionalShadow(DirectionalShadowMap& shadow, const std::vector<uint32_t>& excludedMeshes = {});
 
-	void SetModel(Model* model) { this->model_ = model; }
+	void SetModel(Model* model) { poseModifier_ = {}; this->model_ = model; }
 
 	void SetModel(const std::string& filePath);
 
@@ -292,6 +293,10 @@ public:
 	bool SetManualJointTransform(const std::string& jointName, const Vector3& translate, const Vector3& rotate, const Vector3& scale);
 	void ResetManualJointTransforms();
 
+	// Per-instance post-animation hook, evaluated before uploading the skinning palette.
+	using PoseModifier = std::function<void(Model::Skeleton&, const Matrix4x4&, float)>;
+	void SetPoseModifier(PoseModifier modifier) { poseModifier_ = std::move(modifier); }
+
 	const std::string& GetPlayingAnimName() const { static std::string empty; return animator_ ? animator_->GetPlayingAnimName() : empty; }
 	void StopAnimation() { if(animator_) animator_->StopAnimation(); }
 	void SetAnimationNodeName(const std::string& node) { if(animator_) animator_->SetAnimationNodeName(node); }
@@ -339,6 +344,7 @@ public:
 
 private:
 	std::unique_ptr<Animator> animator_;
+	PoseModifier poseModifier_;
 	std::unique_ptr<Object3dLight> light_;
 	const Object3dLight* sceneLight_ = nullptr;
 

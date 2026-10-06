@@ -3,6 +3,7 @@
 #include "ImGuiManagaer.h"
 #include "WinApp.h"
 #include "GeometryGenerator.h"
+#include <map>
 #include <numbers>
 #ifdef USE_IMGUI
 #include "imgui.h"
@@ -16,37 +17,168 @@ namespace {
 }
 
 void TitleScene::PrepareStartExplosion(GameApp& app) {
-    startLetters_.clear(); startFragments_.clear();
     const auto& asset = *startDefinition_.partAsset;
-    const auto& triangles = asset.defaults[0].geometry->triangles;
-    // The exported Head contains all nine glyphs. Merge overlapping triangle
-    // X ranges to recover whole letters, including bevels and enclosed holes.
-    // No layout coordinates or second set of authored letter assets is needed.
-    std::vector<Vector2> ranges;
-    ranges.reserve(triangles.size());
-    for (const auto& tri : triangles) {
-        ranges.push_back({std::min({tri[0].position.x,tri[1].position.x,tri[2].position.x}),
-            std::max({tri[0].position.x,tri[1].position.x,tri[2].position.x})});
+    startExplosion_.source=asset.defaults[0];
+    PrepareTextExplosion(app,startExplosion_,"TitleStart/"+asset.path,asset.texture);
+}
+
+void TitleScene::PrepareBackgroundExplosions(GameApp& app) {
+    environmentFull_=environment_.GetModel();
+    PrepareBackgroundText(app,unaliveExplosion_,"Game_Title","UNALIVE");
+    PrepareBackgroundText(app,instructionExplosion_,"Start_Instruction","SHOOT TO START");
+    environmentTextVariants_[0]=environmentFull_;
+    // Independent destruction needs variants for either word and for both.
+    // Every other mesh, including the instruction's plinth, keeps its geometry.
+    for (size_t mask=1;mask<environmentTextVariants_.size();++mask) {
+        auto filtered=environmentFull_->GetModelData();
+        if (mask&1) for (uint32_t index : unaliveExplosion_.meshes) filtered.meshes[index].indexCount=0;
+        if (mask&2) for (uint32_t index : instructionExplosion_.meshes) filtered.meshes[index].indexCount=0;
+        environmentTextVariants_[mask]=ModelManager::GetInstance()->CreatePrimitiveModel(
+            "TitleEnvironment/hiddenText"+std::to_string(mask)+"/"+level_.model,filtered);
     }
-    std::sort(ranges.begin(),ranges.end(),[](const auto& a,const auto& b) { return a.x<b.x; });
-    std::vector<Vector2> letters;
-    for (const auto& range : ranges) {
-        if (letters.empty() || range.x>letters.back().y+.0001f) letters.push_back(range);
-        else letters.back().y=std::max(letters.back().y,range.y);
+}
+
+void TitleScene::PrepareBackgroundText(GameApp& app,TextExplosion& burst,const std::string& nodePrefix,const std::string& label) {
+    const auto& model=environmentFull_->GetModelData();
+    auto geometry=std::make_shared<EnemyPartGeometry>();
+    auto& source=burst.source;
+    source=EnemyPart{}; source.name=label; source.hp=source.maxHp=1;
+    burst.meshes.clear();
+    const auto base=Matrix4x4::MakeAffineMatrix(environment_.GetScale(),environment_.GetRotate(),environment_.GetTranslate());
+    // Locate the exported title node rather than depending on mesh ordering.
+    // Bake its transform once so raycasts and detached glyphs share world positions.
+    const auto collect=[&](const auto& self,const Model::Node& node,const Matrix4x4& parent,bool title) -> void {
+        const auto world=Matrix4x4::Multiply(node.localMatrix,parent);
+        title=title || node.name.starts_with(nodePrefix) || node.name==label;
+        if (title) for (uint32_t index : node.meshIndices) {
+            const auto& mesh=model.meshes.at(index);
+            const auto normals=Matrix4x4::Transpose(Matrix4x4::Inverse(world));
+            for (uint32_t i=0;i+2<mesh.indexCount;i+=3) {
+                std::array<EnemyPartVertex,3> triangle;
+                std::array<Vector3,3> face;
+                for (size_t v=0;v<3;++v) {
+                    const auto& vertex=mesh.vertices.at(model.indices.at(mesh.startIndex+i+v));
+                    const auto p=StagePoint({vertex.position.x,vertex.position.y,vertex.position.z},world);
+                    const auto n=StagePoint(vertex.normal,normals)-StagePoint({},normals);
+                    const float length=StageLength(n);
+                    triangle[v]={p,length>1e-5f ? n*(1/length) : Vector3{0,1,0},vertex.texcoord};
+                    face[v]=p;
+                    if (geometry->triangles.empty() && v==0) source.bounds={p,p};
+                    source.bounds.min={std::min(source.bounds.min.x,p.x),std::min(source.bounds.min.y,p.y),std::min(source.bounds.min.z,p.z)};
+                    source.bounds.max={std::max(source.bounds.max.x,p.x),std::max(source.bounds.max.y,p.y),std::max(source.bounds.max.z,p.z)};
+                }
+                geometry->triangles.push_back(triangle); geometry->faces.push_back(face);
+            }
+            burst.meshes.push_back(index);
+        }
+        for (const auto& child : node.children) self(self,child,world,title);
+    };
+    collect(collect,model.rootNode,base,false);
+    if (geometry->triangles.empty()) throw std::runtime_error("Title text mesh is missing: "+label);
+    source.geometry=std::move(geometry);
+    burst.hitParts.clear(); burst.hitParts.push_back(source);
+    PrepareTextExplosion(app,burst,"TitleText/"+nodePrefix+"/"+level_.model,"resources/white1x1.png");
+}
+
+std::optional<BulletHit> TitleScene::TraceUnalive(const Vector3& origin,const Vector3& direction,float distance) const {
+    return TraceBackgroundText(unaliveExplosion_,0,origin,direction,distance);
+}
+
+std::optional<BulletHit> TitleScene::TraceInstruction(const Vector3& origin,const Vector3& direction,float distance) const {
+    return TraceBackgroundText(instructionExplosion_,1,origin,direction,distance);
+}
+
+std::optional<BulletHit> TitleScene::TraceTitleText(const Vector3& origin,const Vector3& direction,float distance) const {
+    const auto title=TraceUnalive(origin,direction,distance);
+    const auto instruction=TraceInstruction(origin,direction,title ? title->distance : distance);
+    return instruction ? instruction : title;
+}
+
+std::optional<BulletHit> TitleScene::TraceBackgroundText(const TextExplosion& burst,size_t index,
+    const Vector3& origin,const Vector3& direction,float distance) const {
+    if (burst.destroyed || burst.preview) return std::nullopt;
+    EnemyPartHit part;
+    if (!RaycastEnemyParts(burst.hitParts,Matrix4x4::MakeIdentity4x4(),origin,direction,distance,part)) return std::nullopt;
+    BulletHit hit;
+    hit.distance=part.distance; hit.position=part.position; hit.wall=false; hit.targetIndex=index;
+    return hit;
+}
+
+void TitleScene::BeginUnaliveExplosion(bool preview) {
+    BeginBackgroundTextExplosion(unaliveExplosion_,lighting_.spots[0].color,preview);
+}
+
+void TitleScene::RestoreUnalive() {
+    RestoreBackgroundText(unaliveExplosion_);
+}
+
+void TitleScene::BeginInstructionExplosion(bool preview) {
+    BeginBackgroundTextExplosion(instructionExplosion_,lighting_.spots[2].color,preview);
+}
+
+void TitleScene::RestoreInstruction() {
+    RestoreBackgroundText(instructionExplosion_);
+}
+
+void TitleScene::BeginBackgroundTextExplosion(TextExplosion& burst,const Vector3& tint,bool preview) {
+    if (!preview && (burst.destroyed || burst.preview)) return;
+    burst.destroyed=!preview; burst.preview=preview; burst.active=true;
+    RefreshTitleEnvironment();
+    LaunchTextExplosion(burst,tint);
+}
+
+void TitleScene::RestoreBackgroundText(TextExplosion& burst) {
+    burst.destroyed=false; burst.preview=false; burst.active=false;
+    RefreshTitleEnvironment();
+}
+
+void TitleScene::RefreshTitleEnvironment() {
+    const size_t mask=(unaliveExplosion_.destroyed || unaliveExplosion_.preview ? 1u : 0u) |
+        (instructionExplosion_.destroyed || instructionExplosion_.preview ? 2u : 0u);
+    environment_.SetModel(environmentTextVariants_[mask]);
+}
+
+void TitleScene::PrepareTextExplosion(GameApp& app,TextExplosion& burst,const std::string& key,const std::string& texture) {
+    burst.letters.clear(); burst.fragments.clear();
+    const auto& triangles = burst.source.geometry->triangles;
+    // Weld coincident vertex positions to recover connected whole glyphs, including
+    // bevels and holes. X ranges alone merge some tightly spaced instruction letters.
+    std::vector<size_t> parents(triangles.size());
+    for (size_t i=0;i<parents.size();++i) parents[i]=i;
+    const auto root=[&](size_t i) {
+        while (parents[i]!=i) { parents[i]=parents[parents[i]]; i=parents[i]; }
+        return i;
+    };
+    std::map<std::array<float,3>,size_t> vertexFaces;
+    for (size_t i=0;i<triangles.size();++i) {
+        for (const auto& vertex : triangles[i]) {
+            const auto& p=vertex.position;
+            const auto [face,inserted]=vertexFaces.emplace(std::array<float,3>{p.x,p.y,p.z},i);
+            if (!inserted) parents[root(i)]=root(face->second);
+        }
     }
+    struct Glyph { float left=std::numeric_limits<float>::max(); std::vector<size_t> faces; };
+    std::map<size_t,Glyph> components;
+    for (size_t i=0;i<triangles.size();++i) {
+        auto& glyph=components[root(i)];
+        glyph.faces.push_back(i);
+        for (const auto& vertex : triangles[i]) glyph.left=std::min(glyph.left,vertex.position.x);
+    }
+    std::vector<Glyph> letters;
+    for (auto& [component,glyph] : components) letters.push_back(std::move(glyph));
+    std::sort(letters.begin(),letters.end(),[](const Glyph& a,const Glyph& b) { return a.left<b.left; });
     std::vector<Model::ModelData> geometries(letters.size());
     for (auto& geometry : geometries) {
-        geometry.materials.push_back({asset.texture});
+        geometry.materials.push_back({texture});
         geometry.meshes.emplace_back(); geometry.rootNode.meshIndices.push_back(0);
     }
-    for (const auto& tri : triangles) {
-        const float x=(tri[0].position.x+tri[1].position.x+tri[2].position.x)/3;
-        const auto band=std::lower_bound(letters.begin(),letters.end(),x,
-            [](const Vector2& range,float value) { return range.y+.0001f<value; });
-        auto& geometry=geometries[static_cast<size_t>(band-letters.begin())];
-        for (const auto& v : tri) {
-            geometry.meshes[0].vertices.push_back({{v.position.x,v.position.y,v.position.z,1},v.uv,v.normal});
-            geometry.indices.push_back(static_cast<uint32_t>(geometry.indices.size()));
+    for (size_t i=0;i<letters.size();++i) {
+        auto& geometry=geometries[i];
+        for (size_t face : letters[i].faces) {
+            for (const auto& v : triangles[face]) {
+                geometry.meshes[0].vertices.push_back({{v.position.x,v.position.y,v.position.z,1},v.uv,v.normal});
+                geometry.indices.push_back(static_cast<uint32_t>(geometry.indices.size()));
+            }
         }
     }
     const auto prepare=[&](Model* model) {
@@ -63,28 +195,33 @@ void TitleScene::PrepareStartExplosion(GameApp& app) {
         auto& geometry=geometries[i];
         geometry.meshes[0].indexCount=static_cast<uint32_t>(geometry.indices.size());
         auto* model=ModelManager::GetInstance()->CreatePrimitiveModel(
-            "TitleStart/"+asset.path+"/letter"+std::to_string(i),geometry);
-        startLetters_.push_back(prepare(model));
+            key+"/letter"+std::to_string(i),geometry);
+        burst.letters.push_back(prepare(model));
     }
     Model::ModelData box;
-    box.materials.push_back({asset.texture}); box.meshes.emplace_back();
+    box.materials.push_back({texture}); box.meshes.emplace_back();
     box.meshes[0].vertices=GeometryGenerator::GenerateBoxTriList(1,1,1);
     box.meshes[0].indexCount=static_cast<uint32_t>(box.meshes[0].vertices.size());
     for (uint32_t i=0;i<box.meshes[0].indexCount;++i) box.indices.push_back(i);
     box.rootNode.meshIndices.push_back(0);
     auto* cube=ModelManager::GetInstance()->CreatePrimitiveModel("TitleStart/fragmentBox",box);
-    startFragments_.reserve(kMaxStartFragments);
-    for (size_t i=0;i<kMaxStartFragments;++i) startFragments_.push_back(prepare(cube));
+    burst.fragments.reserve(kMaxStartFragments);
+    for (size_t i=0;i<kMaxStartFragments;++i) burst.fragments.push_back(prepare(cube));
 }
 
 void TitleScene::BeginStartExplosion(bool preview) {
-    explosionPreview_=preview; explosionElapsed_=0;
+    explosionPreview_=preview;
     player_.CurrentWeapon().CancelBurst();
     // Preserve the existing damage/raycast target; title owns its special visual
     // burst. Discard its hidden generic face burst via the existing pool API.
     if (!preview) startTarget_->RetireFromPool();
+    LaunchTextExplosion(startExplosion_,lighting_.spots[2].color);
+}
+
+void TitleScene::LaunchTextExplosion(TextExplosion& burst,const Vector3& tint) {
+    burst.elapsed=0;
     const auto& settings=explosionSettings_;
-    const auto& part=startDefinition_.partAsset->defaults[0];
+    const auto& part=burst.source;
     const auto center=(part.bounds.min+part.bounds.max)*.5f;
     std::uniform_real_distribution<float> unit(0,1), jitter(-1,1);
     const auto spin=[&]() { return settings.angularVelocity*(.35f+.65f*unit(random_))*(jitter(random_)<0?-1.0f:1.0f); };
@@ -105,20 +242,20 @@ void TitleScene::BeginStartExplosion(bool preview) {
     };
     // Letter meshes retain their world-baked vertices and rotate about their own
     // centers using DetachedPartMotion::Translation(), as enemy parts do.
-    for (auto& letter : startLetters_) {
+    for (auto& letter : burst.letters) {
         const auto letterCenter=(letter.motion.bounds.min+letter.motion.bounds.max)*.5f;
         launch(letter,letterCenter,{1,1,1});
     }
-    activeStartFragments_=static_cast<size_t>(std::clamp(settings.fragmentCount,0,static_cast<int>(kMaxStartFragments)));
+    burst.fragmentCount=static_cast<size_t>(std::clamp(settings.fragmentCount,0,static_cast<int>(kMaxStartFragments)));
     const auto& faces=part.geometry->faces;
     std::uniform_int_distribution<size_t> faceIndex(0,faces.size()-1);
     const auto& cameraWorld=camera_.GetWorldMatrix();
     const Vector3 right{cameraWorld.m[0][0],cameraWorld.m[0][1],cameraWorld.m[0][2]};
     const Vector3 up{cameraWorld.m[1][0],cameraWorld.m[1][1],cameraWorld.m[1][2]};
     const Vector3 forward{cameraWorld.m[2][0],cameraWorld.m[2][1],cameraWorld.m[2][2]};
-    const size_t nearPassCount=std::min(size_t{4},activeStartFragments_/8);
-    for (size_t i=0;i<activeStartFragments_;++i) {
-        auto& fragment=startFragments_[i];
+    const size_t nearPassCount=std::min(size_t{4},burst.fragmentCount/8);
+    for (size_t i=0;i<burst.fragmentCount;++i) {
+        auto& fragment=burst.fragments[i];
         const auto& face=faces[faceIndex(random_)];
         const auto origin=(face[0]+face[1]+face[2])*(1.0f/3);
         const float size=settings.minScale+(settings.maxScale-settings.minScale)*unit(random_);
@@ -137,45 +274,76 @@ void TitleScene::BeginStartExplosion(bool preview) {
             const float travelTime=std::clamp(start_.delay*.85f*7.5f/settings.explosionPower,.2f,.8f);
             fragment.motion.velocity=(destination-origin)*(1/travelTime)+Vector3{0,-.5f*physics.gravity*travelTime,0};
         }
-        fragmentCastsShadow_[i]=!nearPass && std::max({scale.x,scale.y,scale.z})>=.20f;
+        burst.castsShadow[i]=!nearPass && std::max({scale.x,scale.y,scale.z})>=.20f;
     }
-    // The attached target is white under the GAME START spot. Match that tint
+    // The attached word is white under its spot. Match that tint
     // for scattered pieces even after they leave the spotlight's cone.
-    const auto tint=lighting_.spots[2].color;
-    fragmentColor_={.35f+.65f*tint.x,.35f+.65f*tint.y,.35f+.65f*tint.z,1};
-    UpdateStartExplosionVisuals();
+    burst.color={.35f+.65f*tint.x,.35f+.65f*tint.y,.35f+.65f*tint.z,1};
+    UpdateTextExplosionVisuals(burst);
 }
 
 void TitleScene::UpdateStartExplosion(float dt) {
-    if (!StartExplosionActive()) return;
-    explosionElapsed_+=dt;
-    for (auto& letter : startLetters_) letter.motion.Update(dt);
-    for (size_t i=0;i<activeStartFragments_;++i) startFragments_[i].motion.Update(dt);
-    if (explosionPreview_ && explosionElapsed_>=std::max({explosionSettings_.lifetime,
-        explosionSettings_.flashDuration,explosionSettings_.shakeDuration})) explosionPreview_=false;
+    const float duration=std::max({explosionSettings_.lifetime,explosionSettings_.flashDuration,explosionSettings_.shakeDuration});
+    if (StartExplosionActive()) {
+        UpdateTextExplosion(startExplosion_,dt);
+        if (explosionPreview_ && startExplosion_.elapsed>=duration) explosionPreview_=false;
+    }
+    for (auto* burst : {&unaliveExplosion_,&instructionExplosion_}) {
+        if (!burst->active) continue;
+        UpdateTextExplosion(*burst,dt);
+        if (burst->elapsed>=duration) {
+            burst->active=false;
+            if (burst->preview) RestoreBackgroundText(*burst);
+        }
+    }
+}
+
+void TitleScene::UpdateTextExplosion(TextExplosion& burst,float dt) {
+    burst.elapsed+=dt;
+    for (auto& letter : burst.letters) letter.motion.Update(dt);
+    for (size_t i=0;i<burst.fragmentCount;++i) burst.fragments[i].motion.Update(dt);
 }
 
 void TitleScene::UpdateStartExplosionVisuals() {
-    if (!StartExplosionActive()) return;
-    const bool flash=explosionSettings_.flashDuration>0 && explosionElapsed_<explosionSettings_.flashDuration;
-    const float brightness=flash ? 1+2*(1-explosionElapsed_/explosionSettings_.flashDuration) : 1;
+    if (StartExplosionActive()) UpdateTextExplosionVisuals(startExplosion_);
+    for (auto* burst : {&unaliveExplosion_,&instructionExplosion_})
+        if (burst->active) UpdateTextExplosionVisuals(*burst);
+}
+
+void TitleScene::UpdateTextExplosionVisuals(TextExplosion& burst) {
+    const bool flash=explosionSettings_.flashDuration>0 && burst.elapsed<explosionSettings_.flashDuration;
+    const float brightness=flash ? 1+2*(1-burst.elapsed/explosionSettings_.flashDuration) : 1;
     const auto update=[&](DetachedEnemyPart& piece,bool letter) {
         auto& object=*piece.object;
         object.SetTranslate(piece.motion.Translation()); object.SetRotate(piece.motion.rotation);
         object.SetScale(piece.motion.scale);
-        const auto color=letter ? Vector4{1,1,1,1} : fragmentColor_;
+        const auto color=letter ? Vector4{1,1,1,1} : burst.color;
         object.SetMaterialColor({color.x*brightness,color.y*brightness,color.z*brightness,1});
         object.SetEnableLighting(flash ? 0 : 2); // Existing unlit material provides the short impact flash.
         object.Update(0);
     };
-    for (auto& letter : startLetters_) update(letter,true);
-    for (size_t i=0;i<activeStartFragments_;++i) update(startFragments_[i],false);
+    for (auto& letter : burst.letters) update(letter,true);
+    for (size_t i=0;i<burst.fragmentCount;++i) update(burst.fragments[i],false);
+}
+
+void TitleScene::DrawTextExplosion(TextExplosion& burst,bool shadow) {
+    const auto draw=[&](DetachedEnemyPart& piece) {
+        if (!piece.motion.Active()) return;
+        if (shadow) piece.object->DrawDirectionalShadow(shadowMap_);
+        else piece.object->Draw();
+    };
+    for (auto& letter : burst.letters) draw(letter);
+    for (size_t i=0;i<burst.fragmentCount;++i)
+        if (!shadow || burst.castsShadow[i]) draw(burst.fragments[i]);
 }
 
 void TitleScene::ApplyStartCameraShake() {
-    if (!StartExplosionActive() || explosionSettings_.shakeDuration<=0 ||
-        explosionElapsed_>=explosionSettings_.shakeDuration) return;
-    const float t=explosionElapsed_/explosionSettings_.shakeDuration;
+    float elapsed=std::numeric_limits<float>::max();
+    if (StartExplosionActive()) elapsed=startExplosion_.elapsed;
+    for (const auto* burst : {&unaliveExplosion_,&instructionExplosion_})
+        if (burst->active) elapsed=std::min(elapsed,burst->elapsed);
+    if (explosionSettings_.shakeDuration<=0 || elapsed>=explosionSettings_.shakeDuration) return;
+    const float t=elapsed/explosionSettings_.shakeDuration;
     const float strength=explosionSettings_.shakeStrength*(1-t)*(1-t);
     const auto& world=camera_.GetWorldMatrix();
     const Vector3 right{world.m[0][0],world.m[0][1],world.m[0][2]}, up{world.m[1][0],world.m[1][1],world.m[1][2]};
@@ -202,7 +370,52 @@ void TitleScene::LoadLighting() {
         lightingStatus_ = std::string("Lighting load error: ")+e.what();
         OutputDebugStringA((lightingStatus_+"\n").c_str());
     }
-    lighting_.Apply(sceneLight_);
+    ResetLightFlicker();
+    ApplyLighting();
+}
+
+void TitleScene::ResetLightFlicker() {
+    lightFlicker_={};
+    for (size_t i=0;i<lightFlicker_.size();++i) {
+        const auto& f=lighting_.spots[i].flicker;
+        if (f.enabled) lightFlicker_[i].remaining=std::uniform_real_distribution<float>(f.minInterval,f.maxInterval)(flickerRandom_[i]);
+    }
+}
+
+void TitleScene::UpdateLightFlicker(float dt) {
+    dt=std::isfinite(dt) ? std::clamp(dt,0.0f,10.0f) : 0;
+    for (size_t i=0;i<lightFlicker_.size();++i) {
+        auto& state=lightFlicker_[i];
+        const auto& f=lighting_.spots[i].flicker;
+        if (!f.enabled) { state={}; continue; }
+        const auto duration=[&](float min,float max) { return std::uniform_real_distribution<float>(min,max)(flickerRandom_[i]); };
+        if (state.remaining<=0) state.remaining=duration(f.minInterval,f.maxInterval);
+        float remaining=dt;
+        // Carry elapsed time across on/off edges so frame rate does not change
+        // the burst. Separate waits keep the two title lamps out of sync.
+        while (remaining>=state.remaining) {
+            remaining-=state.remaining;
+            if (!state.off) {
+                if (state.flashesRemaining==0) state.flashesRemaining=f.flashes;
+                state.off=true;
+                state.remaining=duration(f.minOffTime,f.maxOffTime);
+            } else {
+                state.off=false;
+                --state.flashesRemaining;
+                state.remaining=state.flashesRemaining>0 ? duration(.06f,.16f) : duration(f.minInterval,f.maxInterval);
+            }
+        }
+        state.remaining-=remaining;
+    }
+    ApplyLighting();
+}
+
+void TitleScene::ApplyLighting() {
+    auto current=lighting_;
+    for (size_t i=0;i<lightFlicker_.size();++i)
+        if (current.spots[i].flicker.enabled && lightFlicker_[i].off)
+            current.spots[i].intensity*=current.spots[i].flicker.offBrightness;
+    current.Apply(sceneLight_); // Saved base intensities and ambient/directional lighting stay intact.
 }
 
 bool TitleScene::LoadLayout() {
@@ -250,7 +463,10 @@ void TitleScene::OnEnter(GameApp& app) {
 #endif
     ready_ = false; initialCapturePending_ = true; suppressFireUntilRelease_ = true;
     start_ = TitleStartSequence{};
-    explosionPreview_=false; explosionElapsed_=0; activeStartFragments_=0;
+    explosionPreview_=false; startExplosion_.elapsed=0; startExplosion_.fragmentCount=0;
+    for (auto* burst : {&unaliveExplosion_,&instructionExplosion_}) {
+        burst->destroyed=false; burst->active=false; burst->preview=false;
+    }
     transitionRequested_ = false;
     enemies_.clear(); respawnTime_ = 0; nextEnemyId_ = 0;
     if (!LoadLayout()) {
@@ -296,6 +512,7 @@ void TitleScene::OnEnter(GameApp& app) {
     environment_.SetSceneLight(&sceneLight_);
     environment_.SetEnableLighting(2);
     environment_.Update(0);
+    PrepareBackgroundExplosions(app);
     const float width = static_cast<float>(WinApp::kClientWidth), height = static_cast<float>(WinApp::kClientHeight);
     uiView_ = Matrix4x4::MakeIdentity4x4();
     uiProjection_ = Matrix4x4::MakeOrthographicMatrix(0,0,width,height,0,100);
@@ -371,6 +588,7 @@ void TitleScene::Update(GameApp& app, float dt) {
 }
 void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     auto& input = *app.GetInput();
+    UpdateLightFlicker(dt);
     player_.RefreshVisuals(); // Remove last frame's shake before gameplay/raycast updates.
     // Do not charge the impact frame's preceding time to the new explosion.
     start_.Update(dt);
@@ -384,14 +602,22 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
             pool_.Release(enemies_[0]); SpawnEnemy(); respawnTime_ = 0;
         }
     }
-    bullets_.Update(dt,level_.collision,enemies_,[this](const BulletEnemyImpact& hit) { OnBulletImpact(hit); });
+    const BulletTrace titleTarget=[this](const Vector3& origin,const Vector3& direction,float distance) {
+        return TraceTitleText(origin,direction,distance);
+    };
+    bullets_.Update(dt,level_.collision,enemies_,[this](const BulletEnemyImpact& hit) { OnBulletImpact(hit); },
+        titleTarget,[this](const Bullet& bullet,const BulletHit& hit) {
+            if (bullet.damage<=0) return;
+            if (hit.targetIndex==0) BeginUnaliveExplosion();
+            else if (hit.targetIndex==1) BeginInstructionExplosion();
+        });
     controls = controls && !StartExplosionActive();
     auto& weapon = player_.CurrentWeapon();
     // Extended target practice must not exhaust all ammunition and block start.
     if (!start_.Starting() && weapon.Magazine()==0 && weapon.Reserve()==0) weapon.Equip(*weapons_.Find(weaponId_));
     const int shots = player_.UpdateShooting(input,dt,controls && !suppressFireUntilRelease_,controls);
     for (int shot=0; shot<shots; ++shot)
-        bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,enemies_);
+        bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,enemies_,titleTarget);
     ApplyStartCameraShake();
     UpdateStartExplosionVisuals();
     environment_.Update(dt);
@@ -406,12 +632,9 @@ void TitleScene::DrawShadow(GameApp&) {
         else environment_.DrawDirectionalShadow(shadowMap_,roomShadowMeshes_);
         for (auto* enemy : enemies_)
             if (enemy!=startTarget_.get() || !StartExplosionActive()) enemy->DrawDirectionalShadow(shadowMap_);
-        if (StartExplosionActive()) {
-            for (auto& letter : startLetters_)
-                if (letter.motion.Active()) letter.object->DrawDirectionalShadow(shadowMap_);
-            for (size_t i=0;i<activeStartFragments_;++i)
-                if (fragmentCastsShadow_[i] && startFragments_[i].motion.Active()) startFragments_[i].object->DrawDirectionalShadow(shadowMap_);
-        }
+        if (StartExplosionActive()) DrawTextExplosion(startExplosion_,true);
+        for (auto* burst : {&unaliveExplosion_,&instructionExplosion_})
+            if (burst->active) DrawTextExplosion(*burst,true);
         shadowMap_.End();
     }
     sceneLight_.SetDirectionalShadow(shadowMap_.ViewProjection(),
@@ -423,11 +646,9 @@ void TitleScene::DrawRender(GameApp&) {
     environment_.Draw();
     for (auto* enemy : enemies_)
         if (enemy!=startTarget_.get() || !StartExplosionActive()) enemy->Draw(false);
-    if (StartExplosionActive()) {
-        for (auto& letter : startLetters_) if (letter.motion.Active()) letter.object->Draw();
-        for (size_t i=0;i<activeStartFragments_;++i)
-            if (startFragments_[i].motion.Active()) startFragments_[i].object->Draw();
-    }
+    if (StartExplosionActive()) DrawTextExplosion(startExplosion_,false);
+    for (auto* burst : {&unaliveExplosion_,&instructionExplosion_})
+        if (burst->active) DrawTextExplosion(*burst,false);
     bullets_.Draw();
     for (auto* enemy : enemies_) enemy->DrawExplosion();
 }
@@ -464,12 +685,19 @@ void TitleScene::DrawImGui(GameApp& app) {
                 explosionSettings_=StartExplosionSettings{};
                 start_.delay=.45f;
             }
+            if (ImGui::Button("Preview UNALIVE")) BeginUnaliveExplosion(true);
+            ImGui::SameLine();
+            if (ImGui::Button("Restore UNALIVE")) RestoreUnalive();
+            if (ImGui::Button("Preview SHOOT TO START")) BeginInstructionExplosion(true);
+            ImGui::SameLine();
+            if (ImGui::Button("Restore SHOOT TO START")) RestoreInstruction();
             ImGui::TextUnformatted("Explosion values are session-only. Lighting save affects lights only.");
+            ImGui::TextUnformatted("UNALIVE / SHOOT TO START share these settings. Shooting them does not start the game.");
             ImGui::TextUnformatted("Preview restores GAME START after Lifetime. Default fade delay: 0.45 s.");
             ImGui::EndDisabled();
             ImGui::PopID();
         }
-        bool changed = false;
+        bool changed = false, flickerChanged = false;
         const auto axis = [](const char* label, Vector3& direction) {
             if (!ImGui::DragFloat3(label,&direction.x,.01f,-1e6f,1e6f,"%.3f",ImGuiSliderFlags_AlwaysClamp)) return false;
             if (direction.x*direction.x+direction.y*direction.y+direction.z*direction.z<1e-10f)
@@ -515,10 +743,20 @@ void TitleScene::DrawImGui(GameApp& app) {
             if (light.innerAngle>light.outerAngle-.1f) { light.innerAngle=light.outerAngle-.1f; changed=true; }
             changed |= ImGui::SliderFloat("Inner Angle (deg)",&light.innerAngle,0,light.outerAngle-.1f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
             ImGui::TextUnformatted("Half-angles: inner = full light, outer = edge of cone.");
+            auto& flicker=light.flicker;
+            flickerChanged |= ImGui::Checkbox("Lamp Flicker",&flicker.enabled);
+            ImGui::BeginDisabled(!flicker.enabled);
+            flickerChanged |= ImGui::DragFloatRange2("Flicker Interval (s)",&flicker.minInterval,&flicker.maxInterval,.05f,.2f,20,"Min %.2f","Max %.2f",ImGuiSliderFlags_AlwaysClamp);
+            flickerChanged |= ImGui::DragFloatRange2("Off Duration (s)",&flicker.minOffTime,&flicker.maxOffTime,.005f,.01f,.4f,"Min %.3f","Max %.3f",ImGuiSliderFlags_AlwaysClamp);
+            flickerChanged |= ImGui::SliderInt("Burst Flashes",&flicker.flashes,1,6);
+            flickerChanged |= ImGui::SliderFloat("Off Brightness",&flicker.offBrightness,0,1,"%.2f");
+            ImGui::EndDisabled();
+            ImGui::TextUnformatted("Off Brightness: 0 = lamp off, 1 = normal brightness.");
             ImGui::PopID();
         }
+        if (flickerChanged) { ResetLightFlicker(); changed=true; }
         if (changed) {
-            lighting_.Apply(sceneLight_);
+            ApplyLighting();
             lightingEditor_.dirty = true;
             lightingStatus_ = "Preview updated (unsaved)";
         }
@@ -537,7 +775,8 @@ void TitleScene::DrawImGui(GameApp& app) {
         if (ImGui::Button("Reload Lighting")) LoadLighting();
         if (ImGui::Button("Reset Defaults")) {
             lighting_ = TitleLighting{};
-            lighting_.Apply(sceneLight_);
+            ResetLightFlicker();
+            ApplyLighting();
             lightingEditor_.dirty = true;
             lightingStatus_ = "Defaults restored (unsaved)";
         }

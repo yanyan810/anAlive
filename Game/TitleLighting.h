@@ -7,11 +7,19 @@
 
 // Title-only tuning data. Independent of Blender's exported layout.
 struct TitleLighting {
+    struct Flicker {
+        bool enabled=false;
+        float minInterval=2.5f, maxInterval=6.0f;
+        float minOffTime=.04f, maxOffTime=.12f;
+        int flashes=3;
+        float offBrightness=0;
+    };
     struct Spot {
         Vector3 position{}, direction{0,-1,0}, color{1,1,1};
         float intensity=1, distance=22, decay=1.5f;
         float outerAngle=40, innerAngle=25; // Cone half-angles, in degrees.
         float specularStrength=.12f; // Keep the dark walls from reflecting brighter than the targets.
+        Flicker flicker;
     };
     Vector3 direction{.25f,-1,.5f}, color{1,1,1};
     float intensity=.22f;
@@ -24,9 +32,9 @@ struct TitleLighting {
         float viewSize=40, lightDistance=40, nearClip=.1f, farClip=100;
     } shadow;
     std::array<Spot,3> spots{{
-        {{-3.2f,9,6},{0,-2.9f,7.7f},{1,1,1},.9f,24,1.5f,46,32},
+        {{-3.2f,9,6},{0,-2.9f,7.7f},{1,1,1},.9f,24,1.5f,46,32,.12f,{true}},
         {{-6.5f,4.8f,6.5f},{2.5f,-3.8f,4},{1,1,1},1.1f,20,1.5f,23,15},
-        {{5,5.4f,1.5f},{0,-3.7f,9.1f},{1,1,1},2.2f,26,1.5f,32,25}
+        {{5,5.4f,1.5f},{0,-3.7f,9.1f},{1,1,1},2.2f,26,1.5f,32,25,.12f,{true}}
     }};
     inline static constexpr std::array<const char*,3> names{"UNALIVE","Enemy","GAME START"};
 
@@ -63,6 +71,9 @@ struct TitleLighting {
                 {"color",vec(s.color)},{"intensity",s.intensity},{"distance",s.distance},
                 {"decay",s.decay},{"outerAngleDegrees",s.outerAngle},{"innerAngleDegrees",s.innerAngle},
                 {"specularStrength",s.specularStrength}};
+            const auto& f=s.flicker;
+            data["spots"][names[i]]["flicker"]={{"enabled",f.enabled},{"minInterval",f.minInterval},{"maxInterval",f.maxInterval},
+                {"minOffTime",f.minOffTime},{"maxOffTime",f.maxOffTime},{"flashes",f.flashes},{"offBrightness",f.offBrightness}};
         }
         return data;
     }
@@ -116,6 +127,20 @@ struct TitleLighting {
             s.outerAngle=number(json.at("outerAngleDegrees"),1,89);
             s.innerAngle=number(json.at("innerAngleDegrees"),0,s.outerAngle-.1f);
             if (json.contains("specularStrength")) s.specularStrength=number(json.at("specularStrength"),0,1);
+            s.flicker=Flicker{}; // Old tuning files keep their original steady lighting.
+            if (json.contains("flicker")) {
+                const auto& flicker=json.at("flicker");
+                auto& f=s.flicker;
+                f.enabled=flicker.at("enabled").get<bool>();
+                f.minInterval=number(flicker.at("minInterval"),.2f,20);
+                f.maxInterval=number(flicker.at("maxInterval"),f.minInterval,20);
+                f.minOffTime=number(flicker.at("minOffTime"),.01f,.4f);
+                f.maxOffTime=number(flicker.at("maxOffTime"),f.minOffTime,.4f);
+                if (!flicker.at("flashes").is_number_integer()) throw std::runtime_error("Flicker flashes must be an integer");
+                f.flashes=flicker.at("flashes").get<int>();
+                if (f.flashes<1 || f.flashes>6) throw std::runtime_error("Flicker flashes outside valid range");
+                f.offBrightness=number(flicker.at("offBrightness"),0,1);
+            }
         }
         return result;
     }

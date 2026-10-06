@@ -65,6 +65,15 @@
         9.100000381469727
       ],
       "distance": 26.0,
+      "flicker": {
+        "enabled": true,
+        "minInterval": 2.5,
+        "maxInterval": 6.0,
+        "minOffTime": 0.04,
+        "maxOffTime": 0.12,
+        "flashes": 3,
+        "offBrightness": 0.0
+      },
       "innerAngleDegrees": 24.0,
       "intensity": 2.200000047683716,
       "outerAngleDegrees": 38.0,
@@ -88,6 +97,15 @@
         7.699999809265137
       ],
       "distance": 24.0,
+      "flicker": {
+        "enabled": true,
+        "minInterval": 2.5,
+        "maxInterval": 6.0,
+        "minOffTime": 0.04,
+        "maxOffTime": 0.12,
+        "flashes": 3,
+        "offBrightness": 0.0
+      },
       "innerAngleDegrees": 32.0,
       "intensity": 0.8999999761581421,
       "outerAngleDegrees": 46.0,

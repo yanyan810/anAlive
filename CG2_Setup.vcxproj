@@ -161,7 +161,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Engine\Physics\ClothSolver.cpp" />
+    <ClCompile Include="Engine\Physics\ClothSolver.cpp">
+      <!-- Keep the small hot simulation loop optimized in the interactive Debug
+           Showroom. Assertions and symbols remain; other Debug files are unchanged. -->
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
+      <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</BasicRuntimeChecks>
+      <SupportJustMyCode Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</SupportJustMyCode>
+    </ClCompile>
     <ClCompile Include="Engine\Physics\ClothComponent.cpp" />
     <ClCompile Include="Game\scene\Main\ClothShowroomScene.cpp" />
     <ClCompile Include="Engine\2D\Sprite.cpp" />
@@ -439,6 +445,11 @@
     <ClInclude Include="Engine\Physics\ClothComponent.h" />
     <ClInclude Include="Game\scene\Main\ClothShowroomScene.h" />
     <ClInclude Include="tests\ClothRuntimeTests.h" />
+    <ClInclude Include="tests\AssetLoadingTests.h" />
+    <ClInclude Include="Engine\3D\ModelCache.h" />
+    <ClInclude Include="Engine\Utility\AssetCache.h" />
+    <ClInclude Include="Engine\Utility\AssetPreparation.h" />
+    <ClInclude Include="Engine\Utility\AssetLoadProfile.h" />
     <ClInclude Include="Engine\2D\Sprite.h" />
     <ClInclude Include="Engine\2D\SpriteCommon.h" />
     <ClInclude Include="Engine\2D\TextureManager.h" />

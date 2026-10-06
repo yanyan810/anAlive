@@ -1,4 +1,5 @@
-﻿#include "DirectXCommon.h"
+#include "../Utility/AssetLoadProfile.h"
+#include "DirectXCommon.h"
 #include <cassert>
 #include <dxgidebug.h>
 
@@ -233,7 +234,11 @@ void DirectXCommon::UploadTextureData(
 	const UINT64 intermediateSize = GetRequiredIntermediateSize(texture.Get(), 0, numSubresources);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediate = CreateBufferResource(intermediateSize);
 
-	UpdateSubresources(commandList.Get(),
+	if (!textureUploadList_) {
+        HRESULT hr=device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&textureUploadAllocator_)); assert(SUCCEEDED(hr));
+        hr=device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,textureUploadAllocator_.Get(),nullptr,IID_PPV_ARGS(&textureUploadList_)); assert(SUCCEEDED(hr));
+    }
+	UpdateSubresources(textureUploadList_.Get(),
 		texture.Get(),
 		intermediate.Get(),
 		0, 0,
@@ -246,21 +251,30 @@ void DirectXCommon::UploadTextureData(
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
-	commandList->ResourceBarrier(1, &barrier);
+	textureUploadList_->ResourceBarrier(1, &barrier);
 
-	HRESULT hr = commandList->Close();                         assert(SUCCEEDED(hr));
-	ID3D12CommandList* lists[] = { commandList.Get() };
-	commandQueue->ExecuteCommandLists(1, lists);
+    textureUploadStaging_.push_back(std::move(intermediate));
+    textureUploadBytes_+=static_cast<size_t>(intermediateSize);
+    // Bound temporary memory even for large models, retaining staging until the fence completes.
+    if(textureUploadBatchDepth_==0 || !AssetLoading::Option("YAN_TEXTURE_BATCH") || textureUploadBytes_>=128*1024*1024)
+        FlushTextureUploads();
+}
 
-	fenceValue++;
-	hr = commandQueue->Signal(fence.Get(), fenceValue);        assert(SUCCEEDED(hr));
-	if (fence->GetCompletedValue() < fenceValue) {
-		hr = fence->SetEventOnCompletion(fenceValue, fenceEvent); assert(SUCCEEDED(hr));
-		WaitForSingleObject(fenceEvent, INFINITE);
-	}
-
-	hr = commandAllocator->Reset();                            assert(SUCCEEDED(hr));
-	hr = commandList->Reset(commandAllocator.Get(), nullptr);  assert(SUCCEEDED(hr));
+void DirectXCommon::BeginTextureUploadBatch() { ++textureUploadBatchDepth_; }
+void DirectXCommon::EndTextureUploadBatch() {
+    assert(textureUploadBatchDepth_>0);
+    if(--textureUploadBatchDepth_==0) FlushTextureUploads();
+}
+void DirectXCommon::FlushTextureUploads() {
+    if(textureUploadStaging_.empty()) return;
+    AssetLoading::Timer timer("texture.gpu-submit-wait");
+    HRESULT hr=textureUploadList_->Close(); assert(SUCCEEDED(hr));
+    ID3D12CommandList* lists[]{textureUploadList_.Get()}; commandQueue->ExecuteCommandLists(1,lists);
+    ++textureUploadSubmissions_;
+    WaitForGPU();
+    textureUploadStaging_.clear(); textureUploadBytes_=0;
+    hr=textureUploadAllocator_->Reset(); assert(SUCCEEDED(hr));
+    hr=textureUploadList_->Reset(textureUploadAllocator_.Get(),nullptr); assert(SUCCEEDED(hr));
 }
 
 void DirectXCommon::SetDescriptorHeaps(ID3D12DescriptorHeap* srvHeap)

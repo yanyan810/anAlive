@@ -47,8 +47,18 @@ bool ClothComponent::Load(const std::string& path,const Model::Skeleton& bind) {
             auto& solver=group.solver;
             solver.settings.gravity=ReadVec(definition.at("gravity"));
             solver.settings.damping=definition.at("damping");
+            solver.settings.dampingRelativeToAnimation=definition.value("dampingRelativeToAnimation",false);
+            solver.settings.maxSwingAngleDegrees=definition.value("maxSwingAngleDegrees",180.0f);
+            if(!std::isfinite(solver.settings.maxSwingAngleDegrees) || solver.settings.maxSwingAngleDegrees<0 || solver.settings.maxSwingAngleDegrees>180)
+                throw std::runtime_error("Invalid swing angle: "+group.name);
             solver.settings.stiffness=definition.at("stiffness");
             solver.settings.iterations=definition.value("iterations",12);
+            solver.settings.collisionSamplesPerSegment=definition.value("collisionSamplesPerSegment",0);
+            solver.settings.collisionSampleRadius=definition.value("collisionSampleRadius",.012f);
+            solver.settings.enableHorizontalCollisionSamples=definition.value("enableHorizontalCollisionSamples",false);
+            if (solver.settings.collisionSamplesPerSegment<0 || solver.settings.collisionSamplesPerSegment>8 ||
+                !std::isfinite(solver.settings.collisionSampleRadius) || solver.settings.collisionSampleRadius<0)
+                throw std::runtime_error("Invalid collision sample settings: "+group.name);
             for (const auto& names:definition.at("chains")) {
                 Chain chain;
                 for (const auto& name:names) {
@@ -70,6 +80,7 @@ bool ClothComponent::Load(const std::string& path,const Model::Skeleton& bind) {
                 for (size_t i=1;i<chain.particles.size();++i) {
                     const size_t a=chain.particles[i-1],b=chain.particles[i];
                     solver.constraints.push_back({a,b,Length(solver.particles[a].target-solver.particles[b].target),1});
+                    solver.collisionSegments.push_back({a,b,false});
                     if (i>1) {
                         const size_t c=chain.particles[i-2];
                         solver.constraints.push_back({c,b,Length(solver.particles[c].target-solver.particles[b].target),.25f});
@@ -78,14 +89,29 @@ bool ClothComponent::Load(const std::string& path,const Model::Skeleton& bind) {
                 group.chains.push_back(std::move(chain));
             }
             if (definition.value("closedRing",false)) {
+                // A coat can be ring-shaped in bone layout while its displayed
+                // mesh has an opening. Do not sew that opening shut with springs.
+                std::vector<bool> openEdges(group.chains.size(),false);
+                for(const auto& seam:definition.value("openSeams",nlohmann::json::array())) {
+                    if(!seam.is_array() || seam.size()!=2 || !seam[0].is_number_integer() || !seam[1].is_number_integer())
+                        throw std::runtime_error("Invalid open seam: "+group.name);
+                    const int a=seam[0].get<int>(),b=seam[1].get<int>();
+                    const int count=static_cast<int>(group.chains.size());
+                    if(a<0 || b<0 || a>=count || b>=count || a==b || ((a+1)%count!=b && (b+1)%count!=a))
+                        throw std::runtime_error("Open seam must join neighboring chains: "+group.name);
+                    openEdges[(a+1)%count==b ? a : b]=true;
+                }
                 for (size_t c=0;c<group.chains.size();++c) {
+                    if(openEdges[c]) continue;
                     const auto& a=group.chains[c]; const auto& b=group.chains[(c+1)%group.chains.size()];
                     for (size_t row=1;row<std::min(a.particles.size(),b.particles.size());++row) {
                         const size_t ia=a.particles[row],ib=b.particles[row];
                         solver.constraints.push_back({ia,ib,Length(solver.particles[ia].target-solver.particles[ib].target),.65f});
+                        solver.collisionSegments.push_back({ia,ib,true});
                     }
                 }
             }
+            solver.RebuildCollisionSamples();
             groups.push_back(std::move(group));
         }
         for (const auto& definition:config.at("colliders")) {
@@ -167,6 +193,8 @@ void ClothComponent::DrawImGui(const Matrix4x4& vp,const Vector2& lo,const Vecto
     ImGui::Checkbox("Collider display",&showColliders); ImGui::SameLine();
     ImGui::Checkbox("Particle display",&showParticles);
     ImGui::Checkbox("Constraint display",&showConstraints);
+    ImGui::Checkbox("Collision Sample display",&showCollisionSamples);
+    if (showCollisionSamples) ImGui::TextWrapped("Samples: purple = no contact, pink = pushed this update. Hollow = horizontal. Positions are interpolated from the corrected endpoints.");
     if (!error.empty()) ImGui::TextWrapped("Profile error: %s",error.c_str());
     for (auto& group:groups) {
         ImGui::PushID(group.name.c_str());
@@ -175,9 +203,15 @@ void ClothComponent::DrawImGui(const Matrix4x4& vp,const Vector2& lo,const Vecto
             ImGui::Checkbox("Enabled",&s.enabled);
             ImGui::DragFloat3("Gravity",&s.gravity.x,.1f,-30,30);
             ImGui::SliderFloat("Damping",&s.damping,0,1);
+            ImGui::Checkbox("Damp relative to animated pose",&s.dampingRelativeToAnimation);
+            ImGui::SliderFloat("Max swing angle",&s.maxSwingAngleDegrees,0,180,"%.0f deg");
             ImGui::SliderInt("Constraint iterations",&s.iterations,1,32);
             ImGui::SliderFloat("Stiffness / return",&s.stiffness,0,1);
+            ImGui::SliderInt("Samples per segment",&s.collisionSamplesPerSegment,0,8);
+            ImGui::DragFloat("Sample radius (world)",&s.collisionSampleRadius,.001f,0,.05f,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+            ImGui::Checkbox("Horizontal collision samples",&s.enableHorizontalCollisionSamples);
             ImGui::Text("%zu particles / %zu constraints / %zu contact projections",group.solver.particles.size(),group.solver.constraints.size(),group.solver.contacts);
+            ImGui::Text("%zu collision samples / %zu sample projections",group.solver.collisionSamples.size(),group.solver.sampleContacts);
             ImGui::TreePop();
         }
         ImGui::PopID();
@@ -209,6 +243,14 @@ void ClothComponent::DrawImGui(const Matrix4x4& vp,const Vector2& lo,const Vecto
     for(const auto& group:groups) {
         if(showConstraints) for(const auto& c:group.solver.constraints) line(group.solver.particles[c.a].position,group.solver.particles[c.b].position,IM_COL32(70,220,255,150));
         if(showParticles) for(const auto& p:group.solver.particles) { ImVec2 screen; if(project(p.position,screen)) draw->AddCircleFilled(screen,p.inverseMass==0 ? 4.0f : 2.5f,p.inverseMass==0 ? IM_COL32(255,210,20,255) : IM_COL32(100,255,130,255)); }
+        if(showCollisionSamples) for(const auto& sample:group.solver.collisionSamples) {
+            ImVec2 screen;
+            if(project(sample.position,screen)) {
+                const ImU32 color=sample.contacted ? IM_COL32(255,65,160,255) : IM_COL32(190,150,255,230);
+                if(sample.horizontal) draw->AddCircle(screen,3,color,8,1.5f);
+                else draw->AddCircleFilled(screen,3,color,8);
+            }
+        }
     }
     if(showColliders) for(const auto& binding:colliders) {
         const auto& c=binding.collider; if(!c.enabled) continue;

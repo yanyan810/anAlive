@@ -314,9 +314,10 @@ public:
 		return names;
 	}
 
+	size_t GetBoneDebugObjectCount() const { return boneMarkers_.size()+boneLinks_.size(); }
 	void SetDebugDrawBones(bool enable) { debugDrawBones_ = enable; }
 	void SetDebugDrawBoneJoints(bool enable) { debugDrawBoneJoints_ = enable; }
-	void SetBoneMarkerModel(const std::string& path) { boneMarkerModel_ = path; }
+	void SetBoneMarkerModel(const std::string& path) { if(boneMarkerModel_!=path) { boneMarkerModel_=path; boneMarkers_.clear(); boneLinks_.clear(); } }
 	void SetDebugBoneViewOffset(const Vector3& offset) { debugBoneViewOffset_ = offset; }
 	void SetDebugBoneMarkerScale(float scale) {
 		debugBoneMarkerScale_ = std::max(0.001f, scale);
@@ -343,6 +344,7 @@ public:
 	}
 
 private:
+	void EnsureBoneDebugObjects_();
 	std::unique_ptr<Animator> animator_;
 	PoseModifier poseModifier_;
 	std::unique_ptr<Object3dLight> light_;

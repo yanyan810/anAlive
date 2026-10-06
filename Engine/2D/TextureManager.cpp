@@ -1,4 +1,5 @@
-﻿#include "TextureManager.h"
+#include "../Utility/AssetCache.h"
+#include "TextureManager.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -66,158 +67,124 @@ void TextureManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager)
     }
 }
 
-void TextureManager::LoadTexture(const std::string& filePath)
-{
-    if (filePath.empty()) {
-        return;
-    }
-
-    if (textureDatas_.contains(filePath)) {
-        return;
-    }
-
-    std::string resolvedPath = filePath;
-    std::filesystem::path resolvedPathW(ConvertString(resolvedPath));
-    if (!std::filesystem::exists(resolvedPathW)) {
-        resolvedPath = "resources/" + filePath;
-        resolvedPathW = std::filesystem::path(ConvertString(resolvedPath));
-        if (!std::filesystem::exists(resolvedPathW)) {
-            DebugPrintA("[Texture] file not found: " + filePath + " (tried " + resolvedPath + ")");
-            return;
-        }
-    }
-
-    DirectX::ScratchImage image{};
-    std::wstring filePathW = resolvedPathW.wstring();
-
-    HRESULT hr = S_OK;
-
-    // 拡張子で分岐。PMXではTGAテクスチャがよく使われるため、
-    // WICではなくDirectXTexのTGAローダーへ明示的に振り分ける。
-    std::string extension = ConvertString(resolvedPathW.extension().wstring());
-    std::transform(extension.begin(), extension.end(), extension.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-    if (extension == ".dds") {
-        hr = DirectX::LoadFromDDSFile(
-            filePathW.c_str(),
-            DirectX::DDS_FLAGS_NONE,
-            nullptr,
-            image
-        );
-    }
-    else if (extension == ".tga") {
-        hr = DirectX::LoadFromTGAFile(
-            filePathW.c_str(),
-            nullptr,
-            image
-        );
-    }
-    else {
-        hr = DirectX::LoadFromWICFile(
-            filePathW.c_str(),
-            DirectX::WIC_FLAGS_FORCE_SRGB,
-            nullptr,
-            image
-        );
-    }
-    assert(SUCCEEDED(hr));
-
-    DirectX::ScratchImage mipImages{};
-
-    // 圧縮DDSはGenerateMipMapsが失敗しやすいのでそのまま使う
-    if (DirectX::IsCompressed(image.GetMetadata().format)) {
-        mipImages = std::move(image);
-    }
-    else {
-        hr = DirectX::GenerateMipMaps(
-            image.GetImages(),
-            image.GetImageCount(),
-            image.GetMetadata(),
-            DirectX::TEX_FILTER_SRGB,
-            0,
-            mipImages
-        );
-        if (FAILED(hr)) {
-            mipImages = std::move(image);
-        }
-    }
-
-    TextureData& tex = textureDatas_[filePath];
-
-    tex.metadata = mipImages.GetMetadata();
-    tex.resource = dx_->CreateTextureResource(tex.metadata);
-
-    dx_->UploadTextureData(tex.resource, mipImages);
-
-    tex.srvIndex = srvManager_->Allocate();
-    tex.srvHandleCPU = srvManager_->GetCPUDescriptionHandle(tex.srvIndex);
-    tex.srvHandleGPU = srvManager_->GetGPUDescriptionHandle(tex.srvIndex);
-
-    // cubemap かどうかで SRV を分ける
-    if (tex.metadata.IsCubemap()) {
-        srvManager_->CreateSRVTextureCube(
-            tex.srvIndex,
-            tex.resource.Get(),
-            tex.metadata.format,
-            static_cast<UINT>(tex.metadata.mipLevels)
-        );
-    }
-    else {
-        srvManager_->CreateSRVTexture2D(
-            tex.srvIndex,
-            tex.resource.Get(),
-            tex.metadata.format,
-            static_cast<UINT>(tex.metadata.mipLevels)
-        );
-    }
+namespace {
+bool LoadDerivedDDS(const std::filesystem::path& path,DirectX::ScratchImage& image) {
+    if(!AssetLoading::CacheEnabled()) return false;
+    AssetLoading::Timer timer("texture.cache-read",path.string());
+    std::vector<uint8_t> bytes;
+    return AssetLoading::LoadBlob(path,bytes) && SUCCEEDED(DirectX::LoadFromDDSMemory(bytes.data(),bytes.size(),DirectX::DDS_FLAGS_NONE,nullptr,image));
+}
+void SaveDerivedDDS(const std::filesystem::path& path,const DirectX::ScratchImage& image) {
+    if(!AssetLoading::CacheEnabled()) return;
+    AssetLoading::Timer timer("texture.cache-write",path.string());
+    DirectX::Blob blob;
+    if(SUCCEEDED(DirectX::SaveToDDSMemory(image.GetImages(),image.GetImageCount(),image.GetMetadata(),DirectX::DDS_FLAGS_NONE,blob)))
+        AssetLoading::SaveBlob(path,{static_cast<const uint8_t*>(blob.GetBufferPointer()),blob.GetBufferSize()});
+}
+void BuildMips(DirectX::ScratchImage& image,const std::string& key) {
+    if(DirectX::IsCompressed(image.GetMetadata().format) || image.GetMetadata().mipLevels>1) return;
+    AssetLoading::Timer timer("texture.mip-generation",key);
+    DirectX::ScratchImage mips;
+    if(SUCCEEDED(DirectX::GenerateMipMaps(image.GetImages(),image.GetImageCount(),image.GetMetadata(),DirectX::TEX_FILTER_SRGB,0,mips)))
+        image=std::move(mips);
+}
 }
 
+TextureManager::PreparedTexture TextureManager::PrepareFile(const std::string& filePath) {
+    if(filePath.empty()) return {};
+    AssetLoading::Timer total("texture.prepare-file",filePath);
+    std::string resolved=filePath;
+    auto path=AssetLoading::Path(resolved);
+    if(!std::filesystem::is_regular_file(path)) {
+        resolved="resources/"+filePath; path=AssetLoading::Path(resolved);
+        if(!std::filesystem::is_regular_file(path)) {
+            DebugPrintA("[Texture] file not found: "+filePath); return {};
+        }
+    }
+    const auto canonical=AssetLoading::Canonical(resolved);
+    std::filesystem::path cache;
+    if(AssetLoading::CacheEnabled()) {
+        try { cache=AssetLoading::CachePath("textures","dds-v1:"+AssetLoading::FileStamp(resolved),".ytex"); }
+        catch(const std::exception&) {}
+    }
+    DirectX::ScratchImage image;
+    if(cache.empty() || !LoadDerivedDDS(cache,image)) {
+        HRESULT hr=S_OK;
+        {
+            AssetLoading::Timer timer("texture.decode",filePath);
+            auto ext=path.extension().wstring(); std::transform(ext.begin(),ext.end(),ext.begin(),::towlower);
+            if(ext==L".dds") hr=DirectX::LoadFromDDSFile(path.c_str(),DirectX::DDS_FLAGS_NONE,nullptr,image);
+            else if(ext==L".tga") hr=DirectX::LoadFromTGAFile(path.c_str(),nullptr,image);
+            else hr=DirectX::LoadFromWICFile(path.c_str(),DirectX::WIC_FLAGS_FORCE_SRGB,nullptr,image);
+        }
+        if(FAILED(hr)) { DebugPrintA("[Texture] decode failed: "+filePath); return {}; }
+        BuildMips(image,filePath);
+        if(!cache.empty()) SaveDerivedDDS(cache,image);
+    }
+    return {filePath,canonical,std::make_shared<DirectX::ScratchImage>(std::move(image))};
+}
+void TextureManager::LoadTexture(const std::string& filePath) {
+    if(filePath.empty() || textureDatas_.contains(filePath)) return;
+    AssetLoading::Timer total("texture.total",filePath);
+    auto path=AssetLoading::Path(filePath);
+    if(!std::filesystem::is_regular_file(path)) path=std::filesystem::path("resources")/path;
+    if(std::filesystem::is_regular_file(path)) {
+        const auto canonical=AssetLoading::Canonical(StringUtility::ConvertString(path.wstring()));
+        if(auto it=textureDatas_.find(canonical);it!=textureDatas_.end()) { textureDatas_.emplace(filePath,it->second); return; }
+    }
+    RegisterPrepared(PrepareFile(filePath));
+}
+void TextureManager::RegisterPrepared(const PreparedTexture& prepared) {
+    if(prepared.key.empty() || !prepared.image || textureDatas_.contains(prepared.key)) return;
+    if(!prepared.canonical.empty()) {
+        if(auto it=textureDatas_.find(prepared.canonical);it!=textureDatas_.end()) { textureDatas_.emplace(prepared.key,it->second); return; }
+    }
+    RegisterImage_(prepared.key,*prepared.image);
+    if(!prepared.canonical.empty()) textureDatas_.emplace(prepared.canonical,textureDatas_.at(prepared.key));
+}
+std::unordered_set<std::string> TextureManager::GetResidentKeys() const {
+    std::unordered_set<std::string> keys;
+    for(const auto& pair:textureDatas_) keys.insert(pair.first);
+    return keys;
+}
+void TextureManager::RegisterImage_(const std::string& key,const DirectX::ScratchImage& image) {
+    AssetLoading::Timer timer("texture.upload-record",key);
+    TextureData tex;
+    tex.metadata=image.GetMetadata(); tex.resource=dx_->CreateTextureResource(tex.metadata);
+    dx_->UploadTextureData(tex.resource,image);
+    tex.srvIndex=srvManager_->Allocate();
+    tex.srvHandleCPU=srvManager_->GetCPUDescriptionHandle(tex.srvIndex);
+    tex.srvHandleGPU=srvManager_->GetGPUDescriptionHandle(tex.srvIndex);
+    if(tex.metadata.IsCubemap()) srvManager_->CreateSRVTextureCube(tex.srvIndex,tex.resource.Get(),tex.metadata.format,static_cast<UINT>(tex.metadata.mipLevels));
+    else srvManager_->CreateSRVTexture2D(tex.srvIndex,tex.resource.Get(),tex.metadata.format,static_cast<UINT>(tex.metadata.mipLevels));
+    textureDatas_.emplace(key,std::move(tex));
+}
 
 // TextureManager.cpp
 bool TextureManager::HasTexture(const std::string& key) const {
     return textureDatas_.contains(key);
 }
 
-void TextureManager::LoadTextureFromMemory(const std::string& key, const uint8_t* data, size_t sizeBytes)
-{
-    if (key.empty()) return;
-    if (textureDatas_.contains(key)) return;
-
-    DirectX::ScratchImage image{};
-    HRESULT hr = DirectX::LoadFromWICMemory(
-        data, sizeBytes,
-        DirectX::WIC_FLAGS_FORCE_SRGB,
-        nullptr,
-        image
-    );
-    if (FAILED(hr)) {
-        OutputDebugStringA(("[Texture] LoadFromWICMemory failed: " + key + "\n").c_str());
-        return;
+TextureManager::PreparedTexture TextureManager::PrepareMemory(const std::string& key,const uint8_t* data,size_t sizeBytes) {
+    if(key.empty() || !data || !sizeBytes) return {};
+    AssetLoading::Timer total("texture.prepare-embedded",key);
+    std::filesystem::path cache;
+    if(AssetLoading::CacheEnabled()) cache=AssetLoading::CachePath("textures","embedded-dds-v1:"+key+":"+std::to_string(AssetLoading::Hash({data,sizeBytes})),".ytex");
+    DirectX::ScratchImage image;
+    if(cache.empty() || !LoadDerivedDDS(cache,image)) {
+        HRESULT hr;
+        { AssetLoading::Timer timer("texture.decode-embedded",key);
+          hr=DirectX::LoadFromWICMemory(data,sizeBytes,DirectX::WIC_FLAGS_FORCE_SRGB,nullptr,image); }
+        if(FAILED(hr)) { DebugPrintA("[Texture] embedded decode failed: "+key); return {}; }
+        BuildMips(image,key);
+        if(!cache.empty()) SaveDerivedDDS(cache,image);
     }
-
-    DirectX::ScratchImage mipImages{};
-    hr = DirectX::GenerateMipMaps(
-        image.GetImages(), image.GetImageCount(), image.GetMetadata(),
-        DirectX::TEX_FILTER_SRGB, 0, mipImages
-    );
-    if (FAILED(hr)) mipImages = std::move(image);
-
-    TextureData& tex = textureDatas_[key];
-    tex.metadata = mipImages.GetMetadata();
-    tex.resource = dx_->CreateTextureResource(tex.metadata);
-    dx_->UploadTextureData(tex.resource, mipImages);
-
-    tex.srvIndex = srvManager_->Allocate();
-    tex.srvHandleCPU = srvManager_->GetCPUDescriptionHandle(tex.srvIndex);
-    tex.srvHandleGPU = srvManager_->GetGPUDescriptionHandle(tex.srvIndex);
-
-    srvManager_->CreateSRVTexture2D(
-        tex.srvIndex,
-        tex.resource.Get(),
-        tex.metadata.format,
-        (UINT)tex.metadata.mipLevels
-    );
+    return {key,{},std::make_shared<DirectX::ScratchImage>(std::move(image))};
+}
+void TextureManager::LoadTextureFromMemory(const std::string& key,const uint8_t* data,size_t sizeBytes) {
+    if(textureDatas_.contains(key)) return;
+    AssetLoading::Timer total("texture.total-embedded",key);
+    RegisterPrepared(PrepareMemory(key,data,sizeBytes));
 }
 
 

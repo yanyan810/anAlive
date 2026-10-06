@@ -4,6 +4,7 @@
 #include "Model.h"
 #include "ModelCommon.h"
 #include "DirectXCommon.h"
+#include <future>
 
 class ModelManager
 {
@@ -24,6 +25,9 @@ public:
 	/// </summary>
 	/// <param name="filePath">モデルファイルのパス</param>
 	void LoadModel(const std::string& filePath);
+	// Prepare CPU data in the background. GPU finalization stays on LoadModel's calling thread.
+	bool PreloadModel(const std::string& filePath);
+	bool IsModelPrepared(const std::string& filePath) const;
 
 	/// <summary>
 	/// モデルの検索
@@ -51,6 +55,9 @@ private:
 
 	//モデルデータ
 	std::map<std::string, std::unique_ptr<Model>> models;
+	std::map<std::string, std::future<Model::ModelData>> pending_;
+	mutable std::unordered_map<std::string,std::string> aliases_;
+	std::string ResolveKey_(const std::string& path) const;
 
 	ModelCommon* modelCommon = nullptr;
 

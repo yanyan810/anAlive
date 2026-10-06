@@ -1,3 +1,4 @@
+#include "ModelCache.h"
 #include "Model.h"
 #include <sstream>
 #include <assimp/Importer.hpp>
@@ -417,97 +418,51 @@ void Model::DebugValidateAnimationTracks_() const
 }
 
 
+Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const std::string& filename) {
+    const std::string path=AssetLoading::Canonical(directoryPath+"/"+filename);
+    const std::string sourceDirectory=StringUtility::ConvertString(AssetLoading::Path(path).parent_path().wstring());
+    ModelData data;
+    if(ModelCache::Load(path,data)) return data;
+    {
+        AssetLoading::Timer timer("model.import",path);
+        auto extension=AssetLoading::Path(filename).extension().wstring();
+        std::transform(extension.begin(),extension.end(),extension.begin(),::towlower);
+        if(extension==L".pmx") data=LoadPmxFile(path);
+        else if(extension==L".fbx" || extension==L".gltf" || extension==L".glb" || extension==L".obj" || extension==L".pmd") {
+            data=LoadAssimpFile(path);
+            if(filename=="anbi.glb") {
+                const auto pmx=LoadPmxFile(sourceDirectory+"/安比.pmx");
+                constexpr size_t offset=5;
+                for(size_t i=0;i<pmx.materials.size() && offset+i<data.materials.size();++i)
+                    data.materials[offset+i]=pmx.materials[i];
+                for(auto& mesh:data.meshes) if(mesh.materialIndex<offset) mesh.indexCount=0;
+            }
+        } else data=LoadObjFile(sourceDirectory,filename);
+    }
+    if(!data.animations.empty()) data.defaultAnimationName=data.animations.begin()->first;
+    ModelCache::Save(path,data);
+    return data;
+}
+
 void Model::Initialize(ModelCommon* modelCommon,
 	const std::string& directoryPath,
-	const std::string& filename)
+	const std::string& filename, std::optional<ModelData> prepared)
 {
 	OutputDebugStringA("[Model] Initialize start\n");
 
 	modelCommon_ = modelCommon;
 	DirectXCommon* dx = modelCommon_->GetDxCommon();
 
-	// ===== ここで拡張子判定 =====
-	std::filesystem::path p(StringUtility::ConvertString(filename));
-	std::string ext = StringUtility::ConvertString(p.extension().wstring());
-	for (auto& c : ext) c = (char)std::tolower(c);
-
-	std::string fullPath = directoryPath + "/" + filename;
-
-	// assimpで読む形式を増やす（fbx/gltf/glb/obj など）
-	const bool usePmx = (ext == ".pmx");
-	const bool useAssimp =
-		(ext == ".fbx" || ext == ".gltf" || ext == ".glb" || ext == ".obj" ||
-		 ext == ".pmd");
-
-	if (usePmx) {
-		OutputDebugStringA(("[Model] LoadPmxFile: " + fullPath + "\n").c_str());
-		modelData_ = LoadPmxFile(fullPath);
-		BuildNodeRuntime_();
-		skeleton_ = CreateSkeleton(modelData_.rootNode);
-		UpdateSkeleton(skeleton_);
-	}
-	else if (useAssimp) {
-		OutputDebugStringA(("[Model] LoadAssimpFile: " + fullPath + "\n").c_str());
-		modelData_ = LoadAssimpFile(fullPath);
-
-		// The converted GLB has the correct skeleton/physics geometry but no
-		// images. Slots 5..32 correspond exactly to 安比.pmx's 28 materials.
-		if (filename == "anbi.glb") {
-			ModelData pmxMaterials = LoadPmxFile(directoryPath + "/安比.pmx");
-			constexpr size_t kPmxMaterialOffset = 5;
-			for (size_t i = 0;
-				i < pmxMaterials.materials.size() &&
-				kPmxMaterialOffset + i < modelData_.materials.size();
-				++i) {
-				modelData_.materials[kPmxMaterialOffset + i] =
-					pmxMaterials.materials[i];
-			}
-
-			// Slots 0..4 are Blender mmd_tools' rigid-body visualization
-			// materials. Keep their nodes/bones available, but submit no
-			// triangles for those helper meshes.
-			for (auto& mesh : modelData_.meshes) {
-				if (mesh.materialIndex < kPmxMaterialOffset) {
-					mesh.indexCount = 0;
-				}
-			}
-		}
-
-		// ★ノード→描画インスタンス表を作る
-		BuildNodeRuntime_();
-
-		// ★ここでSkeletonを作る（Assimp形式のみ）
-		skeleton_ = CreateSkeleton(modelData_.rootNode);
-		UpdateSkeleton(skeleton_); // bind pose の skeletonSpace を初期計算（1回だけ）
-
-		// BuildNodeRuntime_();
-// skeleton_ = CreateSkeleton(...);
-// UpdateSkeleton(...);
-
-// ===== Anim channel name が Skeleton/NodeRuntime に存在するか検査 =====
-		for (const auto& [animName, clip] : modelData_.animations) {
-			for (const auto& [nodeName, na] : clip.nodeAnimations) {
-				bool exists =
-					skeleton_.jointMap.contains(nodeName) ||
-					nodeNameToIndex_.contains(nodeName); // nodeRuntime_ の name->index マップ
-
-				OutputDebugStringA(
-					(std::string("[AnimMap] anim='") + animName +
-						"' node='" + nodeName +
-						"'exists=" + (exists ? "1" : "0") + "\n").c_str()
-				);
-			}
-		}
-
-
-		//DebugValidateAnimationTracks_();
-	}
-	else {
-		// もし「OBJだけ別実装」を残したいならここに置く
-		OutputDebugStringA(("[Model] LoadObjFile: " + directoryPath + "/" + filename + "\n").c_str());
-		modelData_ = LoadObjFile(directoryPath, filename);
-	}
-
+    AssetLoading::Timer total("model.total",directoryPath+"/"+filename);
+    DirectXCommon::TextureUploadBatch uploads(dx);
+    modelData_=prepared ? std::move(*prepared) : ReadSourceData(directoryPath,filename);
+    {
+        AssetLoading::Timer timer("model.skeleton",directoryPath+"/"+filename);
+        BuildNodeRuntime_();
+        skeleton_=CreateSkeleton(modelData_.rootNode);
+        UpdateSkeleton(skeleton_);
+    }
+    AssetLoading::Timer finalize("model.buffers-materials-textures",directoryPath+"/"+filename);
 
 	// ======================
 	// AABB / Normal デバッグ（全Mesh走査）
@@ -682,6 +637,11 @@ void Model::Initialize(ModelCommon* modelCommon,
 	// ======================
 	// Texture load（materials 全部）
 	// ======================
+    AssetLoading::Timer textures("model.textures",directoryPath+"/"+filename);
+    for(const auto& t:modelData_.preparedTextures) TextureManager::GetInstance()->RegisterPrepared(t);
+    modelData_.preparedTextures.clear();
+    for(const auto& t:modelData_.embeddedTextures)
+        TextureManager::GetInstance()->LoadTextureFromMemory(t.key,t.bytes.data(),t.bytes.size());
 	for (const auto& m : modelData_.materials) {
 		if (!m.textureFilePath.empty()) {
 			TextureManager::GetInstance()->LoadTexture(m.textureFilePath);
@@ -1206,6 +1166,7 @@ Model::ModelData Model::LoadObjFile(
 
 	const aiScene* scene = importer.ReadFile(path, flags);
 	if (!scene || !scene->HasMeshes()) {
+        if(AssetLoading::profiling) { std::lock_guard lock(AssetLoading::profileMutex); AssetLoading::events.push_back({"model.import-error",path+":"+importer.GetErrorString(),0}); }
 		OutputDebugStringA(importer.GetErrorString());
 		OutputDebugStringA("\n");
 		assert(false && "Assimp ReadFile failed");
@@ -1699,10 +1660,10 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 		// ★ここに追加（絶対パス確認）
 		OutputDebugStringA(
 			("[Assimp] abs = " +
-				std::filesystem::absolute(fullPath).string() + "\n").c_str()
+				StringUtility::ConvertString(std::filesystem::absolute(AssetLoading::Path(fullPath)).wstring()) + "\n").c_str()
 		);
 
-		if (!std::filesystem::exists(fullPath)) {
+		if (!std::filesystem::exists(AssetLoading::Path(fullPath))) {
 			OutputDebugStringA("[Assimp] FILE NOT FOUND\n");
 			return out;
 		}
@@ -1710,7 +1671,7 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 
 
 	{
-		std::ifstream f(fullPath, std::ios::binary);
+		std::ifstream f(AssetLoading::Path(fullPath), std::ios::binary);
 		char magic[4]{};
 		if (f.read(magic, 4)) {
 			char buf[128];
@@ -1764,6 +1725,7 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 	catch (const std::exception& e) {
 		OutputDebugStringA("[Assimp] Exception in ReadFile\n");
 		OutputDebugStringA(e.what());
+        if(AssetLoading::profiling) { std::lock_guard lock(AssetLoading::profileMutex); AssetLoading::events.push_back({"model.import-error",fullPath+":"+e.what(),0}); }
 		OutputDebugStringA("\n");
 		return out; // ★必ず抜ける
 	}
@@ -1777,6 +1739,7 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 	}
 
 	if (!scene || !scene->HasMeshes()) {
+        if(AssetLoading::profiling) { std::lock_guard lock(AssetLoading::profileMutex); AssetLoading::events.push_back({"model.import-error",fullPath+":"+importer.GetErrorString(),0}); }
 		OutputDebugStringA(("[Assimp] ReadFile failed: " + std::string(importer.GetErrorString()) + "\n").c_str());
 		return out;
 	}
@@ -1790,8 +1753,8 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 	}
 
 	// --- directory (for texture paths) ---
-	std::filesystem::path p(fullPath);
-	std::string dir = p.parent_path().string();
+	auto p=AssetLoading::Path(fullPath);
+	std::string dir=StringUtility::ConvertString(p.parent_path().wstring());
 
 	// --- root node ---
 	if (scene->mRootNode) {
@@ -1840,9 +1803,9 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 					const size_t   size = static_cast<size_t>(emb->mWidth);
 
 					// ★キーは一意なら何でもOK（モデルごとに衝突しないよう dir を混ぜる）
-					std::string key = dir + "/__emb" + t;   // 例: ".../__emb*0"
+					std::string key = fullPath + "/__emb" + t;   // 例: ".../__emb*0"
 
-					TextureManager::GetInstance()->LoadTextureFromMemory(key, bytes, size);
+					out.embeddedTextures.push_back({key,std::vector<uint8_t>(bytes,bytes+size)});
 
 					out.materials[i].textureFilePath = key; // ★ここ重要：後段は key を使う
 				}

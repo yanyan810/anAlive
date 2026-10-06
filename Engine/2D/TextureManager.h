@@ -6,10 +6,21 @@
 #include <string>
 #include <wrl.h>
 #include <DirectXTex.h>
+#include <memory>
+#include <unordered_set>
 
 class TextureManager
 {
 public:
+    struct PreparedTexture {
+        std::string key,canonical;
+        std::shared_ptr<DirectX::ScratchImage> image;
+    };
+    // CPU-only preparation; the worker must initialize COM before using WIC.
+    static PreparedTexture PrepareFile(const std::string& path);
+    static PreparedTexture PrepareMemory(const std::string& key,const uint8_t* bytes,size_t size);
+    void RegisterPrepared(const PreparedTexture& prepared); // Render thread only.
+    std::unordered_set<std::string> GetResidentKeys() const;
     static TextureManager* GetInstance();
     void Finalize();
 
@@ -58,4 +69,5 @@ private:
 
     const TextureData& GetDataByPathOrWhite_(const std::string& filePath) const;
     TextureData& GetDataByPathOrWhite_(const std::string& filePath);
+    void RegisterImage_(const std::string& key, const DirectX::ScratchImage& image);
 };

@@ -45,5 +45,92 @@ int main() {
     contact.Update(1.0f/60,{capsule});
     assert(contact.contacts>0 && contact.particles[1].position.x>.05f);
     assert(Length(contact.particles[1].position-capsule.ClosestPoint(contact.particles[1].position))>=.314f);
-    std::cout<<"PASS: pinning, return, distance, sphere/axis/degenerate capsule collision, moving leg, enable reset, teleport, invalid dt, fixed timestep\n";
+    // Endpoints are outside the collider, but the interpolated surface is inside.
+    sphere.radius=.5f;
+    PhysicsParticle left,right;
+    left.position=left.previous=left.target={-1,.1f,0};
+    right.position=right.previous=right.target={1,.1f,0};
+    std::vector<PhysicsParticle> ends{left,right};
+    PhysicsCollisionSample sample; sample.a=0; sample.b=1; sample.t=.5f;
+    assert(!sphere.Project(ends[0]) && !sphere.Project(ends[1]));
+    assert(sample.Project(sphere,ends,.02f));
+    const auto center=(ends[0].position+ends[1].position)*.5f;
+    assert(Length(center)>=.5199f && sample.contacted);
+    assert(Length((ends[0].position-left.position)-(ends[1].position-right.position))<.0001f);
+    assert(Length(ends[0].position-ends[0].previous)<.0001f); // No correction-induced velocity.
+    // Off-center sample: endpoints receive the barycentric 3:1 ratio.
+    left.position=left.previous=left.target={-.5f,.1f,0};
+    right.position=right.previous=right.target={1.5f,.1f,0};
+    ends={left,right}; sample.t=.25f;
+    assert(sample.Project(sphere,ends,0));
+    assert(std::abs(Length(ends[0].position-left.position)/Length(ends[1].position-right.position)-3)<.0001f);
+    assert(Length(ends[0].position*.75f+ends[1].position*.25f)>=.4999f);
+    // Pinning renormalizes the movable endpoint rather than dropping half the correction.
+    left.inverseMass=0; ends={left,right};
+    assert(sample.Project(sphere,ends,0));
+    assert(Length(ends[0].position-left.position)==0 && Length(ends[0].previous-left.previous)==0);
+    assert(Length(ends[0].position*.75f+ends[1].position*.25f)>=.4999f);
+    ends[1].inverseMass=0; ends[1].position=right.position;
+    assert(!sample.Project(sphere,ends,0));
+    // The same segment mechanism applies to capsules, including an axis hit.
+    ends={PhysicsParticle{},PhysicsParticle{}};
+    ends[0].position=ends[0].previous=ends[0].target={-1,0,0};
+    ends[1].position=ends[1].previous=ends[1].target={1,0,0};
+    capsule.a={0,-1,0}; capsule.b={0,1,0}; capsule.radius=.4f; sample.t=.5f;
+    assert(sample.Project(capsule,ends,.01f));
+    const auto midpoint=(ends[0].position+ends[1].position)*.5f;
+    assert(Length(midpoint-capsule.ClosestPoint(midpoint))>=.4099f);
+    ClothSolver bridge; bridge.particles.resize(2);
+    bridge.particles[0].target={-1,0,0}; bridge.particles[1].target={1,0,0};
+    bridge.settings.gravity={0,0,0}; bridge.settings.stiffness=0;
+    bridge.settings.collisionSamplesPerSegment=1; bridge.settings.collisionSampleRadius=.01f;
+    bridge.collisionSegments={{0,1,false}};
+    capsule.previousA=capsule.a; capsule.previousB=capsule.b;
+    bridge.Update(1.0f/120,{capsule});
+    assert(bridge.sampleContacts>0 && bridge.contacts==0);
+    const auto bridgeCenter=(bridge.particles[0].position+bridge.particles[1].position)*.5f;
+    assert(Length(bridgeCenter-capsule.ClosestPoint(bridgeCenter))>=.4099f);
+    // Generation includes only selected segments, never the bending diagonals.
+    auto sampled=Chain(); sampled.collisionSegments={{0,1,false},{0,1,true}};
+    sampled.settings.collisionSamplesPerSegment=2; sampled.RebuildCollisionSamples();
+    assert(sampled.collisionSamples.size()==2);
+    assert(std::abs(sampled.collisionSamples[0].t-1.0f/3)<.0001f);
+    sampled.settings.enableHorizontalCollisionSamples=true; sampled.Update(0,{});
+    assert(sampled.collisionSamples.size()==4 && sampled.collisionSamples[2].horizontal);
+    sampled.settings.collisionSamplesPerSegment=3; sampled.Update(0,{});
+    assert(sampled.collisionSamples.size()==6);
+    sampled.settings.enabled=false; sampled.Update(1.0f/60,{capsule});
+    assert(sampled.sampleContacts==0);
+    // Zero samples is numerically identical to the previous solver, even with segment topology present.
+    auto legacy=Chain(),compatible=Chain(); compatible.collisionSegments={{0,1,false}};
+    for(int i=0;i<120;++i) { legacy.Update(1.0f/60,{capsule}); compatible.Update(1.0f/60,{capsule}); }
+    assert(Length(legacy.particles[1].position-compatible.particles[1].position)==0);
+    // Uniform reference-frame translation must not create artificial drag.
+    ClothSolver translated; translated.particles.resize(1);
+    translated.settings.gravity={0,0,0}; translated.settings.stiffness=0;
+    translated.settings.damping=.5f; translated.settings.dampingRelativeToAnimation=true;
+    translated.Reset(); translated.particles[0].previous={-.01f,0,0};
+    for(int frame=1;frame<=120;++frame) {
+        translated.particles[0].target={frame*.01f,0,0};
+        translated.Update(1.0f/120,{});
+        assert(Length(translated.particles[0].position-translated.particles[0].target)<.00001f);
+    }
+    // Accelerating the reference still leaves inertia; it does not teleport the particle.
+    translated.particles[0].target.x+=.03f;
+    translated.Update(1.0f/120,{});
+    assert(translated.particles[0].position.x<translated.particles[0].target.x-.005f);
+    auto limited=Chain(); limited.settings.gravity={0,0,0}; limited.settings.stiffness=0;
+    limited.settings.maxSwingAngleDegrees=20; limited.collisionSegments={{0,1,false}};
+    limited.particles[1].position=limited.particles[1].previous={1,0,0};
+    limited.Update(1.0f/120,{});
+    assert(Length(limited.particles[0].position)==0 && std::abs(Length(limited.particles[1].position)-1)<.0001f);
+    assert(limited.particles[1].position.y<-.939f && std::abs(limited.particles[1].position.x)<.343f);
+    assert(Length(limited.particles[1].position-limited.particles[1].previous)<.0001f);
+    // The cone follows the animated direction rather than a world-space axis.
+    limited.particles[1].target={-1,0,0}; limited.Update(1.0f/120,{});
+    assert(limited.particles[1].position.x<-.939f && std::abs(limited.particles[1].position.y)<.343f);
+    limited.particles[1].target={0,-1,0}; limited.particles[1].position=limited.particles[1].previous={0,1,0};
+    limited.Update(1.0f/120,{});
+    assert(std::isfinite(limited.particles[1].position.x) && limited.particles[1].position.y<-.939f);
+    std::cout<<"PASS: legacy cloth, segment contacts, fixed endpoints, velocity history, configurable samples, compatibility, moving-frame damping, acceleration inertia, animated swing limits and antiparallel axes\n";
 }

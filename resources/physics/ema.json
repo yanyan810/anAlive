@@ -108,6 +108,15 @@
           "Skt_4_11",
           "Skt_5_11"
         ]
+      ],
+      "collisionSamplesPerSegment": 2,
+      "collisionSampleRadius": 0.025,
+      "enableHorizontalCollisionSamples": true,
+      "openSeams": [
+        [
+          0,
+          1
+        ]
       ]
     },
     {
@@ -185,28 +194,28 @@
       "shape": "Capsule",
       "start": "左足D",
       "end": "左ひざD",
-      "radius": 0.63
+      "radius": 0.65
     },
     {
       "name": "LeftLowerLeg",
       "shape": "Capsule",
       "start": "左ひざD",
       "end": "左足首D",
-      "radius": 0.43
+      "radius": 0.48
     },
     {
       "name": "RightUpperLeg",
       "shape": "Capsule",
       "start": "右足D",
       "end": "右ひざD",
-      "radius": 0.63
+      "radius": 0.65
     },
     {
       "name": "RightLowerLeg",
       "shape": "Capsule",
       "start": "右ひざD",
       "end": "右足首D",
-      "radius": 0.43
+      "radius": 0.48
     },
     {
       "name": "Torso",
@@ -225,6 +234,73 @@
         0
       ],
       "radius": 0.82
+    },
+    {
+      "name": "Hip",
+      "shape": "Sphere",
+      "start": "下半身",
+      "startOffset": [
+        0,
+        -0.2,
+        0
+      ],
+      "radius": 0.9
+    },
+    {
+      "name": "LeftDrawer",
+      "shape": "Capsule",
+      "start": "左足D",
+      "end": "左足D",
+      "startOffset": [
+        -0.12,
+        -0.85,
+        0
+      ],
+      "endOffset": [
+        -0.12,
+        -1.55,
+        0
+      ],
+      "radius": 1.05
+    },
+    {
+      "name": "RightDrawer",
+      "shape": "Capsule",
+      "start": "右足D",
+      "end": "右足D",
+      "startOffset": [
+        0.12,
+        -0.85,
+        0
+      ],
+      "endOffset": [
+        0.12,
+        -1.55,
+        0
+      ],
+      "radius": 1.05
+    },
+    {
+      "name": "LeftDrawerTop",
+      "shape": "Sphere",
+      "start": "左足D",
+      "startOffset": [
+        -0.1,
+        -0.4,
+        0
+      ],
+      "radius": 0.93
+    },
+    {
+      "name": "RightDrawerTop",
+      "shape": "Sphere",
+      "start": "右足D",
+      "startOffset": [
+        0.1,
+        -0.4,
+        0
+      ],
+      "radius": 0.93
     }
   ]
 }

@@ -4,6 +4,7 @@
 #include "scene/Main/GameScene.h"
 #include "ImGuiManagaer.h"
 #include "DirectXTex.h"
+#include "DebugJsonEditor.h"
 #include <fstream>
 #include <stdexcept>
 
@@ -22,6 +23,35 @@ inline void RunTitleSceneTests(GameApp& app) {
     fade.Reset(); check(fade.Alpha()==0,"Fade reset");
     auto* title = dynamic_cast<TitleScene*>(app.Scenes().Current());
     check(title && title->ready_, "Title layout failed to load");
+    const auto lighting = title->lighting_;
+    check(TitleLighting::FromJson(lighting.ToJson()).ToJson()==lighting.ToJson(),"Lighting JSON round trip");
+    auto invalidLight=lighting.ToJson();
+    invalidLight["spots"]["Enemy"]["direction"]={0,0,0};
+    bool rejected=false;
+    try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
+    check(rejected,"Zero spot direction accepted");
+    invalidLight=lighting.ToJson();
+    invalidLight["spots"]["GAME START"]["innerAngleDegrees"]=90;
+    rejected=false;
+    try { (void)TitleLighting::FromJson(invalidLight); } catch (const std::exception&) { rejected=true; }
+    check(rejected,"Invalid spot cone accepted");
+    const std::string tuningPath="generated/title-tests/lighting-save.json";
+    { std::ofstream file(tuningPath); file<<lighting.ToJson().dump(2); }
+    DebugJsonEditor editor;
+    check(editor.Open(tuningPath),"Lighting editor open");
+    editor.document["spots"]["GAME START"]["intensity"]=.75f;
+    const auto validate=[](const std::string& path) -> std::string {
+        try { (void)TitleLighting::Load(path); return {}; }
+        catch (const std::exception& e) { return e.what(); }
+    };
+    check(editor.Save(validate) && TitleLighting::Load(tuningPath).spots[2].intensity==.75f &&
+        std::filesystem::exists(tuningPath+".debug-backup"),"Lighting save/reload/backup");
+    editor.document["spots"]["Enemy"]["distance"]=-1;
+    check(!editor.Save(validate) && TitleLighting::Load(tuningPath).spots[1].distance==lighting.spots[1].distance,
+        "Invalid lighting save replaced valid settings");
+    editor.document=lighting.ToJson();
+    { std::ofstream file(tuningPath,std::ios::app); file<<'\n'; }
+    check(!editor.Save(validate),"Lighting save overwrote external edit");
     const auto capture=[&](const wchar_t* path, bool expectBlack=false) {
 #ifdef USE_IMGUI
         app.ImGui()->Begin();
@@ -50,7 +80,28 @@ inline void RunTitleSceneTests(GameApp& app) {
         }
         check(SUCCEEDED(DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
             DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path)),"Title PNG failed");
+        uint64_t energy=0;
+        const auto* pixels=image.GetImage(0,0,0);
+        for (size_t y=0;y<pixels->height;++y) for (size_t x=0;x<pixels->width;++x) {
+            const auto* p=pixels->pixels+y*pixels->rowPitch+x*4;
+            energy+=static_cast<uint64_t>(p[0])+p[1]+p[2];
+        }
+        return energy;
     };
+    auto fillOnly=lighting;
+    for (auto& spot : fillOnly.spots) spot.intensity=0;
+    fillOnly.Apply(title->sceneLight_);
+    const auto fillEnergy=capture(L"generated/title-tests/title-fill-only.png");
+    const std::array<const wchar_t*,3> lightImages{L"generated/title-tests/title-unalive-light.png",
+        L"generated/title-tests/title-enemy-light.png",L"generated/title-tests/title-start-light.png"};
+    for (size_t i=0;i<lighting.spots.size();++i) {
+        auto single=fillOnly;
+        single.spots[i]=lighting.spots[i];
+        single.spots[i].intensity=1; // Test each GPU slot even if user tuning has disabled it.
+        single.Apply(title->sceneLight_);
+        check(capture(lightImages[i])>fillEnergy+100,"Spot GPU slot did not illuminate the scene");
+    }
+    lighting.Apply(title->sceneLight_);
     capture(L"generated/title-tests/title.png");
     check(title->enemies_.size()==2 && title->startTarget_->CaptureDebug().parts.size()==1,"Title prototype objects");
     check(title->player_.IsMovementEnabled(),"Title WASD movement disabled");
@@ -145,6 +196,9 @@ inline void RunTitleSceneTests(GameApp& app) {
     app.Scenes().Update(app,0);
     auto* game=dynamic_cast<GameScene*>(app.Scenes().Current());
     check(game && game->stageLoaded_ && app.Scenes().CurrentName()=="Game" && app.Scenes().Fade().Alpha()==1,"Stage01 did not enter fully black");
+    check(app.Render()->GetOffscreen()->GetClearColor().x==title->savedClearColor_.x &&
+        app.Render()->GetOffscreen()->GetClearColor().y==title->savedClearColor_.y &&
+        app.Render()->GetOffscreen()->GetClearColor().z==title->savedClearColor_.z,"Title background color leaked into GameScene");
     app.Scenes().Update(app,1);
     check(app.Scenes().Fade().Alpha()==1 && game->stage_.Time()==0,"Multiple updates skipped incoming black frame");
     capture(L"generated/title-tests/game-black.png",true);
@@ -165,6 +219,6 @@ inline void RunTitleSceneTests(GameApp& app) {
     check(app.Scenes().TransitionTo("Title",0,0),"Common transition cannot target another scene");
     app.Scenes().Change(app,"Title");
     check(!app.Scenes().IsTransitioning() && app.Scenes().Fade().Alpha()==0,"Immediate Change left stale fade");
-    std::ofstream("generated/title-tests/result.txt") << "PASS: title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
+    std::ofstream("generated/title-tests/result.txt") << "PASS: lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
 }
 

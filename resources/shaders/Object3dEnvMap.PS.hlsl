@@ -39,20 +39,7 @@ struct PointLight
     float2 _pad;
 };
 
-struct SpotLight
-{
-    float4 color;
-    float3 position;
-    float intensity;
-
-    float3 direction;
-    float distance;
-
-    float decay;
-    float cosAngle;
-    float cosFalloffStart;
-    float pad;
-};
+#include "SpotLighting.hlsli"
 
 struct EffectParam {
     // Outline
@@ -81,7 +68,6 @@ ConstantBuffer<Material> gMaterial : register(b0);
 ConstantBuffer<DirectionalLight> gDirectionalLight : register(b1);
 ConstantBuffer<Camera> gCamera : register(b2);
 ConstantBuffer<PointLight> gPointLight : register(b3);
-ConstantBuffer<SpotLight> gSpotLight : register(b4);
 ConstantBuffer<EffectParam> gEffect : register(b5);
 
 // =====================
@@ -165,36 +151,9 @@ PixelShaderOutput main(VertexShaderOutput input)
     // ---------------------
     // Spot
     // ---------------------
-    float3 toS = gSpotLight.position - input.worldPosition;
-    float distS = max(length(toS), 0.001f);
-    float3 Ls = toS / distS;
-
-    float ts = saturate(1.0f - distS / max(gSpotLight.distance, 0.001f));
-    float attenS = pow(ts, gSpotLight.decay);
-
-    float3 dirOnSurface = normalize(input.worldPosition - gSpotLight.position);
-    float3 spotAxis = normalize(gSpotLight.direction);
-    float cosTheta = dot(dirOnSurface, spotAxis);
-
-    float denom = max(gSpotLight.cosFalloffStart - gSpotLight.cosAngle, 1e-6f);
-    float falloff = saturate((cosTheta - gSpotLight.cosAngle) / denom);
-
-    float diffS =
-        (gMaterial.enableLighting == 2)
-        ? pow(dot(N, Ls) * 0.5f + 0.5f, 2.0f)
-        : saturate(dot(N, Ls));
-
-    float3 spotCol =
-        gSpotLight.color.rgb *
-        gSpotLight.intensity *
-        attenS *
-        falloff;
-
-    float3 diffuseS = gMaterial.color.rgb * texColor.rgb * spotCol * diffS;
-
-    float3 Hs = normalize(Ls + V);
-    float specS = pow(saturate(dot(N, Hs)), max(gMaterial.shininess, 1.0f));
-    float3 specularS = spotCol * specS;
+    float3 diffuseS, specularS;
+    CalculateSpotLighting(input.worldPosition, N, V, gMaterial.color.rgb * texColor.rgb,
+        gMaterial.enableLighting, gMaterial.shininess, diffuseS, specularS);
 
     // ---------------------
     // Environment Map

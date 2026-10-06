@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "directional": {
+    "direction": [0.25, -1.0, 0.5],
+    "color": [1.0, 1.0, 1.0],
+    "intensity": 0.22
+  },
+  "spots": {
+    "UNALIVE": {
+      "position": [-3.2, 9.0, 6.0],
+      "direction": [0.0, -2.9, 7.7],
+      "color": [1.0, 1.0, 1.0],
+      "intensity": 0.9,
+      "distance": 24.0,
+      "decay": 1.5,
+      "outerAngleDegrees": 46.0,
+      "innerAngleDegrees": 32.0,
+      "specularStrength": 0.12
+    },
+    "Enemy": {
+      "position": [-6.5, 4.8, 6.5],
+      "direction": [2.5, -3.8, 4.0],
+      "color": [1.0, 1.0, 1.0],
+      "intensity": 1.1,
+      "distance": 20.0,
+      "decay": 1.5,
+      "outerAngleDegrees": 23.0,
+      "innerAngleDegrees": 15.0,
+      "specularStrength": 0.12
+    },
+    "GAME START": {
+      "position": [5.0, 5.4, 1.5],
+      "direction": [0.0, -3.7, 9.1],
+      "color": [1.0, 1.0, 1.0],
+      "intensity": 2.2,
+      "distance": 26.0,
+      "decay": 1.5,
+      "outerAngleDegrees": 32.0,
+      "innerAngleDegrees": 25.0,
+      "specularStrength": 0.12
+    }
+  }
+}

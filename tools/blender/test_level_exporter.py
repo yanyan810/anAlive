@@ -101,6 +101,24 @@ for collider in output['colliders']:
         assert abs(mesh_min[i]-min(p[i] for p in corners))<1e-4
         assert abs(mesh_max[i]-max(p[i] for p in corners))<1e-4
 
+# Blender's file browser may leave its process working directory inside the output.
+# Windows then forbids renaming that directory until the exporter releases its lock.
+original_directory = Path.cwd()
+authoring = out/'authoring'
+authoring.mkdir(exist_ok=True)
+author_file = authoring/'notes.txt'
+author_file.write_text('Preserve unrelated author files', encoding='utf-8')
+try:
+    for working_directory in (out, authoring):
+        e.os.chdir(working_directory)
+        e.export_level(ctx)
+        assert Path.cwd() == working_directory
+        assert author_file.read_text(encoding='utf-8') == 'Preserve unrelated author files'
+        assert ctx.window.scene == source_scene
+finally:
+    e.os.chdir(original_directory)
+
+
 def fingerprints():
     return {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.is_file()}
 before=fingerprints()
@@ -122,10 +140,15 @@ def fail_second(source,destination):
     return original(source,destination)
 e.os.replace=fail_second
 try:
+    e.os.chdir(authoring)
     try: e.export_level(ctx)
     except OSError: pass
     else: raise AssertionError('Expected injected failure')
-finally: e.os.replace=original
+    assert Path.cwd() == authoring
+    assert author_file.read_text(encoding='utf-8') == 'Preserve unrelated author files'
+finally:
+    e.os.replace=original
+    e.os.chdir(original_directory)
 assert before==fingerprints() and ctx.window.scene==source_scene
 # Verify .blend property persistence and registration lifecycle.
 blend=root/'generated/blender-tests/properties.blend'

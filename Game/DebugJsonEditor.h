@@ -1,5 +1,5 @@
 #pragma once
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(USE_IMGUI)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

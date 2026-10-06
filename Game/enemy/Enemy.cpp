@@ -560,18 +560,32 @@ void Enemy::DrawExplosion() {
     explosionVisual_->Draw();
 }
 
+void Enemy::ApplySceneLight(Object3d& object) {
+    object.SetSceneLight(sceneLight_);
+    if (sceneLight_) object.SetEnableLighting(2); // Soft fill while retaining the spot's directional shading.
+}
+
 void Enemy::Draw(bool showMarker) {
     if (showMarker && typeMarker_ && !IsDead()) typeMarker_->Draw();
     DrawFaces();
-    for (auto& detached : detachedParts_) detached.object->Draw();
+    for (auto& detached : detachedParts_) {
+        ApplySceneLight(*detached.object);
+        detached.object->Draw();
+    }
     if (!splitVisuals_) {
-        if (!IsDead()) (fallbackVisual_ ? *fallbackVisual_ : object_).Draw();
+        if (!IsDead()) {
+            auto& visual = fallbackVisual_ ? *fallbackVisual_ : object_;
+            ApplySceneLight(visual);
+            visual.Draw();
+        }
         return;
     }
     for (size_t i = 0; i < visuals_.size(); ++i) {
         const auto& visual = visuals_[i];
-        if (visual.object && visual.visible && parts_[i].DamageState() != EnemyPartDamageState::Destroyed)
+        if (visual.object && visual.visible && parts_[i].DamageState() != EnemyPartDamageState::Destroyed) {
+            ApplySceneLight(*visual.object);
             visual.object->Draw();
+        }
     }
 }
 
@@ -878,6 +892,7 @@ void Enemy::DrawFaces() {
     for (;index<kFaceCapacity*6;++index) faceModel_->UpdateVertexPosition(index,{});
     // Vertices are world-space, but WVP must follow the current FPS camera every frame.
     faceBatch_->Update(0);
+    ApplySceneLight(*faceBatch_);
     faceBatch_->Draw();
 }
 

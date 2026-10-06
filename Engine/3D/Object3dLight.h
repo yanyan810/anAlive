@@ -2,6 +2,7 @@
 #include "MathStruct.h"
 #include "DirectXCommon.h"
 #include <wrl.h>
+#include <array>
 
 class Object3dLight {
 public:
@@ -29,8 +30,11 @@ public:
 		float decay;
 		float cosAngle;
 		float cosFalloffStart;
-		float padding[2];
+		float specularStrength;
 	};
+	static constexpr size_t kMaxSpotLights = 3;
+	static_assert(sizeof(SpotLight) == 64, "SpotLight must match the HLSL array stride");
+	using SpotLights = std::array<SpotLight, kMaxSpotLights>;
 
 public:
 	void Initialize(DirectXCommon* dx);
@@ -66,6 +70,8 @@ public:
 	void SetSpotLightCosFalloffStart(float c) { if (spotLightData_) spotLightData_->cosFalloffStart = c; }
 
 	ID3D12Resource* GetSpotLightResource() const { return spotLightResource_.Get(); }
+	// The legacy setters above continue to edit slot 0; unused slots remain off.
+	void SetSpotLights(const SpotLights& lights) { if (spotLightData_) *spotLightArrayData_ = lights; }
 
 private:
 	DirectXCommon* dx_ = nullptr;
@@ -78,4 +84,5 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> spotLightResource_;
 	SpotLight* spotLightData_ = nullptr;
+	SpotLights* spotLightArrayData_ = nullptr;
 };

@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 7, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 7, 1),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -308,6 +308,31 @@ def export_start_head(obj, filepath):
     filepath.write_text(json.dumps(data, separators=(',', ':'), allow_nan=False), encoding='utf-8')
 
 
+def publish_level(scratch, target):
+    """Release Blender's own Windows directory lock while swapping the output."""
+    backup = target.with_name(f'.{target.name}-backup-{uuid.uuid4().hex}')
+    previous_directory = Path.cwd()
+    relocate = previous_directory == target or target in previous_directory.parents
+    try:
+        if relocate:
+            os.chdir(target.parent)
+        # Publish the entire dependency set together, with rollback on rename failure.
+        if target.exists():
+            os.replace(target, backup)
+        try:
+            os.replace(scratch, target)
+        except Exception:
+            if backup.exists():
+                os.replace(backup, target)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+    finally:
+        # A failed rollback must retain its original error and recovery backup.
+        if relocate and previous_directory.is_dir():
+            os.chdir(previous_directory)
+
+
 def export_level(context):
     if context.mode != 'OBJECT':
         raise ValueError("Switch to Object Mode before export")
@@ -318,7 +343,6 @@ def export_level(context):
     target.parent.mkdir(parents=True, exist_ok=True)
     scratch = target.with_name(f'.{target.name}-export-{uuid.uuid4().hex}')
     scratch.mkdir()
-    backup = target.with_name(f'.{target.name}-backup-{uuid.uuid4().hex}')
     temporary_scene = None
     source_scene = context.window.scene
     try:
@@ -366,17 +390,7 @@ def export_level(context):
                 if re.fullmatch(r'start_\d{2,3}\.(gltf|bin)', old_file.name):
                     old_file.unlink()
         (scratch / f"{data['stage']['id']}.json").write_text(json.dumps(data, indent=2, allow_nan=False)+'\n', encoding='utf-8')
-        # Publish the entire dependency set together, with rollback on rename failure.
-        if target.exists():
-            os.replace(target, backup)
-        try:
-            os.replace(scratch, target)
-        except Exception:
-            if backup.exists():
-                os.replace(backup, target)
-            raise
-        if backup.exists():
-            shutil.rmtree(backup)
+        publish_level(scratch, target)
         return target
     finally:
         context.window.scene = source_scene

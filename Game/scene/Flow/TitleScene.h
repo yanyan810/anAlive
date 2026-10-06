@@ -8,6 +8,10 @@
 #include "BulletManager.h"
 #include "TitleStartSequence.h"
 #include "Sprite.h"
+#include "TitleLighting.h"
+#ifdef USE_IMGUI
+#include "DebugJsonEditor.h"
+#endif
 
 class TitleScene : public IScene {
 public:
@@ -16,6 +20,7 @@ public:
     void Update(GameApp& app, float dt) override;
     void DrawRender(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
+    void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
 private:
 #ifdef _DEBUG
@@ -25,6 +30,14 @@ private:
     void SpawnEnemy();
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void UpdateWorld(GameApp& app, float dt, bool controls);
+    void LoadLighting();
+    TitleLighting lighting_;
+    Object3dLight sceneLight_;
+    std::string lightingStatus_;
+    Vector4 savedClearColor_{};
+#ifdef USE_IMGUI
+    DebugJsonEditor lightingEditor_;
+#endif
     Camera camera_;
     Player player_;
     StageLoader level_;

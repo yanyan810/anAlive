@@ -596,6 +596,7 @@
     <ClInclude Include="Game\enemy\EnemyProjectile.h" />
     <ClInclude Include="Game\enemy\EnemyAI.h" />
     <ClInclude Include="Game\StageLoader.h" />
+    <ClInclude Include="Game\TitleLighting.h" />
     <ClInclude Include="Game\DebugTimeline.h" />
     <ClInclude Include="Game\scene\Main\ShowroomScene.h" />
     <ClInclude Include="Game\DebugJsonEditor.h" />

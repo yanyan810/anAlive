@@ -21,6 +21,14 @@ DirectionalにはDirection / Color / Intensity / Ambient Fillがあります。�
 
 初期IntensityはDirectional **0.22**、UNALIVE **0.9**、Enemy **1.1**、GAME START **2.2**です。背景を暗く保ち、GAME STARTとSHOOT TO STARTを優先して照らします。
 
+## 破壊時の消灯
+
+UNALIVEの破壊時はUNALIVEのSpot、Enemyの死亡時はEnemyのSpotを、そのフレームから消灯します。GAME STARTとSHOOT TO STARTは1つのSpotを共有しているため、どちらかを破壊するとGAME STARTのSpotが消え、もう一方と台座への照射も止まります。Enemyの部位にダメージを与えただけの場合は消灯しません。
+
+破片が消えた後も、文字が破壊されたままなら消灯を維持します。点滅やライトの再読み込みで再点灯することはありません。Enemyが再出現した場合、文字をRestoreした場合、爆散Previewが終了して文字が復元された場合は、そのSpotを設定済みの明るさ・点滅状態に戻します。共有Spotは、もう一方の文字が破壊されている間は消灯を維持します。次回のタイトル画面では破壊状態もリセットされます。
+
+消灯は描画用のIntensityだけに適用します。Save Lightingで保存するIntensity、Directional Light、Ambient Fillは変わりません。
+
 ## ランプの点滅
 
 UNALIVEとGAME STARTのSpotには、接触不良のランプのように不規則に消灯・再点灯する演出を追加しています。SHOOT TO STARTと台座もGAME STARTのSpotで照らされるため、一緒に暗くなります。初期設定は2.5～6秒点灯した後、0.04～0.12秒の消灯を3回繰り返す短い点滅です。点滅中の再点灯は0.06～0.16秒で、ライトごとに独立したタイミングを使います。EnemyのSpotは初期状態で点滅OFFです。

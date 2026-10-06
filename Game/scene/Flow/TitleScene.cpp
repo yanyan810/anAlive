@@ -10,7 +10,27 @@ namespace { constexpr int kCapturedMouseFlags = ImGuiConfigFlags_NoMouse | ImGui
 
 namespace {
     constexpr const char* kTitlePath = "resources/levels/title/title.json";
+    constexpr const char* kLightingPath = "resources/levels/title/title_lighting.json";
 
+}
+
+void TitleScene::LoadLighting() {
+    try {
+#ifdef USE_IMGUI
+        DebugJsonEditor editor;
+        if (!editor.Open(kLightingPath)) throw std::runtime_error(editor.error);
+        const auto settings = TitleLighting::FromJson(editor.document);
+        lightingEditor_ = std::move(editor);
+#else
+        const auto settings = TitleLighting::Load(kLightingPath);
+#endif
+        lighting_ = settings;
+        lightingStatus_ = "Loaded title_lighting.json";
+    } catch (const std::exception& e) {
+        lightingStatus_ = std::string("Lighting load error: ")+e.what();
+        OutputDebugStringA((lightingStatus_+"\n").c_str());
+    }
+    lighting_.Apply(sceneLight_);
 }
 
 bool TitleScene::LoadLayout() {
@@ -47,6 +67,8 @@ bool TitleScene::LoadLayout() {
 }
 
 void TitleScene::OnEnter(GameApp& app) {
+    savedClearColor_ = app.Render()->GetOffscreen()->GetClearColor();
+    app.Render()->GetOffscreen()->SetClearColor({.008f,.01f,.016f,1});
     auto& input = *app.GetInput();
     input.SetCameraControlEnabled(false);
     input.SetCameraToggleKeyEnabled(false);
@@ -63,6 +85,9 @@ void TitleScene::OnEnter(GameApp& app) {
         SetWindowTextW(app.Win()->GetHwnd(), L"Title asset error - resources/levels/title/title.json");
         return;
     }
+    sceneLight_.Initialize(app.Dx());
+    lighting_ = TitleLighting{};
+    LoadLighting();
     camera_.SetFovY(std::numbers::pi_v<float>/3);
     camera_.Update();
     app.ObjCom()->SetDefaultCamera(&camera_);
@@ -80,13 +105,13 @@ void TitleScene::OnEnter(GameApp& app) {
     startTarget_ = std::make_unique<Enemy>();
     startTarget_->PrepareForPool(app.ObjCom(),app.Dx(),&camera_,startDefinition_);
     startTarget_->ResetForSpawn(nextEnemyId_++,"GAME_START",{},{});
+    startTarget_->SetSceneLight(&sceneLight_);
     enemies_.push_back(startTarget_.get());
     environment_.Initialize(app.ObjCom(),app.Dx());
     environment_.SetCamera(&camera_);
     environment_.SetModel(level_.model); environment_.StopAnimation();
-    environment_.SetDirection({.3f,-1,.5f});
-    environment_.SetEnableLighting(1); environment_.SetIntensity(1.0f);
-    environment_.SetPointLightIntensity(0); environment_.SetSpotLightIntensity(0);
+    environment_.SetSceneLight(&sceneLight_);
+    environment_.SetEnableLighting(2);
     environment_.Update(0);
     const float width = static_cast<float>(WinApp::kClientWidth), height = static_cast<float>(WinApp::kClientHeight);
     uiView_ = Matrix4x4::MakeIdentity4x4();
@@ -106,6 +131,7 @@ void TitleScene::OnEnter(GameApp& app) {
 void TitleScene::SpawnEnemy() {
     const auto& point = spawns_.Points()[0];
     auto* enemy = pool_.Acquire(spawns_.SelectEnemyId(point),nextEnemyId_++,point.id,point.position,point.rotation);
+    enemy->SetSceneLight(&sceneLight_);
     if (enemies_.empty()) enemies_.push_back(enemy);
     else enemies_[0] = enemy; // Preserve the GAME START target at index 1.
     enemies_[0]->UpdateVisuals(0);
@@ -116,6 +142,7 @@ void TitleScene::OnBulletImpact(const BulletEnemyImpact& impact) {
     }
 }
 void TitleScene::OnExit(GameApp& app) {
+    app.Render()->GetOffscreen()->SetClearColor(savedClearColor_);
     app.GetInput()->SetCameraControlEnabled(false);
     app.GetInput()->SetMouseCaptureRect(nullptr);
     app.GetInput()->SetCameraToggleKeyEnabled(true);
@@ -192,4 +219,76 @@ void TitleScene::DrawRender(GameApp&) {
 void TitleScene::DrawOverlay2D(GameApp&) {
     if (!ready_ || start_.Starting()) return;
     crosshairHorizontal_.Draw(); crosshairVertical_.Draw();
+}
+
+void TitleScene::DrawImGui(GameApp& app) {
+#ifdef USE_IMGUI
+    if (!ready_) return;
+    if (ImGui::Begin("Title Lighting")) {
+        ImGui::TextUnformatted("Esc: release mouse to edit. Click Scene to resume shooting.");
+        const bool captured = app.GetInput()->IsCameraControlEnabled();
+        ImGui::BeginDisabled(captured);
+        bool changed = false;
+        const auto axis = [](const char* label, Vector3& direction) {
+            if (!ImGui::DragFloat3(label,&direction.x,.01f,-1e6f,1e6f,"%.3f",ImGuiSliderFlags_AlwaysClamp)) return false;
+            if (direction.x*direction.x+direction.y*direction.y+direction.z*direction.z<1e-10f)
+                direction={0,-1,0};
+            return true;
+        };
+        if (ImGui::CollapsingHeader("Directional Light",ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::PushID("Directional");
+            changed |= axis("Direction",lighting_.direction);
+            changed |= ImGui::ColorEdit3("Color",&lighting_.color.x);
+            changed |= ImGui::DragFloat("Intensity",&lighting_.intensity,.01f,0,10,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+            ImGui::PopID();
+        }
+        for (size_t i=0;i<lighting_.spots.size();++i) {
+            if (!ImGui::CollapsingHeader(TitleLighting::names[i],ImGuiTreeNodeFlags_DefaultOpen)) continue;
+            ImGui::PushID(static_cast<int>(i));
+            auto& light=lighting_.spots[i];
+            changed |= ImGui::DragFloat3("Position",&light.position.x,.05f,-1e6f,1e6f,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+            changed |= axis("Direction",light.direction);
+            changed |= ImGui::ColorEdit3("Color",&light.color.x);
+            changed |= ImGui::DragFloat("Intensity",&light.intensity,.01f,0,10,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+            changed |= ImGui::DragFloat("Distance",&light.distance,.1f,.1f,1000,"%.2f",ImGuiSliderFlags_AlwaysClamp);
+            changed |= ImGui::DragFloat("Decay",&light.decay,.01f,.1f,8,"%.2f",ImGuiSliderFlags_AlwaysClamp);
+            changed |= ImGui::SliderFloat("Highlight Strength",&light.specularStrength,0,1,"%.2f",ImGuiSliderFlags_AlwaysClamp);
+            changed |= ImGui::SliderFloat("Outer Angle (deg)",&light.outerAngle,1,89,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+            if (light.innerAngle>light.outerAngle-.1f) { light.innerAngle=light.outerAngle-.1f; changed=true; }
+            changed |= ImGui::SliderFloat("Inner Angle (deg)",&light.innerAngle,0,light.outerAngle-.1f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+            ImGui::TextUnformatted("Half-angles: inner = full light, outer = edge of cone.");
+            ImGui::PopID();
+        }
+        if (changed) {
+            lighting_.Apply(sceneLight_);
+            lightingEditor_.dirty = true;
+            lightingStatus_ = "Preview updated (unsaved)";
+        }
+        ImGui::Separator();
+        if (ImGui::Button("Save Lighting")) {
+            const auto data=lighting_.ToJson();
+            for (const char* field : {"version","directional","spots"}) lightingEditor_.document[field]=data.at(field);
+            const auto validate=[](const std::string& path) -> std::string {
+                try { (void)TitleLighting::Load(path); return {}; }
+                catch (const std::exception& e) { return e.what(); }
+            };
+            lightingStatus_ = lightingEditor_.Save(validate) ? "Saved (backup: title_lighting.json.debug-backup)" :
+                "Save error: "+lightingEditor_.error;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reload Lighting")) LoadLighting();
+        if (ImGui::Button("Reset Defaults")) {
+            lighting_ = TitleLighting{};
+            lighting_.Apply(sceneLight_);
+            lightingEditor_.dirty = true;
+            lightingStatus_ = "Defaults restored (unsaved)";
+        }
+        ImGui::TextWrapped("%s%s",kLightingPath,lightingEditor_.dirty ? " (unsaved)" : "");
+        ImGui::TextWrapped("%s",lightingStatus_.c_str());
+        ImGui::EndDisabled();
+    }
+    ImGui::End();
+#else
+    (void)app;
+#endif
 }

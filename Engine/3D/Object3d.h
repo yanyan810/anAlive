@@ -146,6 +146,8 @@ public:
 	void SetSpotLightDecay(float d) { light_->SetSpotLightDecay(d); }
 	void SetSpotLightCosAngle(float c) { light_->SetSpotLightCosAngle(c); }
 	void SetSpotLightCosFalloffStart(float c) { light_->SetSpotLightCosFalloffStart(c); }
+	// Non-owning scene light; the scene retains it until all its draw resources retire.
+	void SetSceneLight(const Object3dLight* light) { sceneLight_ = light; }
 
 	void SetTexture(const std::string& path);
 	void ClearTextureOverride() { texturePath_.clear(); useOverrideTexture_ = false; }
@@ -335,6 +337,7 @@ public:
 private:
 	std::unique_ptr<Animator> animator_;
 	std::unique_ptr<Object3dLight> light_;
+	const Object3dLight* sceneLight_ = nullptr;
 
 	bool debugDrawBones_ = false;
 	bool debugDrawBoneJoints_ = true;

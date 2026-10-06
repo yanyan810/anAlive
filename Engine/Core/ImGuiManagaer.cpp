@@ -183,6 +183,7 @@ void ImGuiManagaer::BuildDefaultDockLayout_(ImGuiID dockspaceId)
 
     ImGui::DockBuilderDockWindow("Hierarchy", leftNode);
     ImGui::DockBuilderDockWindow("Inspector", rightNode);
+    ImGui::DockBuilderDockWindow("Title Lighting", rightNode);
     ImGui::DockBuilderDockWindow("Scene", mainNode);
     ImGui::DockBuilderDockWindow("Console", bottomNode);
 

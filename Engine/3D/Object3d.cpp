@@ -409,10 +409,10 @@ void Object3d::Draw()
 		// Transform (Root 1)
 		cmd->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceModel->GetGPUVirtualAddress());
 
-		cmd->SetGraphicsRootConstantBufferView(3, light_->GetDirectionalLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(5, light_->GetPointLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(6, light_->GetSpotLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 		BindEnvironmentMapIfNeeded();
 
@@ -458,10 +458,10 @@ void Object3d::Draw()
 
 			SetNormalPipelineState();
 
-			cmd->SetGraphicsRootConstantBufferView(3, light_->GetDirectionalLightResource()->GetGPUVirtualAddress());
+			cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 			cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-			cmd->SetGraphicsRootConstantBufferView(5, light_->GetPointLightResource()->GetGPUVirtualAddress());
-			cmd->SetGraphicsRootConstantBufferView(6, light_->GetSpotLightResource()->GetGPUVirtualAddress());
+			cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
+			cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 			// EnvMap (Root 7 : t2)
 			BindEnvironmentMapIfNeeded();
@@ -567,10 +567,10 @@ void Object3d::Draw()
 		SetNormalPipelineState();
 
 		// light/camera CBV
-		cmd->SetGraphicsRootConstantBufferView(3, light_->GetDirectionalLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(5, light_->GetPointLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(6, light_->GetSpotLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
+		cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 		// EnvMap (Root 7 : t2)
 		BindEnvironmentMapIfNeeded();
@@ -724,10 +724,10 @@ void Object3d::DrawWithOverrideSrv(const D3D12_GPU_DESCRIPTOR_HANDLE& srv)
 		}
 	}
 
-	cmd->SetGraphicsRootConstantBufferView(3, light_->GetDirectionalLightResource()->GetGPUVirtualAddress());
+	cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
 	cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(5, light_->GetPointLightResource()->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(6, light_->GetSpotLightResource()->GetGPUVirtualAddress());
+	cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
+	cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 	// RootParameter 7 : t2
 	if (useEnvironmentMap_) {

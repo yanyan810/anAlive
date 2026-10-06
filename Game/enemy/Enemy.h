@@ -115,10 +115,13 @@ public:
     bool IsDead() const { return exploded_ || EnemyPartsDead(parts_); }
     EnemyState GetState() const { return IsDead() ? EnemyState::Dead : ai_.state; }
     void Draw(bool showMarker=true);
+    void SetSceneLight(const Object3dLight* light) { sceneLight_ = light; }
     void DrawExplosion();
     void SetPartVisible(EnemyPartType type, bool visible);
     void SetPartVisible(size_t index,bool visible) { if (index<visuals_.size()) visuals_[index].visible=visible; }
 private:
+    const Object3dLight* sceneLight_ = nullptr;
+    void ApplySceneLight(Object3d& object);
     EnemyDefinition spawnDefinition_;
     EnemyParts spawnParts_;
     EnemyAI spawnAI_;

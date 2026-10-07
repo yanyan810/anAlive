@@ -25,8 +25,10 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
         };
         std::vector<EnemySpawnPoint> points;
         std::vector<EnemySpawnTrigger> triggers;
+        std::vector<SpawnGroup> groups;
         std::set<std::string> pointIds, triggerIds;
-        if (!data.at("spawnPoints").is_array() || !data.at("spawnTriggers").is_array())
+        const auto triggerData = data.value("spawnTriggers", nlohmann::json::array());
+        if (!data.at("spawnPoints").is_array() || !triggerData.is_array())
             throw std::runtime_error("spawnPoints and spawnTriggers must be arrays");
         for (const auto& item : data.at("spawnPoints")) {
             EnemySpawnPoint point;
@@ -48,7 +50,7 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             }
             points.push_back(std::move(point));
         }
-        for (const auto& item : data.at("spawnTriggers")) {
+        for (const auto& item : triggerData) {
             EnemySpawnTrigger trigger;
             trigger.id = item.at("id").get<std::string>();
             if (trigger.id.empty() || !triggerIds.insert(trigger.id).second) throw std::runtime_error("Empty/duplicate trigger ID: " + trigger.id);
@@ -71,6 +73,35 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             trigger.oneShot = item.value("oneShot", true);
             triggers.push_back(std::move(trigger));
         }
+        if (data.contains("spawnGroups")) {
+            const auto& groupData = data.at("spawnGroups");
+            if (!groupData.is_array()) throw std::runtime_error("spawnGroups must be an array");
+            for (const auto& item : groupData) {
+                SpawnGroup group;
+                group.id = item.value("id", "SpawnGroup_" + std::to_string(groups.size() + 1));
+                if (group.id.empty() || pointIds.count(group.id) || !triggerIds.insert(group.id).second)
+                    throw std::runtime_error("Empty/duplicate spawn group ID: " + group.id);
+                const auto mode = item.value("mode", std::string("Sequential"));
+                if (mode == "Simultaneous") group.mode = SpawnMode::Simultaneous;
+                else if (mode != "Sequential") throw std::runtime_error("Unknown spawn mode: " + mode);
+                group.startTime = item.value("time", 0.0);
+                group.interval = item.value("interval", .5);
+                if (!std::isfinite(group.startTime) || group.startTime < 0 || !std::isfinite(group.interval) || group.interval < 0)
+                    throw std::runtime_error("Invalid group timing: " + group.id);
+                const auto& entries = item.at("enemies");
+                if (!entries.is_array() || entries.empty() || entries.size() > 10000)
+                    throw std::runtime_error("SpawnGroup requires 1 to 10000 enemies: " + group.id);
+                for (const auto& entry : entries) {
+                    SpawnGroupEnemy member{entry.at("enemy").get<std::string>(), entry.at("spawnPoint").get<std::string>()};
+                    if (!definitions.Find(member.enemyId)) throw std::runtime_error("Unknown enemy id: " + member.enemyId);
+                    if (!pointIds.count(member.spawnPointId)) throw std::runtime_error("Unknown spawn point: " + member.spawnPointId);
+                    group.enemies.push_back(std::move(member));
+                }
+                if (group.mode == SpawnMode::Sequential && !std::isfinite(group.startTime + group.interval * (group.enemies.size() - 1)))
+                    throw std::runtime_error("Group schedule overflow: " + group.id);
+                groups.push_back(std::move(group));
+            }
+        }
         auto nextRandom=random_;
         if (data.contains("enemyRandom")) {
             const auto& config=data.at("enemyRandom");
@@ -82,8 +113,11 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             }
         }
         random_=nextRandom;
+        initialRandom_=nextRandom;
         points_ = std::move(points);
         triggers_ = std::move(triggers);
+        groups_ = std::move(groups);
+        elapsedTime_ = 0;
         error_.clear();
         return true;
     } catch (const std::exception& exception) {

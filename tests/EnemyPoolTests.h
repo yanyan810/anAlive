@@ -4,6 +4,7 @@
 #include "scene/Main/GameScene.h"
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <stdexcept>
 
 inline void RunEnemyPoolTests(GameApp& app) {
@@ -273,6 +274,81 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(game.enemies_.size()==1 && game.enemies_[0]==spawned && spawned->GetSpawnId()!=oldId,"trigger reuse/ID tracking");
     check(game.stage_.DefeatedCount()==1,"scene lost defeat on release");
     check(game.enemyPool_.RuntimeAllocations()==0 && Object3d::debugInitializationCount==spawnGpu,"scene spawn allocated renderers");
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies();
+
+    // Scheduled simultaneous spawn through GameScene's real callback and real pool.
+    nlohmann::json groupFixture={{"spawnPoints",nlohmann::json::array()},
+        {"spawnGroups",nlohmann::json::array({{{"id","wave"},{"time",3},{"mode","Simultaneous"},{"interval",100},
+            {"enemies",nlohmann::json::array()}}})}};
+    for (int i=0;i<6;++i) {
+        const auto pointId="Point_"+std::to_string(i);
+        // Point lottery deliberately differs; group members must override it.
+        groupFixture["spawnPoints"].push_back({{"id",pointId},{"position",{i*10,0,40}},{"rotation",{0,.25*i,0}},
+            {"enemyPool",nlohmann::json::array({{{"id","bomber"},{"weight",1}}})}});
+        groupFixture["spawnGroups"][0]["enemies"].push_back({{"enemy",i<5 ? "normal_test" : "ranged"},{"spawnPoint",pointId}});
+    }
+    const char* groupPath="generated/enemy-pool-tests/groups.json";
+    std::ofstream(groupPath)<<groupFixture;
+    check(game.spawnSystem_.Load(groupPath,game.enemyDefinitions_),"group scene fixture");
+    game.level_.collision.colliders.clear(); game.player_.SetStage(&game.level_.collision,{1000,0,0},{});
+    const auto beforeGroupGpu=Object3d::debugInitializationCount;
+    game.UpdateCombat(app,2.5f,false);
+    const auto beforeGroup=game.CaptureDebug();
+    check(game.enemies_.empty() && game.enemyPool_.Active()==0,"group spawned before start time");
+    game.UpdateCombat(app,.5f,false);
+    check(game.enemies_.size()==6 && game.enemyPool_.Active()==6 && game.spawnSystem_.Groups()[0].spawned==6,
+        "simultaneous group not entirely active in one scene update");
+    check(game.enemyPool_.RuntimeAllocations()==1,"simultaneous overflow bypassed existing pool expansion");
+    check(Object3d::debugInitializationCount>beforeGroupGpu,"overflow slot was not prepared");
+    const auto groupPointers=game.enemies_;
+    std::vector<Enemy::DebugState> groupOriginal;
+    std::set<uint64_t> groupIds;
+    for (size_t i=0;i<game.enemies_.size();++i) {
+        auto* enemy=game.enemies_[i]; groupOriginal.push_back(enemy->CaptureDebug());
+        check(enemy->Definition().id==(i<5 ? "normal_test" : "ranged") && enemy->GetSpawnTriggerId()=="wave","group definition/source");
+        check(enemy->GetPosition().x==static_cast<float>(i*10) && enemy->GetPosition().z==40 &&
+            groupOriginal.back().rotation.y==static_cast<float>(.25*i),"group spawn point pose");
+        check(groupIds.insert(enemy->GetSpawnId()).second,"duplicate simultaneous spawn ID");
+        verifyRenderedCollision(enemy);
+    }
+    auto* groupTarget=game.enemies_[0];
+    check(groupTarget->ApplyDamage(EnemyPartType::LeftArm,50,{0,0,1})==50 && !groupTarget->IsDead(),"group shared HP damage");
+    groupTarget->ApplyDamage(EnemyPartType::RightArm,10000,{0,0,1});
+    check(groupTarget->IsDead() && !groupTarget->CaptureDebug().faces.empty() && !groupTarget->CanReturnToPool(),"group death/debris lifecycle");
+    auto* rangedTarget=game.enemies_.back();
+    rangedTarget->ApplyDamage(EnemyPartType::LeftArm,10000,{0,0,1});
+    const auto broken=rangedTarget->CaptureDebug();
+    check(!rangedTarget->IsDead() && broken.parts[2].Destroyed() && !broken.visible[2],"group nonfatal part destruction");
+    for (auto* enemy:game.enemies_) if (!enemy->IsDead()) {
+        enemy->Update(.125f,enemy->GetPosition()+Vector3{0,0,2});
+        check(enemy->GetState()!=EnemyState::Idle,"group AI did not advance");
+        enemy->Die();
+    }
+    game.RecycleEnemies();
+    check(game.enemies_.size()==6,"group debris returned too early");
+    for (auto* enemy:game.enemies_) enemy->UpdateVisuals(10);
+    game.RecycleEnemies();
+    check(game.enemies_.empty() && game.enemyPool_.Active()==0,"group enemies did not return to pool");
+    const auto reusedGpu=Object3d::debugInitializationCount;
+    game.spawnSystem_.Reset(); game.UpdateCombat(app,3,false);
+    check(game.enemies_==groupPointers && game.enemyPool_.RuntimeAllocations()==1,"group slots not reused after reset");
+    check(Object3d::debugInitializationCount==reusedGpu,"group reuse initialized renderers");
+    for (size_t i=0;i<game.enemies_.size();++i) {
+        verifyReset(game.enemies_[i],groupOriginal[i]);
+        check(!groupIds.count(game.enemies_[i]->GetSpawnId()),"group reuse retained a dead spawn ID");
+    }
+    game.RestoreDebug(app,beforeGroup);
+    check(game.enemies_.empty() && game.spawnSystem_.ElapsedTime()==2.5 && game.spawnSystem_.Groups()[0].spawned==0,"group rewind state");
+    game.UpdateCombat(app,.5f,false);
+    check(game.enemies_==groupPointers && Object3d::debugInitializationCount==reusedGpu,"group rewind refire/reuse");
+    game.OnExit(app);
+    game.OnEnter(app); // The same scene lifecycle used by Restart Stage.
+    check(game.spawnSystem_.Load(groupPath,game.enemyDefinitions_),"restart group reload");
+    game.level_.collision.colliders.clear(); game.player_.SetStage(&game.level_.collision,{1000,0,0},{});
+    check(game.spawnSystem_.ElapsedTime()==0 && game.spawnSystem_.Groups()[0].spawned==0 && game.enemies_.empty(),"restart group state");
+    game.UpdateCombat(app,2.5f,false); check(game.enemies_.empty(),"restart group spawned early");
+    game.UpdateCombat(app,.5f,false); check(game.enemies_.size()==6 && game.enemyPool_.Active()==6,"restart group did not refire");
     game.OnExit(app);
 
     // Exercise the same reset and rewind functions used by F5 and the timeline.
@@ -303,5 +379,5 @@ inline void RunEnemyPoolTests(GameApp& app) {
     showroom.ResetShowroomEnemies(app);
     check(showroom.enemies_==showroomPointers,"reset after recycle");
     showroom.OnExit(app);
-    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, Showroom reset, rewind, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
+    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Showroom reset, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
 }

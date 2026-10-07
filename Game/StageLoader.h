@@ -35,9 +35,18 @@ public:
             next.playerRotation=vector(data.at("playerSpawn").at("rotation"));
             std::set<std::string> ids;
             for (const char* name : {"colliders","spawnPoints","spawnTriggers","weaponSpawnPoints","goalTriggers"}) {
+                if (std::string(name)=="spawnTriggers" && !data.contains(name)) continue;
                 if (!data.at(name).is_array()) throw std::runtime_error(std::string(name)+" must be an array");
                 for (const auto& item : data.at(name)) {
                     const auto key=item.at("id").get<std::string>();
+                    if (key.empty() || !ids.insert(key).second) throw std::runtime_error("Empty/duplicate stage ID: "+key);
+                }
+            }
+            if (data.contains("spawnGroups")) {
+                if (!data.at("spawnGroups").is_array()) throw std::runtime_error("spawnGroups must be an array");
+                size_t index = 0;
+                for (const auto& group : data.at("spawnGroups")) {
+                    const auto key = group.value("id", "SpawnGroup_" + std::to_string(++index));
                     if (key.empty() || !ids.insert(key).second) throw std::runtime_error("Empty/duplicate stage ID: "+key);
                 }
             }

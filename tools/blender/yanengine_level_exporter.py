@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 7, 1),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 8, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -191,7 +191,7 @@ def build_level(scene, depsgraph):
     weapons = definitions(scene, 'weapons') if any(o.yan_level.role == 'WEAPON' for o in objects) else {}
     data = {"version": 1, "stage": {"id": stage_id, "model": f"levels/{stage_id}/{stage_id}.gltf"},
             "playerSpawn": {}, "colliders": [], "enemyRandom": {"useFixedSeed": settings.fixed_seed, "seed": settings.seed},
-            "spawnPoints": [], "spawnTriggers": [], "weaponRandom": {"useFixedSeed": settings.fixed_seed, "seed": settings.seed},
+            "spawnPoints": [], "spawnTriggers": [], "spawnGroups": [], "weaponRandom": {"useFixedSeed": settings.fixed_seed, "seed": settings.seed},
             "weaponSpawnPoints": [], "goalTriggers": []}
     groups = {}
     geometry = []
@@ -233,6 +233,22 @@ def build_level(scene, depsgraph):
             data['goalTriggers'].append(dict(id=key, **trigger_volume(obj, depsgraph)))
     for obj in objects:
         cfg = obj.yan_level
+        if cfg.role == 'SPAWN_GROUP':
+            finite([cfg.start_time, cfg.spawn_interval], obj.name)
+            if cfg.start_time < 0 or cfg.spawn_interval < 0 or not 1 <= len(cfg.members) <= 10000:
+                raise ValueError(f'{obj.name}: Spawn Group requires valid timing and 1 to 10000 enemies')
+            members = []
+            for entry in cfg.members:
+                point = entry.spawn_point
+                if point is None or point.name not in scene.objects or point.yan_level.role != 'ENEMY':
+                    raise ValueError(f'{obj.name}: choose an Enemy Spawn in this scene for every member')
+                identifier = entry.identifier.strip()
+                if identifier not in enemies:
+                    raise ValueError(f'{obj.name}: unknown enemy ID {identifier}')
+                members.append({'enemy': identifier, 'spawnPoint': object_id(point)})
+            data['spawnGroups'].append(dict(id=object_id(obj), time=cfg.start_time, mode=cfg.spawn_mode,
+                interval=cfg.spawn_interval, enemies=members))
+            continue
         if cfg.role != 'TRIGGER':
             continue
         points = groups.get(cfg.group.strip(), [])
@@ -429,12 +445,22 @@ class YAN_WeaponType(bpy.types.PropertyGroup):
     name: StringProperty()
 
 
+def spawn_point_poll(self, obj):
+    return obj.yan_level.role == 'ENEMY'
+
+
+class YAN_SpawnGroupEnemy(bpy.types.PropertyGroup):
+    identifier: StringProperty(name='Enemy ID', default='normal')
+    spawn_point: PointerProperty(name='Spawn Point', type=bpy.types.Object, poll=spawn_point_poll)
+
+
 class YAN_ObjectSettings(bpy.types.PropertyGroup):
     role: EnumProperty(name="YanEngine Object Type", default='IGNORE', update=role_changed, items=[
         ('STATIC', 'Static Mesh', ''), ('COLLIDER', 'Collider', ''), ('PLAYER', 'Player Spawn', ''),
         ('ENEMY', 'Enemy Spawn', ''), ('TRIGGER', 'Spawn Trigger', ''), ('WEAPON', 'Weapon Spawn', ''),
         ('GOAL', 'Goal', ''), ('IGNORE', 'Ignore', ''),
-        ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh')])
+        ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh'),
+        ('SPAWN_GROUP', 'Spawn Group', 'Spawn scheduled enemies from stage start time')])
     identifier: StringProperty(name="ID", description="Blank uses Object name")
     group: StringProperty(name="Spawn Group", default="A")
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
@@ -450,6 +476,11 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     max_alive: IntProperty(name="Max Alive", default=5, min=1, max=10000)
     selection: EnumProperty(name="Selection", items=[('Random', 'Random', ''), ('RoundRobin', 'RoundRobin', '')])
     one_shot: BoolProperty(name="One Shot", default=True)
+    spawn_mode: EnumProperty(name='Mode', default='Sequential', items=[
+        ('Sequential', 'Sequential', 'Spawn members in list order at the specified interval'),
+        ('Simultaneous', 'Simultaneous', 'Spawn every member in the same frame')])
+    start_time: FloatProperty(name='Start Time', description='Seconds of gameplay from stage start', default=0, min=0)
+    members: CollectionProperty(type=YAN_SpawnGroupEnemy)
     auto_collider_count: IntProperty(name="Max Box Count", description="Upper limit; simple shapes use fewer boxes", default=4, min=1, max=32)
     auto_collider_padding: FloatProperty(name="Padding", description="Extra local-space margin added to generated boxes", default=0.02, min=0.0, max=10.0)
 
@@ -721,8 +752,9 @@ class YAN_OT_choose_pool(bpy.types.Operator):
 
     def execute(self, context):
         cfg = context.object.yan_level
-        if 0 <= self.index < len(cfg.pool):
-            cfg.pool[self.index].identifier = self.identifier
+        entries = cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
+        if 0 <= self.index < len(entries):
+            entries[self.index].identifier = self.identifier
             return {'FINISHED'}
         return {'CANCELLED'}
 
@@ -733,7 +765,8 @@ class YAN_MT_pool_choices(bpy.types.Menu):
     def draw(self, context):
         cfg = context.object.yan_level
         entry = context.yan_pool_entry
-        index = next(i for i, row in enumerate(cfg.pool) if row.as_pointer() == entry.as_pointer())
+        entries = cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
+        index = next(i for i, row in enumerate(entries) if row.as_pointer() == entry.as_pointer())
         try:
             choices = definitions(context.scene, 'weapons' if cfg.role == 'WEAPON' else 'enemies')
             if entry.identifier.strip() not in choices:
@@ -743,6 +776,44 @@ class YAN_MT_pool_choices(bpy.types.Menu):
                 op.index, op.identifier = index, identifier
         except ValueError as error:
             self.layout.label(text=str(error), icon='ERROR')
+
+
+class YAN_OT_group_member(bpy.types.Operator):
+    bl_idname = 'yanengine.group_member'
+    bl_label = 'Edit Spawn Group Members'
+    bl_options = {'UNDO'}
+    index: IntProperty(default=-1)
+    move: IntProperty(default=0, min=-1, max=1)
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None and context.object.yan_level.role == 'SPAWN_GROUP'
+
+    def execute(self, context):
+        members = context.object.yan_level.members
+        if self.index < 0:
+            try:
+                choices = definitions(context.scene, 'enemies')
+                if not choices:
+                    raise ValueError('Enemy catalog is empty')
+            except ValueError as error:
+                self.report({'ERROR'}, str(error))
+                return {'CANCELLED'}
+            points = sorted((o for o in context.scene.objects if o.yan_level.role == 'ENEMY'), key=lambda o: o.name)
+            point = points[len(members) % len(points)] if points else None
+            entry = members.add()
+            entry.identifier = next(iter(choices))
+            entry.spawn_point = point
+        elif 0 <= self.index < len(members):
+            if self.move:
+                destination = self.index + self.move
+                if 0 <= destination < len(members):
+                    members.move(self.index, destination)
+            else:
+                members.remove(self.index)
+        else:
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 class YAN_OT_weapon_type(bpy.types.Operator):
@@ -1259,6 +1330,35 @@ class YAN_PT_level(bpy.types.Panel):
             if settings.role == 'TRIGGER':
                 for key in ('spawn_count', 'spawn_interval', 'initial_delay', 'max_alive', 'selection', 'one_shot'):
                     layout.prop(settings, key)
+            if settings.role == 'SPAWN_GROUP':
+                box = layout.box()
+                box.label(text='Spawn Group')
+                box.prop(settings, 'spawn_mode')
+                box.prop(settings, 'start_time')
+                interval = box.row()
+                interval.enabled = settings.spawn_mode == 'Sequential'
+                interval.prop(settings, 'spawn_interval', text='Interval')
+                box.label(text='Enemies (list order)')
+                choices = {}
+                try:
+                    choices = definitions(context.scene, 'enemies')
+                except ValueError as error:
+                    box.label(text=str(error), icon='ERROR')
+                for index, entry in enumerate(settings.members):
+                    row = box.row(align=True)
+                    row.context_pointer_set('yan_pool_entry', entry)
+                    definition = choices.get(entry.identifier.strip())
+                    picker = row.row(align=True)
+                    picker.alert = definition is None
+                    picker.menu('YAN_MT_pool_choices', text=definition_label(definition) if definition else f'Missing / Unknown: {entry.identifier}')
+                    row.prop(entry, 'spawn_point', text='')
+                    for direction, icon in ((-1, 'TRIA_UP'), (1, 'TRIA_DOWN')):
+                        button = row.row(align=True)
+                        button.enabled = 0 <= index + direction < len(settings.members)
+                        op = button.operator('yanengine.group_member', text='', icon=icon)
+                        op.index, op.move = index, direction
+                    row.operator('yanengine.group_member', text='', icon='REMOVE').index = index
+                box.operator('yanengine.group_member', text='Add Enemy', icon='ADD')
             if settings.role in {'COLLIDER', 'TRIGGER', 'GOAL'}:
                 layout.label(text='Resize the Cube / Cube Empty in the viewport')
         layout.separator()
@@ -1266,10 +1366,10 @@ class YAN_PT_level(bpy.types.Panel):
         layout.operator('yanengine.export', icon='EXPORT')
 
 
-CLASSES = (YAN_PoolEntry, YAN_WeaponType, YAN_ObjectSettings, YAN_SceneSettings, YAN_OT_pool,
+CLASSES = (YAN_PoolEntry, YAN_WeaponType, YAN_SpawnGroupEnemy, YAN_ObjectSettings, YAN_SceneSettings, YAN_OT_pool,
            YAN_CatalogEntry, YAN_CatalogState, YAN_OT_catalog_open, YAN_OT_catalog_action,
            YAN_OT_catalog_type, YAN_MT_catalog_types, YAN_OT_catalog_apply, YAN_UL_catalog, YAN_PT_weapon_catalog,
-           YAN_OT_choose_pool, YAN_MT_pool_choices, YAN_OT_weapon_type, YAN_OT_refresh_definitions,
+           YAN_OT_choose_pool, YAN_MT_pool_choices, YAN_OT_group_member, YAN_OT_weapon_type, YAN_OT_refresh_definitions,
            YAN_OT_generate_auto_colliders, YAN_OT_clear_auto_colliders,
            YAN_OT_validate, YAN_OT_export, YAN_PT_level)
 

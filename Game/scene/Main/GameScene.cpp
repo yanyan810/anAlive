@@ -429,9 +429,10 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         allowFire, controls, cancelBurst);
     if (showroom_ && pickedUp) weapons_.ResetPickups();
     if (!showroom_) spawnSystem_.Update(dt, player_.GetTransform().translate,
-        [&](const EnemySpawnPoint& point, const std::string& trigger) {
+        [&](const EnemySpawnPoint& point, const std::string& trigger, const std::string& enemyId) {
             const uint64_t id = nextEnemyId_++;
-            enemies_.push_back(enemyPool_.Acquire(spawnSystem_.SelectEnemyId(point),id,trigger,point.position,point.rotation));
+            enemies_.push_back(enemyPool_.Acquire(enemyId.empty() ? spawnSystem_.SelectEnemyId(point) : enemyId,
+                id,trigger,point.position,point.rotation));
             return id;
         },
         [&](uint64_t id) {
@@ -741,6 +742,18 @@ void GameScene::DrawImGui(GameApp& app) {
         ImGui::Text("OneShot: %s | Selection: %s", trigger.oneShot ? "true" : "false",
             trigger.selection == SpawnPointSelection::Random ? "Random" : "RoundRobin");
         for (const auto& id : trigger.spawnPointIds) ImGui::BulletText("%s", id.c_str());
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Spawn Groups")) {
+        ImGui::Text("Stage time: %.2f sec", spawnSystem_.ElapsedTime());
+        for (const auto& group : spawnSystem_.Groups()) {
+            if (!ImGui::TreeNode(group.id.c_str())) continue;
+            ImGui::Text("Mode: %s | Start: %.2f", group.mode == SpawnMode::Simultaneous ? "Simultaneous" : "Sequential", group.startTime);
+            if (group.mode == SpawnMode::Sequential) ImGui::Text("Interval: %.2f", group.interval);
+            ImGui::Text("Spawned: %zu / %zu", group.spawned, group.enemies.size());
+            for (const auto& entry : group.enemies) ImGui::BulletText("%s / %s", entry.enemyId.c_str(), entry.spawnPointId.c_str());
+            ImGui::TreePop();
+        }
         ImGui::TreePop();
     }
     if (ImGui::TreeNode("Spawn Points")) {

@@ -96,6 +96,8 @@ JSONの変更はパネル再描画時に再読み込みされます。すぐ反�
 
 ### 8. Spawn Triggerを置く
 
+開始時刻で敵を出す場合は、下記の「時刻指定のSpawn Group」を使用してください。既存のSpawn Triggerは引き続きプレイヤーの進入で発火します。
+
 1. **Shift+A → Empty → Cube** を追加します。
 2. Object Typeを **Spawn Trigger** にします。
 3. **Spawn Group** を対応するEnemy Spawnと同じ `A` にします。
@@ -104,6 +106,66 @@ JSONの変更はパネル再描画時に再読み込みされます。すぐ反�
 同じGroupのEnemy Spawn IDをExporterが自動収集します。TriggerへSpawnPoint IDを列挙する必要はありません。同じGroupにEnemy Spawnが0個ならExportエラーです。
 
 Trigger／Goalは既存の軸平行AABBです。斜め回転はエラーにします（90度単位の回転は対応）。Cube EmptyはDisplay SizeとScaleを含む実際の箱サイズを使用します。MeshのCubeも使用できます。
+
+### 時刻指定のSpawn Group（Sequential / Simultaneous）
+
+1. **Shift+A → Empty → Arrows** を追加し、Object Typeを **Spawn Group** にします。
+2. **Mode**をSequentialまたはSimultaneousにします。
+3. **Start Time**へゲーム開始からの秒数を指定します。
+4. **Add Enemy**で行を追加し、既存の敵定義メニューからEnemy、オブジェクト選択欄からEnemy Spawnを選びます。
+5. Sequentialでは**Interval**を指定します。上下ボタンで出現順を変更でき、マイナスボタンで行を削除できます。
+
+Sequentialは`Start Time + 行番号 × Interval`で出現します。たとえばStart Time=3、Interval=0.5なら3.0秒、3.5秒、4.0秒です。
+Simultaneousは全行をStart Timeに同じフレーム内で出現させます。Interval欄は編集不可になり、保存済みの値は実行時に使用しません。
+各行の敵定義はEnemy Spawnの抽選Poolより優先され、そのSpawnPointの位置と回転を使用します。同じSpawnPointを複数行で使用することもできます。
+
+Enemy Spawn側の従来の**Spawn Group**文字列は、Spawn TriggerがSpawnPointを収集するための設定です。
+時刻指定のSpawn Groupは各行の参照から敵を決めるため、その文字列と関連付ける必要はありません。
+両方から同じSpawnPointを参照すると、それぞれの設定で敵が出現します。
+Spawn Groupオブジェクト自身の位置・回転は出現場所に影響せず、glTFにも出力しません。
+
+Exportは既存JSONへ任意の`spawnGroups`配列を追加します。既存の`spawnPoints`／`spawnTriggers`は維持します。
+設定例（`normal`／`fast`／`tank`は既存カタログのID、Spawn01〜03はEnemy SpawnのID）:
+
+```json
+"spawnGroups": [
+  {
+    "id": "Wave01",
+    "time": 3.0,
+    "mode": "Simultaneous",
+    "interval": 0.5,
+    "enemies": [
+      { "enemy": "normal", "spawnPoint": "Spawn01" },
+      { "enemy": "fast", "spawnPoint": "Spawn02" },
+      { "enemy": "tank", "spawnPoint": "Spawn03" }
+    ]
+  }
+]
+```
+
+JSONで`mode`を省略した場合はSequential、`time`は0秒、`interval`は0.5秒が既定値です。
+`id`を省略した場合は配列順に`SpawnGroup_1`などを使用します。IDは他のステージ要素と重複させないでください。
+敵が空、未知の敵定義、存在しないSpawnPoint、不正な時刻・間隔は読み込み／Exportエラーです。
+時刻指定だけのJSONでは`spawnTriggers`を省略できます。既存データに`spawnGroups`がない場合は従来通り動作します。
+
+ゲームプレイ中の時間だけが進み、Debug Pauseでは停止します。低フレームレートで複数のSequential出現時刻を通過した場合は、そのフレームに期限を迎えた敵をまとめて出します。
+各グループはステージにつき1回発火し、Restart Stageで時計と出現済み状態をリセットします。Debugの巻き戻しでもこれらの状態を復元します。
+取得は既存EnemyPoolのAcquire／ResetForSpawn経由です。Simultaneous全員の取得とActive化をAI更新前に終え、容量不足は既存Poolの拡張処理へ任せます。
+Spawn TriggerのMax Aliveは時刻指定のSpawn Groupには適用しません。
+
+追加検証:
+
+```powershell
+./Tools/test-blender-spawn-groups.ps1
+./Tools/test-enemy-spawn.ps1
+./Tools/test-stage-loader.ps1
+./Tools/test-enemy-pool.ps1
+./Tools/build.ps1 -Configuration Debug
+./Tools/build.ps1 -Configuration Release
+```
+
+Blenderの専用テストは既存stage01.blendを読み、テスト用グループの編集・カタログ選択・順序変更・保存・再読込・ExportとC++スケジューラーへの読み込みを確認します。
+生成物は`generated/spawn-group-tests`へ出力します。D3D Poolテストは実際のGameSceneで同一更新内の全員Active化、位置・回転・敵定義、容量不足の拡張、AI・HP・部位破壊・死亡・返却・再利用、巻き戻し、RestartのSceneライフサイクルを確認します。
 
 ### 9. 敵数とタイミングを設定する
 

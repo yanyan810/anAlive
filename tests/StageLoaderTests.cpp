@@ -34,6 +34,17 @@ int main() {
     bad=valid; bad["playerSpawn"]["position"]={0,0,nullptr}; reject(bad);
     bad=valid; bad["stage"]["model"]="../outside.gltf"; reject(bad);
     bad=valid; bad["spawnPoints"][0]["id"]=bad["colliders"][0]["id"]; reject(bad);
+    bad=valid; bad["spawnGroups"]=json::object(); reject(bad);
+    bad=valid; bad["spawnGroups"]=json::array({{{"id",bad["spawnPoints"][0]["id"]}}}); reject(bad);
+    bad=valid; bad["spawnGroups"]=json::array({{{"id",""}}}); reject(bad);
+    bad=valid; bad["spawnGroups"]=json::array({{{"id","G"}},{{"id","G"}}}); reject(bad);
+    auto grouped=valid; grouped.erase("spawnTriggers");
+    grouped["spawnGroups"]=json::array({{{"time",3}, {"mode","Simultaneous"},
+        {"enemies",json::array({{{"enemy","normal"},{"spawnPoint",valid["spawnPoints"][0]["id"]}}})}}});
+    Save(grouped); assert(loader.Load("stage-loader-test.json"));
+    EnemySpawnSystem groupedSpawns;
+    EnemyDefinitions groupedDefinitions; assert(groupedDefinitions.Load("../../resources/Data/enemies.json"));
+    assert(groupedSpawns.Load("stage-loader-test.json",groupedDefinitions) && groupedSpawns.Groups()[0].id=="SpawnGroup_1");
     assert(!loader.Load("absent-stage.json") && loader.id=="stage01");
     assert(loader.Load(path));
     EnemyDefinitions definitions; assert(definitions.Load("../../resources/Data/enemies.json"));

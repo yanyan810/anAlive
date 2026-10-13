@@ -1,5 +1,6 @@
 #include "../Utility/AssetPreparation.h"
 #include "../../tests/AssetLoadingTests.h"
+#include "../../tests/ScreenTransitionTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
@@ -53,6 +54,16 @@ int GameApp::Run() {
         catch(const std::exception& error) { std::ofstream("generated/loading-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1; }
         Finalize_(); return result;
     }
+    if (std::wstring(GetCommandLineW()).find(L"--screen-transition-test")!=std::wstring::npos) {
+        int result = 0;
+        std::filesystem::create_directories("generated/transition-tests");
+        try { RunScreenTransitionTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/transition-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result = 1;
+        }
+        Finalize_(); return result;
+    }
 #ifdef _DEBUG
     if (std::wstring(GetCommandLineW()).find(L"--cloth-performance-test")!=std::wstring::npos) {
         int result=0;
@@ -98,7 +109,8 @@ int GameApp::Run() {
         if (win_->ProcessMessage()) break;
 
         const auto now = std::chrono::steady_clock::now();
-        const float dt = std::min(std::chrono::duration<float>(now - previousFrame).count(), 0.1f);
+        const float unscaledDt = std::chrono::duration<float>(now - previousFrame).count();
+        const float dt = std::min(unscaledDt, 0.1f);
         previousFrame = now;
 
 #ifdef USE_IMGUI
@@ -109,7 +121,7 @@ int GameApp::Run() {
         // Input, DebugAI control messages, and scene simulation must pass
         // through the same update path. Bypassing this function leaves
         // external DebugAI requests queued forever.
-        Update(dt);
+        Update(dt, unscaledDt);
 
 
         //描画
@@ -262,6 +274,10 @@ void GameApp::Finalize_() {
 }
 
 void GameApp::Update(float dt) {
+    Update(dt, dt);
+}
+
+void GameApp::Update(float dt, float unscaledDt) {
 
     input_->Update();
 
@@ -282,11 +298,14 @@ void GameApp::Update(float dt) {
         simulationUpdates = debugAI_->ReplaySimulationUpdatesForHostFrame();
     }
 
+    // Presentation uses wall time once, even if replay pauses/accelerates the
+    // simulation or gameplay later applies slow motion to its own dt.
+    sceneMgr_->UpdateTransition(*this, unscaledDt);
     for (unsigned int update = 0; update < simulationUpdates; ++update) {
         if (debugAI_) {
             debugAI_->PrepareSimulationFrame();
         }
-        sceneMgr_->Update(*this, debugAI_ && debugAI_->IsReplayPlaying() ? 1.0f / 60.0f : dt);
+        sceneMgr_->UpdateScene(*this, debugAI_ && debugAI_->IsReplayPlaying() ? 1.0f / 60.0f : dt);
         if (debugAI_ && update + 1 < simulationUpdates &&
             !debugAI_->IsReplayPlaying()) {
             break;

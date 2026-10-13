@@ -19,6 +19,8 @@ class TitleScene : public IScene {
 public:
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
+    bool IsReadyForTransition() const override { return ready_; }
+    std::string InitializationError() const override { return ready_ ? std::string{} : error_; }
     void Update(GameApp& app, float dt) override;
     void DrawRender(GameApp& app) override;
     void DrawShadow(GameApp& app) override;

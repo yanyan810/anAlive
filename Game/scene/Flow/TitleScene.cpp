@@ -605,7 +605,9 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     start_.Update(dt);
     UpdateStartExplosion(dt);
     if (start_.Finished() && !transitionRequested_)
-        transitionRequested_ = app.Scenes().TransitionTo("Game", .75f, .75f); // Game loads Stage01.
+        transitionRequested_ = app.Scenes().TransitionTo("Game", .75f, .75f, {0,0,0}, FadeEasing::Linear);
+        // Accepted once after the existing explosion hold; SceneManager keeps
+        // this overlay alive through Stage01 loading and the incoming frame.
     for (auto* enemy : enemies_) enemy->UpdateVisuals(dt); // No AI/attacks/player damage.
     if (!start_.Starting() && !enemies_.empty() && enemies_[0]->CanReturnToPool()) {
         respawnTime_ += dt;

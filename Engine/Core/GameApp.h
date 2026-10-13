@@ -45,6 +45,7 @@ public:
     SceneManager& Scenes() { return *sceneMgr_; }
 
     void Update(float dt);
+    void Update(float dt, float unscaledDt);
 
     void Draw();
 

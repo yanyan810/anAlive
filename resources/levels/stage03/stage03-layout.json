@@ -1,0 +1,444 @@
+{
+  "coordinates": "engine X right, Y up, Z plan downward; metres",
+  "footprint": [
+    0,
+    38,
+    0,
+    36
+  ],
+  "guestFootprint": [
+    0,
+    24,
+    0,
+    12
+  ],
+  "floorHeights": [
+    0,
+    6,
+    12
+  ],
+  "roofHeights": [
+    12,
+    15.35
+  ],
+  "zones": [
+    {
+      "floor": 3,
+      "name": "Room301",
+      "use": "客室・開始室",
+      "bounds": [
+        6,
+        12,
+        0,
+        8
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room302",
+      "use": "客室",
+      "bounds": [
+        12,
+        18,
+        0,
+        8
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room303",
+      "use": "客室",
+      "bounds": [
+        18,
+        24,
+        0,
+        8
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "GuestCorridor",
+      "use": "客室前廊下",
+      "bounds": [
+        6,
+        24,
+        8,
+        12
+      ],
+      "connections": [
+        "Room301",
+        "Room302",
+        "Room303",
+        "WestStair"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "WestStair",
+      "use": "2階へ降りる階段室",
+      "bounds": [
+        0,
+        6,
+        0,
+        12
+      ],
+      "connections": [
+        "GuestCorridor",
+        "F2_StairLobby"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "WestStair",
+      "use": "3階からの階段室",
+      "bounds": [
+        0,
+        6,
+        0,
+        12
+      ],
+      "connections": [
+        "F3_GuestCorridor",
+        "StairLobby"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "StairLobby",
+      "use": "階段ロビー",
+      "bounds": [
+        6,
+        12,
+        0,
+        12
+      ],
+      "connections": [
+        "WestStair",
+        "Foyer",
+        "Ballroom"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "Foyer",
+      "use": "宴会ホール前室",
+      "bounds": [
+        0,
+        12,
+        12,
+        30
+      ],
+      "connections": [
+        "StairLobby",
+        "Ballroom",
+        "Cloakroom"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "Cloakroom",
+      "use": "クローク用区画",
+      "bounds": [
+        0,
+        12,
+        30,
+        36
+      ],
+      "connections": [
+        "Foyer"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "Preparation",
+      "use": "宴会準備室",
+      "bounds": [
+        12,
+        32,
+        0,
+        6
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "Ballroom",
+      "use": "中間階の宴会ホール",
+      "bounds": [
+        12,
+        32,
+        6,
+        30
+      ],
+      "connections": [
+        "Foyer",
+        "StairLobby",
+        "Preparation",
+        "BanquetStore",
+        "EastGallery"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "BanquetStore",
+      "use": "宴会備品庫",
+      "bounds": [
+        12,
+        38,
+        30,
+        36
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "EastGallery",
+      "use": "階段へ続くホール東廊下",
+      "bounds": [
+        32,
+        38,
+        12,
+        30
+      ],
+      "connections": [
+        "Ballroom",
+        "EastStair"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 2,
+      "name": "EastStair",
+      "use": "1階へ降りる階段室",
+      "bounds": [
+        32,
+        38,
+        0,
+        12
+      ],
+      "connections": [
+        "EastGallery",
+        "F1_EastGallery"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "ReceptionLobby",
+      "use": "ホテル入口ロビー",
+      "bounds": [
+        0,
+        12,
+        0,
+        16
+      ],
+      "connections": [
+        "ExitPassage"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "EntranceLounge",
+      "use": "入口待合ロビー",
+      "bounds": [
+        0,
+        12,
+        20,
+        36
+      ],
+      "connections": [
+        "ExitPassage"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "ExitPassage",
+      "use": "シャッター後の出口通路",
+      "bounds": [
+        0,
+        12,
+        16,
+        20
+      ],
+      "connections": [
+        "Ballroom",
+        "ReceptionLobby",
+        "EntranceLounge",
+        "FireDoor",
+        "Outdoor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "Ballroom",
+      "use": "1階の宴会ホール",
+      "bounds": [
+        12,
+        32,
+        6,
+        30
+      ],
+      "connections": [
+        "EastGallery",
+        "ExitPassage",
+        "Upper1",
+        "Upper2",
+        "Upper3",
+        "Lower1",
+        "Lower2",
+        "Lower3"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "EastGallery",
+      "use": "階段からの入口廊下",
+      "bounds": [
+        32,
+        38,
+        12,
+        30
+      ],
+      "connections": [
+        "EastStair",
+        "Ballroom"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "EastStair",
+      "use": "2階からの階段室",
+      "bounds": [
+        32,
+        38,
+        0,
+        12
+      ],
+      "connections": [
+        "F2_EastGallery",
+        "EastGallery"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 1,
+      "name": "Upper1",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        12,
+        19.25,
+        0,
+        6
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    },
+    {
+      "floor": 1,
+      "name": "Upper2",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        19.25,
+        25.75,
+        0,
+        6
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    },
+    {
+      "floor": 1,
+      "name": "Upper3",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        25.75,
+        32,
+        0,
+        6
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    },
+    {
+      "floor": 1,
+      "name": "Lower1",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        12,
+        19.25,
+        30,
+        36
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    },
+    {
+      "floor": 1,
+      "name": "Lower2",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        19.25,
+        25.75,
+        30,
+        36
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    },
+    {
+      "floor": 1,
+      "name": "Lower3",
+      "use": "敵専用の裏方・待機区画",
+      "bounds": [
+        25.75,
+        38,
+        30,
+        36
+      ],
+      "connections": [
+        "Ballroom"
+      ],
+      "access": "enemy_only"
+    }
+  ]
+}

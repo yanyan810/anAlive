@@ -17,6 +17,7 @@ public:
         bool cancelBurst = true);
     void SetStage(const StageWorld* world,const Vector3& position,const Vector3& rotation) {
         stageWorld_=world; transform_.translate=position; transform_.rotate=rotation;
+        motion_={};
     }
     const Transform& GetTransform() const { return transform_; }
     FPSMotion::Settings& Settings() { return settings_; }
@@ -30,14 +31,16 @@ public:
         FPSMotion::Settings settings;
         WeaponRuntime weapon;
         float hp=100, sensitivity=1;
+        StageWorld::PlayerMotion motion;
     };
     void RefreshDebug() { RefreshVisuals(); }
-    DebugState CaptureDebug() const { return {transform_,settings_,currentWeapon_,hp_,lookSensitivityMultiplier_}; }
+    DebugState CaptureDebug() const { return {transform_,settings_,currentWeapon_,hp_,lookSensitivityMultiplier_,motion_}; }
     void RestoreDebug(const DebugState& state) {
         transform_=state.transform; settings_=state.settings; currentWeapon_=state.weapon;
         hp_=state.hp; lookSensitivityMultiplier_=state.sensitivity; SyncVisuals(0);
+        motion_=state.motion;
     }
-    void SetPositionForDebug(const Vector3& position) { transform_.translate = position; }
+    void SetPositionForDebug(const Vector3& position) { transform_.translate = position; motion_={}; }
 #endif
     float GetHP() const { return hp_; }
     bool IsDead() const { return hp_ <= 0; }
@@ -51,6 +54,7 @@ private:
     void SyncVisuals(float dt);
     WeaponRuntime currentWeapon_;
     const StageWorld* stageWorld_ = nullptr;
+    StageWorld::PlayerMotion motion_;
     float hp_ = 100.0f;
     Transform transform_{{1.0f, 1.0f, 1.0f}, {}, {3.0f, 0.0f, -6.0f}};
     FPSMotion::Settings settings_;

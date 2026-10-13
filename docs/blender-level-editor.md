@@ -32,7 +32,7 @@ Object Typeなどの設定は.blendへ保存されます。変更後は **Ctrl+S
 
 出力先の末尾フォルダー名はStage IDと同じにします。Project Root設定時は `Project Root/resources/levels/Stage ID` へ出力します。Enemy / Weapon Spawnがある場合は、定義の読み込みと検証のためProject Rootが必須です。定義が読めない場合も保存済みIDは変更しません。
 
-現在のGameSceneが起動時に読むのは `resources/levels/stage01/stage01.json` です。まずはStage IDをstage01のままで編集してください。別IDへ出したステージを起動するにはGameSceneのlevelPathを変更します。
+通常のGameSceneが読むのは `resources/levels/stage01/stage01.json` です。ホテル `stage03` はDebugのOpen Hotel (Stage03)、またはDebug / Releaseの起動引数 `--hotel` で読み込めます。編集・経路・Collision設定は [hotel-stage.md](hotel-stage.md) を参照してください。他のIDはシーンへの登録が必要です。
 
 ### 3. FloorやWallをStatic Meshにする
 
@@ -62,7 +62,7 @@ Colliderはゲームでは見えません。Colliderを単独で配置するこ�
 
 Colliderは回転できます。ローカルAABBとWorld Transformを保持するので、斜めの壁にも対応します。サイズ0・負Scale・親の非均一Scaleによるシアーは検証エラーです。必要ならObject → Applyで変換を適用し、形を確定してください。
 
-床の上面はPlayer Spawnの足元の高さへ合わせてください。現段階は水平移動を前提とし、階段・斜面歩行・落下・ジャンプは追加していません。マップ外へ出ないよう、外周には壁Colliderを置きます。
+床の上面はPlayer Spawnの足元の高さへ合わせてください。Player GravityをONにすると床追従・落下が有効になります。床と緩やかな斜面ColliderのWalkable RampをONにすると階段用の坂を歩けます。壁・天井ではOFFにしてください。Player OnlyはPlayerの移動だけを止めるスポーン室ゲート用です。既存ステージでは各設定がOFFのため従来の水平移動を維持します。ジャンプは未実装です。マップ外へ出ないよう、外周には壁Colliderを置きます。
 
 ### 5. Player Spawnを置く
 

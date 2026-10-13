@@ -1,6 +1,7 @@
 #include "../Utility/AssetPreparation.h"
 #include "../../tests/AssetLoadingTests.h"
 #include "../../tests/ScreenTransitionTests.h"
+#include "../../tests/HotelStageRuntimeTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
@@ -47,6 +48,15 @@ int GameApp::Run() {
     if (!Initialize_()) {
         Finalize_();
         return -1;
+    }
+    if (std::wstring(GetCommandLineW()).find(L"--hotel-stage-test")!=std::wstring::npos) {
+        int result=0;
+        std::filesystem::create_directories("generated/hotel-tests");
+        try { RunHotelStageRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/hotel-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
     }
     if (std::wstring(GetCommandLineW()).find(L"--asset-loading-test")!=std::wstring::npos) {
         int result=0;
@@ -224,11 +234,14 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
+    sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
     #ifdef _DEBUG
     sceneMgr_->Register("Showroom", [] { return std::make_unique<ShowroomScene>(); });
     sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
     #endif
     sceneMgr_->Change(*this, "Title");
+    if (std::wstring(GetCommandLineW()).find(L"--hotel")!=std::wstring::npos)
+        sceneMgr_->Change(*this, "Stage03");
 #ifdef _DEBUG
     if (std::wstring(GetCommandLineW()).find(L"--cloth-showroom")!=std::wstring::npos)
         sceneMgr_->Change(*this, "ClothShowroom");

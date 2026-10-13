@@ -44,7 +44,7 @@ void GameScene::OnEnter(GameApp& app) {
     WeaponSystem nextWeapons;
     EnemySpawnSystem nextSpawns;
     StageProgress nextProgress;
-    const std::string levelPath=showroom_ ? "resources/levels/showroom/showroom.json" : "resources/levels/stage01/stage01.json";
+    const std::string levelPath=showroom_ ? "resources/levels/showroom/showroom.json" : StagePath();
     stageLoaded_=enemiesLoaded && nextLevel.Load(levelPath) && nextLevel.ValidateAssets() &&
         nextWeapons.Load("resources/Data/weapons.json",levelPath,weaponSeedOverride_) &&
         nextSpawns.Load(levelPath,enemyDefinitions_) && nextProgress.LoadGoals(levelPath);
@@ -101,7 +101,7 @@ void GameScene::OnEnter(GameApp& app) {
         ground_.SetScale({32,.25f,60}); ground_.SetTranslate({0,-.25f,24});
         ground_.SetMaterialColor({.45f,.48f,.52f,1});
     }
-    ground_.SetEnableLighting(1);
+    ground_.SetEnableLighting(stageId_=="stage03" ? 2 : 1); // Readable prototype interiors (Half Lambert).
     ground_.SetDirection({0.3f, -1.0f, 0.5f});
     ground_.SetIntensity(1.0f);
     ground_.SetPointLightIntensity(0.0f);
@@ -596,6 +596,9 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::Begin("FPS Controls");
 #ifdef _DEBUG
     if (ImGui::Button(showroom_ ? "Return to Game" : "Open Showroom")) RequestChangeScene_(showroom_ ? "Game" : "Showroom");
+    ImGui::SameLine();
+    if (ImGui::Button(stageId_=="stage03" ? "Open Stage01" : "Open Hotel (Stage03)"))
+        RequestChangeScene_(stageId_=="stage03" ? "Game" : "Stage03");
 #endif
     if (!spawnSystem_.Error().empty()) ImGui::TextWrapped("Spawn configuration error: %s", spawnSystem_.Error().c_str());
     const bool captured = app.GetInput()->IsCameraControlEnabled();
@@ -750,12 +753,12 @@ void GameScene::DrawImGui(GameApp& app) {
         ImGui::Text("GOAL: %s | Distance: %.1f | Activated: %s", goal.id.c_str(),
             std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z), goal.activated ? "true" : "false");
     }
-    if (ImGui::Button("Restart Stage")) RequestChangeScene_("Game");
+    if (ImGui::Button("Restart Stage")) RequestChangeScene_(SceneName());
     ImGui::BeginDisabled(!stage_.IsPlaying() || captured);
     if (ImGui::TreeNode("Test positions (debug teleport)")) {
         const auto moveTo = [&](const std::string& id, const Vector3& position) {
             if (ImGui::Button(("Move to " + id).c_str()))
-                player_.SetPositionForDebug({position.x,player_.GetTransform().translate.y,position.z});
+                player_.SetPositionForDebug({position.x,level_.collision.playerGravity ? position.y : player_.GetTransform().translate.y,position.z});
         };
         for (const auto& trigger : spawnSystem_.Triggers()) moveTo(trigger.id, trigger.position);
         for (const auto& goal : stage_.Goals()) moveTo(goal.id, goal.position);
@@ -767,7 +770,7 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::Begin("Spawn System");
     if (!stage_.IsPlaying()) ImGui::TextUnformatted("Stage cleared: all spawn schedules are frozen.");
     ImGui::Checkbox("Show trigger boxes / points / links", &showSpawnDebug_);
-    ImGui::TextUnformatted("Map: resources/levels/fps_spawns.json (restart to reload)");
+    ImGui::Text("Map: %s (restart to reload)",LevelPath().c_str());
     for (const auto& trigger : spawnSystem_.Triggers()) {
         if (!ImGui::TreeNode(trigger.id.c_str())) continue;
         size_t alive = 0;

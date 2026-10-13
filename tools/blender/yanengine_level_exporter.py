@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 8, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 9, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -194,6 +194,8 @@ def build_level(scene, depsgraph):
             "spawnPoints": [], "spawnTriggers": [], "spawnGroups": [], "weaponRandom": {"useFixedSeed": settings.fixed_seed, "seed": settings.seed},
             "weaponSpawnPoints": [], "goalTriggers": []}
     groups = {}
+    if settings.player_gravity:
+        data['stage']['playerGravity'] = True
     geometry = []
     for obj in objects:
         cfg = obj.yan_level
@@ -210,7 +212,12 @@ def build_level(scene, depsgraph):
                 continue
         if cfg.role == 'COLLIDER' or (cfg.role == 'STATIC' and cfg.collision == 'BOX'):
             box, _ = box_data(obj, depsgraph)
-            data['colliders'].append(dict(id=key, **box))
+            collider = dict(id=key, **box)
+            if cfg.walkable:
+                collider['walkable'] = True
+            if cfg.player_only:
+                collider['playerOnly'] = True
+            data['colliders'].append(collider)
         elif cfg.role in {'PLAYER', 'ENEMY', 'WEAPON'}:
             trs, _ = engine_transform(obj.matrix_world)
             pose = {"position": trs['position'], "rotation": trs['rotation']}
@@ -465,6 +472,8 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     group: StringProperty(name="Spawn Group", default="A")
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
     custom_collider: PointerProperty(name="Collider Object", type=bpy.types.Object)
+    walkable: BoolProperty(name='Walkable Ramp', description='Smooth floor support proxy; never enable on walls or ceilings', default=False)
+    player_only: BoolProperty(name='Player Only', description='Block the player but allow enemies and shots through', default=False)
     pool: CollectionProperty(type=YAN_PoolEntry)
     weapon_slot: EnumProperty(name='Slot', items=[('ALL', 'All', ''), ('Main', 'Main', ''), ('Sub', 'Sub', '')], default='ALL')
     min_rarity: EnumProperty(name='Min Rarity', items=[(str(i), f'★{i}', '') for i in range(1, 6)], default='1')
@@ -486,6 +495,7 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
 
 
 class YAN_SceneSettings(bpy.types.PropertyGroup):
+    player_gravity: BoolProperty(name='Player Gravity', description='Enable floor support, falling and smooth ramp walking', default=False)
     stage_id: StringProperty(name="Stage ID", default="stage01")
     project_root: StringProperty(name="Project Root", description="Engine project folder; // paths are relative to the blend file")
     output_directory: StringProperty(name="Output Directory", default="resources/levels/stage01", subtype='DIR_PATH')
@@ -1275,7 +1285,7 @@ class YAN_PT_level(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.yan_level
-        for key in ('stage_id', 'project_root', 'output_directory', 'fixed_seed'):
+        for key in ('stage_id', 'project_root', 'output_directory', 'fixed_seed', 'player_gravity'):
             layout.prop(cfg, key)
         layout.operator('yanengine.refresh_definitions', icon='FILE_REFRESH')
         if cfg.fixed_seed:
@@ -1292,6 +1302,9 @@ class YAN_PT_level(bpy.types.Panel):
                 layout.prop(settings, 'identifier')
             if settings.role == 'START_LETTER':
                 layout.label(text='One combined Mesh; all faces are Head, 1 HP')
+            if settings.role == 'COLLIDER' or (settings.role == 'STATIC' and settings.collision == 'BOX'):
+                layout.prop(settings, 'walkable')
+                layout.prop(settings, 'player_only')
             if settings.role == 'STATIC':
                 layout.prop(settings, 'collision')
                 if settings.collision == 'CUSTOM':

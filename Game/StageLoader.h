@@ -21,6 +21,7 @@ public:
             StageLoader next;
             next.id=data.at("stage").at("id").get<std::string>();
             next.model=data.at("stage").at("model").get<std::string>();
+            next.collision.playerGravity=data.at("stage").value("playerGravity",false);
             const std::filesystem::path modelPath(next.model);
             if (next.id.empty() || next.model.empty() || modelPath.is_absolute() || modelPath.extension()!=".gltf")
                 throw std::runtime_error("Invalid stage id/model");
@@ -53,6 +54,8 @@ public:
             for (const auto& item : data.at("colliders")) {
                 StageCollider c;
                 c.id=item.at("id").get<std::string>();
+                c.walkable=item.value("walkable",false);
+                c.playerOnly=item.value("playerOnly",false);
                 c.position=vector(item.at("position")); c.rotation=vector(item.at("rotation")); c.scale=vector(item.at("scale"));
                 c.local={vector(item.at("localBounds").at("min")),vector(item.at("localBounds").at("max"))};
                 if (c.scale.x<=1e-5f || c.scale.y<=1e-5f || c.scale.z<=1e-5f ||

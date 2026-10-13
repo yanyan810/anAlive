@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1196" height="943" viewBox="0 0 1196 943">
+<rect width="100%" height="100%" fill="#f7f9fc"/>
+<text x="76" y="42.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="28" fill="#172941">Stage03 ホテル・1階 平面図</text>
+<text x="76" y="83.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">床 Y=0 m　｜　上が北（Z=0）、右が東（+X）　｜　単位 m</text>
+<rect x="76" y="361" width="360" height="216" fill="#d4dce6" stroke="#b3becb"/>
+<text x="256" y="397.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="20" fill="#172941">屋外道路</text>
+<rect x="436" y="145" width="216" height="288" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="436" y="505" width="216" height="288" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="436" y="433" width="216" height="72" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="652" y="253" width="360" height="432" fill="#f1e5c8" stroke="#b4c0cf"/>
+<rect x="1012" y="361" width="108" height="324" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="1012" y="145" width="108" height="216" fill="#d5e2f0" stroke="#b4c0cf"/>
+<rect x="652" y="145" width="130.5" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="782.5" y="145" width="117.0" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="899.5" y="145" width="112.5" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="652" y="685" width="130.5" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="782.5" y="685" width="117.0" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="899.5" y="685" width="220.5" height="108" fill="#f3d6d6" stroke="#b4c0cf"/>
+<rect x="697.0" y="682.2999998927116" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="814.0" y="682.2999998927116" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="931.0" y="682.2999998927116" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="697.0" y="250.29999989271164" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="814.0" y="250.29999989271164" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="931.0" y="250.29999989271164" width="54.0" height="5.400000214576721" fill="#b54444" stroke="#b54444"/>
+<rect x="1009.2999998927116" y="360.9999957084656" width="5.400000214576721" height="79.20000171661377" fill="#344358" stroke="#344358"/>
+<rect x="1009.2999998927116" y="497.79999828338623" width="5.400000214576721" height="86.40000343322754" fill="#344358" stroke="#344358"/>
+<rect x="1009.2999998927116" y="641.799985408783" width="5.400000214576721" height="43.20000171661377" fill="#344358" stroke="#344358"/>
+<rect x="652.0" y="682.2999998927116" width="45.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="751.0" y="682.2999998927116" width="63.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="868.0" y="682.2999998927116" width="63.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="984.9999742507935" y="682.2999998927116" width="129.59999656677246" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="652.0" y="250.29999989271164" width="45.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="751.0" y="250.29999989271164" width="63.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="868.0" y="250.29999989271164" width="63.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="985.0" y="250.29999989271164" width="27.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="649.2999998927116" y="150.3999948501587" width="5.400000214576721" height="282.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="649.2999998927116" y="505.00000858306885" width="5.400000214576721" height="282.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="1012.000013679266" y="358.29999989271164" width="7.200000107288361" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="1062.3999991416931" y="358.29999989271164" width="52.20000171661377" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="1009.2999998927116" y="150.40000343322754" width="5.400000214576721" height="210.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="1114.5999724268913" y="145.0" width="5.400000214576721" height="648.0" fill="#344358" stroke="#344358"/>
+<rect x="436.0" y="145.0" width="684.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="436.0" y="787.5999724268913" width="684.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="436.0" y="145.0" width="5.400000214576721" height="288.0" fill="#344358" stroke="#344358"/>
+<rect x="436.0" y="505.0" width="5.400000214576721" height="288.0" fill="#344358" stroke="#344358"/>
+<rect x="441.40000343322754" y="430.29999989271164" width="111.59999656677246" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="607.0" y="430.29999989271164" width="45.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="441.40000343322754" y="502.29999989271164" width="111.59999656677246" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="607.0" y="502.29999989271164" width="45.0" height="5.400000214576721" fill="#344358" stroke="#344358"/>
+<rect x="790.5999997854233" y="391.5999997854233" width="10.800000429153442" height="10.800000429153442" fill="#344358" stroke="#344358"/>
+<rect x="790.5999997854233" y="535.5999997854233" width="10.800000429153442" height="10.800000429153442" fill="#344358" stroke="#344358"/>
+<rect x="934.5999997854233" y="391.5999997854233" width="10.800000429153442" height="10.800000429153442" fill="#344358" stroke="#344358"/>
+<rect x="934.5999997854233" y="535.5999997854233" width="10.800000429153442" height="10.800000429153442" fill="#344358" stroke="#344358"/>
+<rect x="779.7999998927116" y="684.9999742507935" width="5.400000214576721" height="102.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="896.7999998927116" y="684.9999742507935" width="5.400000214576721" height="102.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="779.7999998927116" y="150.40000343322754" width="5.400000214576721" height="102.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="896.7999998927116" y="150.40000343322754" width="5.400000214576721" height="102.59999656677246" fill="#344358" stroke="#344358"/>
+<rect x="1063.2999998927116" y="181.0" width="5.400000214576721" height="144.0" fill="#344358" stroke="#344358"/>
+<polyline points="1040.8000000000002,339.4 1040.8000000000002,397 1066,469 976,469 652,469 436,469 148,469" fill="none" stroke="#cd7920" stroke-width="4"/>
+<polyline points="1021.9000000000001,181.0 1059.6999999999998,181.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,188.2 1059.6999999999998,188.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,195.4 1059.6999999999998,195.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,202.6 1059.6999999999998,202.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,209.8 1059.6999999999998,209.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,217.0 1059.6999999999998,217.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,224.2 1059.6999999999998,224.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,231.4 1059.6999999999998,231.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,238.60000000000002 1059.6999999999998,238.60000000000002" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,245.8 1059.6999999999998,245.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,253.0 1059.6999999999998,253.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,260.2 1059.6999999999998,260.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,267.4 1059.6999999999998,267.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,274.6 1059.6999999999998,274.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,281.8 1059.6999999999998,281.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,289.0 1059.6999999999998,289.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,296.20000000000005 1059.6999999999998,296.20000000000005" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,303.4 1059.6999999999998,303.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,310.6 1059.6999999999998,310.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1021.9000000000001,317.8 1059.6999999999998,317.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,181.0 1110.1,181.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,188.2 1110.1,188.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,195.4 1110.1,195.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,202.6 1110.1,202.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,209.8 1110.1,209.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,217.0 1110.1,217.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,224.2 1110.1,224.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,231.4 1110.1,231.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,238.60000000000002 1110.1,238.60000000000002" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,245.8 1110.1,245.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,253.0 1110.1,253.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,260.2 1110.1,260.2" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,267.4 1110.1,267.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,274.6 1110.1,274.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,281.8 1110.1,281.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,289.0 1110.1,289.0" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,296.20000000000005 1110.1,296.20000000000005" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,303.4 1110.1,303.4" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,310.6 1110.1,310.6" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1072.3000000000002,317.8 1110.1,317.8" fill="none" stroke="#657d97" stroke-width="1"/>
+<polyline points="1091.1999999999998,325 1091.1999999999998,164.8 1040.8000000000002,164.8 1040.8000000000002,325" fill="none" stroke="#507296" stroke-width="3"/>
+<text x="544.0" y="289.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">ホテル入口ロビー</text>
+<text x="544.0" y="649.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">入口待合ロビー</text>
+<text x="832.0" y="541.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">宴会ホール</text>
+<text x="1066.0" y="512.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">ホール</text>
+<text x="1066.0" y="534.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">東廊下</text>
+<rect x="1022.8000000000001" y="226.0" width="86.39999999999998" height="54.0" fill="#d5e2f0" stroke="#d5e2f0"/>
+<text x="1066.0" y="242.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">東階段</text>
+<text x="1066.0" y="264.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">2F ↔ 1F</text>
+<text x="717.25" y="188.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 1</text>
+<text x="717.25" y="210.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<text x="841.0" y="188.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 2</text>
+<text x="841.0" y="210.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<text x="955.75" y="188.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 3</text>
+<text x="955.75" y="210.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<text x="717.25" y="728.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 1</text>
+<text x="717.25" y="750.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<text x="841.0" y="728.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 2</text>
+<text x="841.0" y="750.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<text x="1009.75" y="728.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">敵待機 3</text>
+<text x="1009.75" y="750.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">侵入不可</text>
+<circle cx="724.0" cy="739.0" r="4" fill="#a63838"/>
+<circle cx="841.0" cy="739.0" r="4" fill="#a63838"/>
+<circle cx="958.0" cy="739.0" r="4" fill="#a63838"/>
+<circle cx="724.0" cy="199.0" r="4" fill="#a63838"/>
+<circle cx="841.0" cy="199.0" r="4" fill="#a63838"/>
+<circle cx="958.0" cy="199.0" r="4" fill="#a63838"/>
+<text x="652" y="415.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="16" fill="#172941">シャッター</text>
+<text x="580" y="469.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="15" fill="#172941">出口通路</text>
+<text x="481.0" y="532.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="16" fill="#172941">防火扉</text>
+<text x="697.0" y="523.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="15" fill="#172941">ボタン</text>
+<text x="148" y="523.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="17" fill="#172941">屋外Goal</text>
+<text x="76" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">-20</text>
+<text x="184" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">-14</text>
+<text x="292" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">-8</text>
+<text x="400" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">-2</text>
+<text x="508" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">4</text>
+<text x="616" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">10</text>
+<text x="724" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">16</text>
+<text x="832" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">22</text>
+<text x="940" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">28</text>
+<text x="1048" y="127.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">34</text>
+<text x="51" y="145.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">0</text>
+<text x="51" y="253.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">6</text>
+<text x="51" y="361.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">12</text>
+<text x="51" y="469.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">18</text>
+<text x="51" y="577.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">24</text>
+<text x="51" y="685.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">30</text>
+<text x="51" y="793.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="14" fill="#64748b">36</text>
+<text x="76" y="852.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="16" fill="#172941">橙線：主な進行経路　青：階段　赤：Player専用侵入防止ゲート</text>
+<text x="76" y="888.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="16" fill="#172941">家具・装飾は省略。壁線と出入口はstage03.jsonのCollisionに対応。</text>
+</svg>

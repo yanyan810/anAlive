@@ -24,7 +24,7 @@
 
 class GameScene : public IScene {
 public:
-    explicit GameScene(bool showroom=false) : showroom_(showroom) {}
+    explicit GameScene(bool showroom=false,std::string stageId="stage01") : showroom_(showroom), stageId_(std::move(stageId)) {}
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
     bool IsReadyForTransition() const override { return stageLoaded_; }
@@ -38,6 +38,7 @@ public:
     void DrawOverlay2D(GameApp& app) override;
 private:
     friend void RunScreenTransitionTests(GameApp& app);
+    friend void RunHotelStageRuntimeTests(GameApp& app);
 #ifdef _DEBUG
     friend void RunEnemyPoolTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);
@@ -49,14 +50,16 @@ private:
     bool ReturnToTitle(GameApp& app);
 
     void SyncProjectileVisuals(GameApp& app);
-    const char* SceneName() const { return showroom_ ? "Showroom" : "Game"; }
+    const char* SceneName() const { return showroom_ ? "Showroom" : stageId_=="stage03" ? "Stage03" : "Game"; }
     std::string LevelPath() const { return showroom_ ? "resources/levels/showroom/showroom.json" :
-        stageLoaded_ ? "resources/levels/stage01/stage01.json" : "resources/levels/fps_spawns.json"; }
+        stageLoaded_ ? StagePath() : "resources/levels/fps_spawns.json"; }
+    std::string StagePath() const { return "resources/levels/"+stageId_+"/"+stageId_+".json"; }
     void ResetShowroomEnemies(GameApp& app);
     void RecycleEnemies();
     void DrawEnemyPoolStats();
     void DrawShowroomTools(GameApp& app);
     bool showroom_=false, freezeEnemies_=true;
+    std::string stageId_;
     bool showEnemyLabels_=true, showWeaponLabels_=true, showEnemyMarkers_=true;
     bool showEnemyCollision_=false, showEnemyParts_=false, resetEnemiesPending_=false;
 #ifdef _DEBUG

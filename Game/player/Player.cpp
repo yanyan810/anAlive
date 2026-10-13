@@ -4,6 +4,7 @@
 void Player::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera) {
     hp_ = 100.0f;
     movementEnabled_ = true;
+    motion_ = {};
     camera_ = camera;
     object_.Initialize(common, dx);
     object_.SetCamera(camera);
@@ -27,7 +28,7 @@ void Player::Update(const Input& input, float dt) {
         const float right = static_cast<float>(input.IsKeyPressed(DIK_D)) - static_cast<float>(input.IsKeyPressed(DIK_A));
         if (movementEnabled_) FPSMotion::Move(transform_, right, forward, dt, settings_);
     }
-    if (movementEnabled_ && stageWorld_) transform_.translate=stageWorld_->Move(previous,transform_.translate);
+    if (movementEnabled_ && stageWorld_) transform_.translate=stageWorld_->MovePlayer(previous,transform_.translate,dt,motion_);
     SyncVisuals(dt);
 }
 int Player::UpdateShooting(const Input& input, float dt, bool allowFire, bool allowReload, bool cancelBurst) {

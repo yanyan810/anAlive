@@ -16,6 +16,8 @@ positionはBox中心、sizeは全幅・全高・全奥行きです。Playerの�
 
 Cleared後はPlayer移動・マウス視点・射撃・AI・攻撃・ダメージ・Spawnを停止し、カーソルを解放します。Goal到達処理は一度だけ実行します。Spawnの残数とタイマーは停止時点で保持します。`Enemy::UpdateVisuals` のみを継続するので、Face / Chunkは落下・消滅まで動作します。AIの状態表示は停止直前の値を保持します。
 
+結果画面の **RETURN TO TITLE** をクリック、またはEnter（テンキーEnterも可）でタイトルに戻れます。DebugのScene画像とReleaseのウィンドウサイズに合わせてクリック位置を変換します。復帰は共通の0.5秒FadeOut → タイトル初期化 → 0.5秒FadeInで行い、遷移中の再要求は無視します。クリアした背景と結果はFadeOut中も保持します。
+
 時間はPlaying中のシミュレーションdtの合計で、クリア時に固定します。アプリが更新を止める非アクティブ時間などは含みません。撃破数は初めてDeadとして観測した個体IDだけを加算し、クリア後は変わりません。結果はSpriteによって中央へ描画され、ImGuiを使用しないReleaseでも表示します。フォントは同梱の `resources/ui/stage_font.png`。再生成用スクリプトは `tools/generate-stage-font.ps1` です。
 
 ## DebugとRestart
@@ -28,6 +30,7 @@ Debug限定の `Test positions (debug teleport)` を開くと、JSONから取得
 
 ## 検証結果と手動確認
 
+- タイトル復帰の追加検証：Debug/Releaseの実GPUテストでStage01のGoalを起動し、結果表示、タイトルボタンの範囲、遷移中の結果固定、重複要求防止、タイトル初期化とフェード完了を確認。`generated/transition-tests/clear-title-menu.png` に表示画像を保存。キーボードとマウスの手操作は下記の手動確認とは別です。
 - Debug / Release x64: 警告0、エラー0。既存のDebug /Z7によるPDB対策を維持。
 - `tools/test-stage-progress.ps1`: Goal境界、再入場時の一回性、固定時間と撃破数、ID重複排除、Reset、旧JSON互換性、不正設定拒否、A→B→Goal、生存敵を残したクリア、Spawn/攻撃停止、GoalとSpawn領域が重なる場合の優先順が成功。
 - Spawn、Enemy部位/AI/破片運動、FPS移動、Raycastの既存テストが成功。

@@ -166,6 +166,10 @@ void GameScene::Update(GameApp& app, float dt) {
     // SceneManager consumes this request after Update, safely outside ImGui drawing.
     if (!NextScene().empty()) return;
     Input& input = *app.GetInput();
+    if (!stage_.IsPlaying()) {
+        UpdateClearMenu(app);
+        if (app.Scenes().IsTransitioning()) return;
+    }
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F5) && !ImGui::GetIO().WantTextInput)
         resetEnemiesPending_=true;
@@ -317,6 +321,41 @@ void GameScene::Update(GameApp& app, float dt) {
 #ifdef _DEBUG
     if (dt>0) { ++debugFrame_; debugHistory_.Push(CaptureDebug()); }
 #endif
+}
+
+bool GameScene::ReturnToTitle(GameApp& app) {
+    return !stage_.IsPlaying() && app.Scenes().TransitionTo("Title", .5f, .5f);
+}
+
+void GameScene::UpdateClearMenu(GameApp& app) {
+    auto& input = *app.GetInput();
+    clearOverlay_.SetTitleHovered(false);
+    if (!input.HasFocus() || app.Scenes().IsTransitioning()) return;
+    RECT rect{};
+    bool viewHovered = true;
+#ifdef USE_IMGUI
+    if (!app.ImGui()->GetSceneImageRect(rect)) return;
+    viewHovered = app.ImGui()->IsSceneImageHovered();
+    if (ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive()) return;
+#else
+    if (!GetClientRect(app.Win()->GetHwnd(), &rect)) return;
+    POINT origin{};
+    if (!ClientToScreen(app.Win()->GetHwnd(), &origin)) return;
+    OffsetRect(&rect, origin.x, origin.y);
+#endif
+    POINT cursor{};
+    const bool validRect = rect.right > rect.left && rect.bottom > rect.top;
+    bool hovered = false;
+    if (validRect && viewHovered && GetCursorPos(&cursor) && PtInRect(&rect, cursor)) {
+        // Scene images and Release windows can be displayed at any size.
+        const Vector2 point{
+            static_cast<float>(cursor.x-rect.left) * WinApp::kClientWidth / (rect.right-rect.left),
+            static_cast<float>(cursor.y-rect.top) * WinApp::kClientHeight / (rect.bottom-rect.top)};
+        hovered = clearOverlay_.IsTitleHovered(point);
+    }
+    clearOverlay_.SetTitleHovered(hovered);
+    if (input.IsKeyTrigger(DIK_RETURN) || input.IsKeyTrigger(DIK_NUMPADENTER) ||
+        (hovered && input.IsLeftMouseTrigger())) ReturnToTitle(app);
 }
 
 void GameScene::OnStageClear(GameApp& app) {

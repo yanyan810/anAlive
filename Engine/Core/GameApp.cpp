@@ -32,6 +32,7 @@
 #include <Windows.h>
 #include <chrono>
 #include <algorithm>
+#include <cmath>
 #ifdef _DEBUG
 #include "../../tests/EnemyPoolTests.h"
 #include "../../tests/TitleSceneTests.h"
@@ -300,7 +301,11 @@ void GameApp::Update(float dt, float unscaledDt) {
 
     // Presentation uses wall time once, even if replay pauses/accelerates the
     // simulation or gameplay later applies slow motion to its own dt.
-    sceneMgr_->UpdateTransition(*this, unscaledDt);
+    // A cold stage's first GPU frames (or a window/debugger stall) can be much
+    // longer than the fade itself. Do not jump straight into its middle/end.
+    // This is still unscaled wall time, independent of simulation/replay dt.
+    const float transitionDt = std::isfinite(unscaledDt) && unscaledDt > 0 ? std::min(unscaledDt, .05f) : 0;
+    sceneMgr_->UpdateTransition(*this, transitionDt);
     for (unsigned int update = 0; update < simulationUpdates; ++update) {
         if (debugAI_) {
             debugAI_->PrepareSimulationFrame();

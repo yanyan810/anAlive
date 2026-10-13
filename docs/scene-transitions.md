@@ -19,9 +19,11 @@ Release：3DとゲームUIをOffscreenへ描画 → ポストエフェクトをB
 
 Debug/Development：同じゲーム画像とOverlay UI・FadeをScene用テクスチャへ描画 → ImGuiでScene画像とデバッグ画面を描画。ImGuiはフェード中も操作できます。シーン切替中はシーン固有の編集操作を無効にし、共通パネルと状態表示を維持します。遷移中はマウスキャプチャとImGuiのNoMouseを解除します。
 
+Spriteの透明度合成は `srcAlpha + dstAlpha * (1 - srcAlpha)` とします。ゲーム画像のAlpha=1を保持したままRGBへフェードを合成し、ImGuiのImageでフェードAlphaが再び適用されることを防ぎます。従来のDestBlendAlpha=ZEROでは、フェードイン中にSceneテクスチャのAlphaまで減り、最終表示が明るくなった後に再び暗くなる症状が発生していました。
+
 白1pxテクスチャのSpriteを0〜1の正規化座標で描画するので、現在のビューポート全体を覆います。固定の1280×720をフェードのサイズとして保持しません。既存エンジンはゲーム描画解像度を1280×720に固定し、ウィンドウやScene画像の表示サイズへ拡縮します。この既存仕様でもフェードは端まで追従します。エンジン全体の動的なRenderTarget再生成・解像度設定機能は今回の対象外です。
 
-GameAppのsteady_clockによる実経過時間を `UpdateTransition` にホストフレームごと1回渡します。シーンのdt制限、将来のスローモーション、DebugAIの固定dt・複数更新・更新停止から独立しています。SceneManagerの `Update(app, dt)` は1フレーム1更新用の互換APIで、テストなどではdtがそのまま実時間になります。
+GameAppのsteady_clockによる実経過時間を `UpdateTransition` にホストフレームごと1回渡します。シーンのdt制限、将来のスローモーション、DebugAIの固定dt・複数更新・更新停止から独立しています。初回GPU描画やウィンドウ停止で長い待ちが入ってもフェードの先頭を飛ばさないよう、ホストから渡す1フレームの進行を最大0.05秒に制限します。低FPSや長い停止時は、指定期間より実際の演出が長くなることがあります。SceneManagerの `Update(app, dt)` は1フレーム1更新用の互換APIで、テストなどではdtがそのまま実時間になります。
 
 ## シーン遷移API
 
@@ -98,6 +100,7 @@ Debug/Developmentの共通 **Screen Transition** ウィンドウを使用しま�
 
 ## 変更ファイル
 
+- Engine/2D/SpriteCommon.cpp：不透明なScene画像のAlphaを保持する合成。
 - Engine/Core/FadeManager.h/.cpp：共通フェード拡張。
 - Engine/Core/SceneManager.h/.cpp：待機、失敗復帰、デバッグ。
 - Engine/Core/IScene.h：読み込み状態通知。
@@ -122,6 +125,12 @@ Debug/Releaseをビルド後、`Tools/test-screen-transition.ps1 -Configuration 
 - 切替前後の全黒画像、半分フェードしたゲーム画面と通常画面を確認。ゲームUIもフェードに含まれます。
 - ImGuiはパネルの描画とマウス入力有効を自動確認。各ボタンの手操作によるクリック検証は行っていません。
 - git diff --check：成功。開始時のリポジトリに未コミット変更はありませんでした。
+
+追加修正：クリア結果のRETURN TO TITLE（クリック/Enter）から共通フェードでタイトルへ戻る処理を追加しました。Debug/Releaseのビルドと実GPUテストで結果固定・重複防止・復帰を確認し、5秒の初回描画待ちを想定したテストでもFadeInが先頭から進むことを確認しました。既存タイトル回帰テストも再実行してPASSです。
+
+最終表示の再暗転を修正する前に、実ImGui合成の連続フレームで症状を再現しました。`generated/transition-tests/fade-in-frames-before-fix.csv` ではFadeInのAlphaが0.5から0.1へ減る間に最終表示が再び暗くなることを確認できます。新しいテストはRGBだけでなくSceneのAlphaと最終表示の明るさを検査し、ステージ開始とクリア→タイトル復帰の完了後にも複数のホストフレームを進めてフェードが再開始しないことを確認します。
+
+合成修正後のDebug/ReleaseビルドとGPUテスト、既存タイトル回帰テストはPASSです。Debugの最終表示は15フレームを通して明るさが減少せず、SceneのAlphaも255を保持しました。ステージ開始とクリア→タイトル復帰では、それぞれ完了後12ホストフレームのIdle継続とフェード開始カウンターの不変を確認しました。修正後のImGui表示の計測は `generated/transition-tests/fade-in-frames-Debug.csv` に保存しています。
 
 最初に既存build.ps1が選んだ最新Visual Studio環境でPDBバージョン不一致が発生しました。Visual Studio 2022のvcvars64.batを読み込み、MSBuildで生成物を再構築することで解消しました。検証にはこの2022開発環境を使用しています。
 

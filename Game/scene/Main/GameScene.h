@@ -37,6 +37,7 @@ public:
     void DrawImGui(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
 private:
+    friend void RunScreenTransitionTests(GameApp& app);
 #ifdef _DEBUG
     friend void RunEnemyPoolTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);
@@ -44,6 +45,8 @@ private:
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void OnStageClear(GameApp& app);
+    void UpdateClearMenu(GameApp& app);
+    bool ReturnToTitle(GameApp& app);
 
     void SyncProjectileVisuals(GameApp& app);
     const char* SceneName() const { return showroom_ ? "Showroom" : "Game"; }

@@ -95,7 +95,10 @@ void SpriteCommon::CreateGraphicsPipelineState() {
     blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
     blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
     blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-    blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+    // Preserve opaque scene alpha: UI/fades change RGB, not the opacity of the
+    // already composited scene. ImGui::Image blends this texture once more.
+    // Overwriting alpha with the fade amount made FadeIn brighten then darken.
+    blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
 
     // === Rasterizer ===
     D3D12_RASTERIZER_DESC rast{};

@@ -10,6 +10,12 @@ public:
     virtual void OnEnter(GameApp& app) {}
     virtual void OnExit(GameApp& app) {}
 
+    // Synchronous scenes need no overrides. An asynchronous loader finalizes
+    // render-thread resources in UpdateLoading and signals readiness/error.
+    virtual void UpdateLoading(GameApp& app, float unscaledDt) {}
+    virtual bool IsReadyForTransition() const { return true; }
+    virtual std::string InitializationError() const { return {}; }
+
     virtual void Update(GameApp& app, float dt) = 0;
 
     // RenderTexture向け

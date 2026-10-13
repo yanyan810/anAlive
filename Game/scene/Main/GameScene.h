@@ -27,6 +27,10 @@ public:
     explicit GameScene(bool showroom=false) : showroom_(showroom) {}
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
+    bool IsReadyForTransition() const override { return stageLoaded_; }
+    std::string InitializationError() const override {
+        return stageLoaded_ ? std::string{} : "GameScene stage initialization failed";
+    }
     void Update(GameApp& app, float dt) override;
     void DrawRender(GameApp& app) override;
     void Draw(GameApp&) override {}

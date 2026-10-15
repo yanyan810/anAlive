@@ -114,8 +114,18 @@ public:
         reloadState_ = WeaponReloadState::None;
         burstShotsRemaining_ = 0;
         burstTimer_ = 0;
+        infiniteAmmo_ = false;
     }
     const WeaponDefinition& Definition() const { return definition_; }
+    bool InfiniteAmmo() const { return infiniteAmmo_; }
+    void SetInfiniteAmmo(bool enabled) {
+        infiniteAmmo_ = enabled;
+        if (enabled) {
+            magazine_ = definition_.magazineSize;
+            reloadState_ = WeaponReloadState::None;
+            reloadRemaining_ = 0;
+        }
+    }
     int Magazine() const { return magazine_; }
     int Reserve() const { return reserve_; }
     bool Reloading() const { return reloadState_ != WeaponReloadState::None; }
@@ -133,12 +143,12 @@ public:
         if (burstShotsRemaining_ > 0) {
             burstTimer_ -= elapsed;
             while (burstShotsRemaining_ > 0 && burstTimer_ <= 1e-7) {
-                if (magazine_ >= definition_.ammoPerShot) {
-                    magazine_ -= definition_.ammoPerShot;
+                if (HasAmmo()) {
+                    if (!infiniteAmmo_) magazine_ -= definition_.ammoPerShot;
                     ++shots;
                     --burstShotsRemaining_;
                 }
-                if (burstShotsRemaining_ == 0 || magazine_ < definition_.ammoPerShot) {
+                if (burstShotsRemaining_ == 0 || !HasAmmo()) {
                     burstShotsRemaining_ = 0;
                     // Preserve frame overshoot: cooldown starts at the final shot's time.
                     cooldown_ = std::max(0.0,definition_.fireInterval+burstTimer_);
@@ -158,15 +168,15 @@ public:
         return shots;
     }
     bool TryFire() {
-        if (definition_.id.empty() || burstShotsRemaining_ > 0 || cooldown_ > 1e-7 || magazine_ < definition_.ammoPerShot) return false;
+        if (definition_.id.empty() || burstShotsRemaining_ > 0 || cooldown_ > 1e-7 || !HasAmmo()) return false;
         if (Reloading()) {
             if (definition_.reloadMode != WeaponReloadMode::PerRound || !definition_.reloadCanInterrupt) return false;
             reloadState_ = WeaponReloadState::None;
             reloadRemaining_ = 0;
         }
-        magazine_ -= definition_.ammoPerShot;
+        if (!infiniteAmmo_) magazine_ -= definition_.ammoPerShot;
         cooldown_ = definition_.fireInterval;
-        if (definition_.fireMode == WeaponFireMode::Burst && definition_.burstCount > 1 && magazine_ >= definition_.ammoPerShot) {
+        if (definition_.fireMode == WeaponFireMode::Burst && definition_.burstCount > 1 && HasAmmo()) {
             burstShotsRemaining_ = definition_.burstCount-1;
             burstTimer_ = definition_.burstInterval;
             cooldown_ = 0;
@@ -174,7 +184,7 @@ public:
         return true;
     }
     bool StartReload() {
-        if (definition_.id.empty() || Reloading() || magazine_ >= definition_.magazineSize || reserve_ <= 0) return false;
+        if (infiniteAmmo_ || definition_.id.empty() || Reloading() || magazine_ >= definition_.magazineSize || reserve_ <= 0) return false;
         CancelBurst();
         reloadState_ = WeaponReloadState::Starting;
         reloadRemaining_ = definition_.reloadMode == WeaponReloadMode::Magazine ? definition_.reloadTime : definition_.reloadStartTime;
@@ -187,6 +197,7 @@ public:
         burstTimer_ = 0;
     }
 private:
+    bool HasAmmo() const { return infiniteAmmo_ || magazine_ >= definition_.ammoPerShot; }
     void UpdateReload(double elapsed) {
         if (!Reloading()) return;
         reloadRemaining_ -= elapsed;
@@ -215,6 +226,7 @@ private:
     WeaponDefinition definition_;
     int magazine_ = 0;
     int reserve_ = 0;
+    bool infiniteAmmo_ = false;
     double cooldown_ = 0;
     double reloadRemaining_ = 0;
     WeaponReloadState reloadState_ = WeaponReloadState::None;

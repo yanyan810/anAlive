@@ -15,6 +15,7 @@
 #include "DebugJsonEditor.h"
 #endif
 
+class TemporarySceneTransitionCheck;
 class TitleScene : public IScene {
 public:
     void OnEnter(GameApp& app) override;
@@ -28,6 +29,8 @@ public:
     void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
 private:
+    friend class TemporarySceneTransitionCheck;
+    friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
 #ifdef _DEBUG
     friend void RunTitleSceneTests(GameApp& app);
 #endif

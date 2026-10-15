@@ -113,6 +113,30 @@ Debug/Developmentの共通 **Screen Transition** ウィンドウを使用しま�
 
 ## 検証方法
 
+### 今回限りのRelease手動確認
+
+Releaseビルド後、プロジェクト直下の `Check-Scene-Transitions-Release.cmd` をダブルクリックします。直接起動する場合は `CG2_Setup.exe --scene-transition-check` を指定します。通常起動では確認用の表示・ショートカットは有効になりません。
+
+画面上部に操作キー・現在のシーン・フェード状態・Alphaを表示します。GAME OVERでは既存ロゴに重ならないよう下部に表示します。確認表示はフェードの上に描画されます。
+
+| キー | 動作 |
+| --- | --- |
+| F1 | タイトルへ戻る。クリア画面では既存のRETURN TO TITLEと同じ処理。 |
+| F2 | タイトルではGAME STARTの爆散→0.45秒待機→フェード→Stage01を実行。それ以外ではStage01を開始/再開始。 |
+| F3 | ゲーム中にゴールを発動し、実際のクリア結果と更新停止を確認。タイトル復帰はEnter/クリック/F1。 |
+| F4 | ゲーム中にHPを0にし、既存の死亡処理でGAME OVERへ。Spaceでタイトルへ、F2でリトライ。 |
+| F5 | 現在のシーンで黒の0.75秒FadeOut→不透明フレーム→0.75秒FadeIn。 |
+
+F3/F4はゲーム中のみ有効です。爆散中・フェード中・ロード中の追加キー要求は無視します。クリア画面の表示、死亡→GAME OVER、GAME OVERのSpace→タイトルは既存の動作を使用します。
+
+確認用コードは `Game/TemporarySceneTransitionCheck.h` とGameAppの起動・更新・描画・終了フックへまとめています。確認が終わったら、このヘッダー、起動ファイル、専用テストと両シーンのfriend宣言を外せます。タイトルの無限弾は独立した通常機能です。
+
+自動検証は `Tools/test-scene-transition-check.ps1 -Configuration Release` で実行します。実際のタイトル演出、Stage01、クリアと結果固定、タイトル復帰、死亡とGAME OVER、リトライ、フェード単体と連続要求ガードを実D3D12で確認します。結果と画面PNGは `generated/scene-transition-check` に保存します。
+
+2026-10-13の検証：ゲーム本体のDebug/Releaseビルド、無限弾と通常武器の単体検証、既存タイトルのDebug実GPU検証、既存フェードのRelease実GPU検証、確認モードのRelease実GPU検証がすべてPASS。確認用バーのPNGも目視確認しました。キーから呼ぶ操作本体を自動検証しており、キーボードを手で押す検証は行っていません。
+
+ローカル環境でC1902が再発したため、VS2022の開発環境に加えて今回のビルドだけ `generated/transition-check-build.targets` でデバッグ情報をOBJに格納する方式へ変更しました。Releaseの最適化は維持し、プロジェクトの通常設定は変更していません。ReleaseのDebugAIViewerも再構築しました。
+
 Debug/Releaseをビルド後、`Tools/test-screen-transition.ps1 -Configuration Debug` および `-Configuration Release` を実行します。4補間、端点、Hold、時間0と状態通知、実時間とシミュレーションの分離、設定変更、不正入力、重複・再入防止、遅延ロード、Factory/null/OnEnter/遅延ロード失敗の復帰を検証します。実D3D12で853×481、1920×1080、127×255の全ピクセルを読み戻し、下のUIと画面端が完全に覆われることを確認します。Debugでは共通ImGuiウィンドウの存続とマウス入力有効も検証します。結果とPNGはgenerated/transition-testsへ出力します。
 
 既存の `Tools/test-title-scene.ps1` で破壊演出の回帰、0.45秒待機、タイトル→Stage01、HUD込みの切替前後全黒画像、ロード時間除外、FadeIn中の更新停止と再開を確認します。
@@ -135,5 +159,11 @@ Debug/Releaseをビルド後、`Tools/test-screen-transition.ps1 -Configuration 
 最初に既存build.ps1が選んだ最新Visual Studio環境でPDBバージョン不一致が発生しました。Visual Studio 2022のvcvars64.batを読み込み、MSBuildで生成物を再構築することで解消しました。検証にはこの2022開発環境を使用しています。
 
 ## 今回の範囲
+
+フェードイン中の武器配置ずれを修正しました。武器生成時のWVPはプレイヤーの開始位置を反映する前のカメラで作られていました。GameSceneの遷移用初期化でカメラを確定した後、武器の描画データもUpdate(0)で更新します。ゲーム進行を止めたまま、最初の黒画面から正しい位置を描画します。
+
+実GPUの回帰テストで、修正前は初期化直後の武器画像がカメラ確定後の更新で変わることを再現しました。修正後は初期黒画面・FadeIn中・通常更新再開後の武器画像が一致することを検査します。比較用PNGは `generated/transition-tests/weapons-incoming.png`、`weapons-refreshed.png`、`weapons-after-fade.png`、修正前は `weapons-incoming-before-fix.png` と `weapons-refreshed-before-fix.png` に保存します。
+
+この修正のDebug/Releaseビルドと実GPU回帰テストは両方PASSです。結果は `generated/transition-tests/result-Debug.txt` と `result-Release.txt` に保存しました。初期描画の準備で時間・発射数・敵の生成が進んでいないことも検査します。
 
 GAME OVER、敵化視点、自動徘徊、ステージクリアの本格実装、状態引継ぎ、Iris、スローモーション、非同期ローダーは追加していません。今後はゲーム側で遷移先や引継ぎデータを決めてTransitionToを呼べます。新しい画面効果はFadeManagerのプレゼンテーション部分を拡張し、SceneManagerのロード・寿命管理を共用できます。既存のCircleMaskやRenderManagerのDissolveとは統合していません。

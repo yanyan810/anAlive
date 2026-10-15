@@ -494,6 +494,7 @@ void TitleScene::OnEnter(GameApp& app) {
     player_.SetMovementEnabled(true);
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
     player_.CurrentWeapon().Equip(*weapons_.Find(weaponId_));
+    player_.CurrentWeapon().SetInfiniteAmmo(true);
     player_.Update(input,0);
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     EnemyPoolSettings settings;
@@ -626,9 +627,7 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
         });
     controls = controls && !StartExplosionActive();
     auto& weapon = player_.CurrentWeapon();
-    // Extended target practice must not exhaust all ammunition and block start.
-    if (!start_.Starting() && weapon.Magazine()==0 && weapon.Reserve()==0) weapon.Equip(*weapons_.Find(weaponId_));
-    const int shots = player_.UpdateShooting(input,dt,controls && !suppressFireUntilRelease_,controls);
+    const int shots = player_.UpdateShooting(input,dt,controls && !suppressFireUntilRelease_,false);
     for (int shot=0; shot<shots; ++shot)
         bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,enemies_,titleTarget);
     ApplyStartCameraShake();

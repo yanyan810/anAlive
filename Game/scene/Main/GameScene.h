@@ -22,6 +22,7 @@
 #endif
 #endif
 
+class TemporarySceneTransitionCheck;
 class GameScene : public IScene {
 public:
     explicit GameScene(bool showroom=false,std::string stageId="stage01") : showroom_(showroom), stageId_(std::move(stageId)) {}
@@ -37,6 +38,8 @@ public:
     void DrawImGui(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
 private:
+    friend class TemporarySceneTransitionCheck;
+    friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
     friend void RunScreenTransitionTests(GameApp& app);
     friend void RunHotelStageRuntimeTests(GameApp& app);
 #ifdef _DEBUG

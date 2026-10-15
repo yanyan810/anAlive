@@ -138,6 +138,9 @@ void GameScene::OnEnter(GameApp& app) {
         // Prepare a drawable first frame without processing the outgoing shot,
         // mouse delta, spawn triggers or goals while the incoming view is black.
         player_.RefreshVisuals(); ground_.Update(0);
+        // Pickup WVPs were created before the camera moved to the spawn point.
+        // Refresh them now; simulation remains frozen throughout FadeIn.
+        for (auto& visual : weaponVisuals_) visual->Update(0);
         suppressFireUntilRelease_ = true;
     } else {
         Update(app, 0.0f);

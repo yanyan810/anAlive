@@ -59,6 +59,35 @@ inline void Draw(GameApp& app, [[maybe_unused]] bool expectDebugInput = true) {
 #endif
 }
 
+// Read back actual pickup pixels without the stage, HUD or fade hiding a
+// stale camera transform. No simulation or camera update is performed here.
+inline std::vector<uint8_t> CaptureWeaponPlacement(GameApp& app,
+    const std::vector<std::unique_ptr<Object3d>>& visuals, const wchar_t* path = nullptr) {
+    auto* dx = app.Dx();
+    auto* target = app.Render()->GetOffscreen();
+    const auto previousClear = target->GetClearColor();
+    target->SetClearColor({0,0,0,1});
+    app.Srv()->PreDraw();
+    dx->PreDraw();
+    target->Begin();
+    for (const auto& visual : visuals) visual->Draw();
+    target->End();
+    dx->SetBackBufferRenderTarget(); dx->PostDraw(); dx->WaitForGPU();
+    target->SetClearColor(previousClear);
+    DirectX::ScratchImage image;
+    const auto state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    Check(SUCCEEDED(DirectX::CaptureTexture(dx->GetCommandQueue(),target->GetResource(),false,image,state,state)),
+        "Weapon placement GPU capture failed");
+    const auto* pixels = image.GetImage(0,0,0);
+    if (path) Check(SUCCEEDED(DirectX::SaveToWICFile(*pixels,DirectX::WIC_FLAGS_NONE,
+        DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path)), "Weapon placement PNG failed");
+    std::vector<uint8_t> result;
+    result.reserve(pixels->width*pixels->height*4);
+    for (size_t y=0; y<pixels->height; ++y)
+        result.insert(result.end(),pixels->pixels+y*pixels->rowPitch,pixels->pixels+y*pixels->rowPitch+pixels->width*4);
+    return result;
+}
+
 // Capture every pixel, including the boundary, in different actual D3D12
 // target/viewport resolutions. Green UI is drawn underneath the overlay.
 inline void CheckPixels(GameApp& app, FadeManager& fade, uint32_t width, uint32_t height,
@@ -257,13 +286,37 @@ inline void RunScreenTransitionTests(GameApp& app) {
     const auto gameOutStarts = scenes.Fade().StateStartCount(TransitionState::FadeOut);
     const auto gameInStarts = scenes.Fade().StateStartCount(TransitionState::FadeIn);
     Check(scenes.TransitionTo("Game",.05f,.05f), "Stage entry request rejected");
+    bool checkedPlacement = false;
+    std::vector<uint8_t> pickupPixels;
     for (int frame=0; frame<60 && scenes.IsTransitioning(); ++frame) {
-        app.Update(0,1.0f/60); Draw(app);
+        app.Update(0,1.0f/60);
+        auto* incoming = dynamic_cast<GameScene*>(scenes.Current());
+        if (incoming && !checkedPlacement && scenes.Fade().State()==TransitionState::Hold) {
+            Check(!incoming->weaponVisuals_.empty(), "Stage entry has no weapon pickups to check");
+            pickupPixels = CaptureWeaponPlacement(app,incoming->weaponVisuals_,L"generated/transition-tests/weapons-incoming.png");
+            size_t colored = 0;
+            for (size_t i=0; i<pickupPixels.size(); i+=4)
+                if (pickupPixels[i] || pickupPixels[i+1] || pickupPixels[i+2]) ++colored;
+            Check(colored>0, "Incoming weapon placement capture is empty");
+            for (auto& visual : incoming->weaponVisuals_) visual->Update(0);
+            const auto refreshed = CaptureWeaponPlacement(app,incoming->weaponVisuals_,L"generated/transition-tests/weapons-refreshed.png");
+            Check(pickupPixels==refreshed, "Weapon positions change when refreshed after incoming camera initialization");
+            Check(incoming->stage_.Time()==0 && incoming->shotCount_==0 && incoming->enemies_.empty(),
+                "Incoming visual initialization advanced gameplay");
+            checkedPlacement = true;
+        } else if (incoming && checkedPlacement && scenes.Fade().State()==TransitionState::FadeIn) {
+            Check(CaptureWeaponPlacement(app,incoming->weaponVisuals_)==pickupPixels,
+                "Weapon placement changed during FadeIn");
+        }
+        Draw(app);
     }
+    Check(checkedPlacement, "Incoming black frame weapon placement was not checked");
     Check(!scenes.IsTransitioning() && scenes.Fade().StateStartCount(TransitionState::FadeOut)==gameOutStarts+1 &&
         scenes.Fade().StateStartCount(TransitionState::FadeIn)==gameInStarts+1, "Stage entry faded more than once");
     CheckCompletedTransition(app, "Game");
     auto* game = dynamic_cast<GameScene*>(scenes.Current());
+    Check(game && CaptureWeaponPlacement(app,game->weaponVisuals_,L"generated/transition-tests/weapons-after-fade.png")==pickupPixels,
+        "Weapon placement changed after FadeIn / first gameplay frame");
     Check(game && game->IsReadyForTransition() && !game->stage_.Goals().empty(), "Clear menu stage initialization");
     Check(!game->ReturnToTitle(app), "Clear menu returned to title during gameplay");
     Check(game->stage_.Update(.5f, game->stage_.Goals().front().position), "Clear menu goal did not activate");
@@ -361,5 +414,6 @@ inline void RunScreenTransitionTests(GameApp& app) {
         "zero-duration scene switch with outgoing/incoming opaque frames; duplicate/reentrant requests; delayed readiness; "
         "factory/null/OnEnter/deferred-load failure recovery; input and ImGui panel availability; unscaled host clock; cancellation; "
         "actual stage clear/result freeze/title return and button bounds; long first GPU frame does not skip FadeIn; "
-        "opaque RGBA and monotonic final ImGui brightness across FadeIn and completion; stage entry/title return stay Idle on later host frames.\n";
+        "opaque RGBA and monotonic final ImGui brightness across FadeIn and completion; stage entry/title return stay Idle on later host frames; "
+        "pickup GPU pixels match a camera refresh in the incoming black frame, throughout FadeIn and after gameplay resumes.\n";
 }

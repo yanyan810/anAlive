@@ -24,6 +24,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     fade.Reset(); check(fade.Alpha()==0,"Fade reset");
     auto* title = dynamic_cast<TitleScene*>(app.Scenes().Current());
     check(title && title->ready_, "Title layout failed to load");
+    check(title->player_.CurrentWeapon().InfiniteAmmo(), "Title weapon must have unlimited ammunition");
     const auto spotIntensity=[&](size_t index) {
         void* mapped=nullptr;
         const D3D12_RANGE readRange{0,sizeof(Object3dLight::SpotLights)};
@@ -600,6 +601,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     app.Scenes().Update(app,0);
     auto* game=dynamic_cast<GameScene*>(app.Scenes().Current());
     check(game && game->stageLoaded_ && app.Scenes().CurrentName()=="Game" && app.Scenes().Fade().Alpha()==1,"Stage01 did not enter fully black");
+    check(!game->player_.CurrentWeapon().InfiniteAmmo(), "Title unlimited ammunition leaked into gameplay");
     check(app.Render()->GetOffscreen()->GetClearColor().x==title->savedClearColor_.x &&
         app.Render()->GetOffscreen()->GetClearColor().y==title->savedClearColor_.y &&
         app.Render()->GetOffscreen()->GetClearColor().z==title->savedClearColor_.z,"Title background color leaked into GameScene");

@@ -447,6 +447,8 @@
     <ClInclude Include="tests\ClothRuntimeTests.h" />
     <ClInclude Include="tests\AssetLoadingTests.h" />
     <ClInclude Include="tests\ScreenTransitionTests.h" />
+    <ClInclude Include="Game\TemporarySceneTransitionCheck.h" />
+    <ClInclude Include="tests\TemporarySceneTransitionCheckTests.h" />
     <ClInclude Include="Engine\3D\ModelCache.h" />
     <ClInclude Include="Engine\Utility\AssetCache.h" />
     <ClInclude Include="Engine\Utility\AssetPreparation.h" />

@@ -13,6 +13,37 @@ static void Save(const json& weapons, const json& level) {
     std::ofstream("weapon-test.json") << weapons;
     std::ofstream("weapon-level-test.json") << level;
 }
+static void TestInfiniteAmmo(const WeaponSystem& system) {
+    WeaponRuntime weapon;
+    for (const char* id : {"pistol","smg","burst_rifle","pump_shotgun"}) {
+        auto definition = *system.Find(id);
+        definition.magazineSize = definition.ammoPerShot;
+        definition.reserveAmmo = 0;
+        weapon.Equip(definition);
+        assert(!weapon.InfiniteAmmo());
+        weapon.SetInfiniteAmmo(true);
+        for (int i=0; i<100; ++i) {
+            assert(weapon.Step(1,true,true,true)==1);
+            const int extra = weapon.Step(1,false,false,false);
+            assert(extra==(definition.fireMode==WeaponFireMode::Burst ? definition.burstCount-1 : 0));
+            assert(weapon.Magazine()==definition.magazineSize && weapon.Reserve()==0 && !weapon.Reloading());
+        }
+        assert(!weapon.StartReload());
+        weapon.Equip(definition); // New game/equip returns to finite ammunition.
+        assert(!weapon.InfiniteAmmo() && weapon.TryFire());
+        weapon.Update(10);
+        assert(!weapon.TryFire() && weapon.Magazine()==0);
+    }
+    weapon.Equip(*system.Find("pistol"));
+    assert(weapon.TryFire() && weapon.StartReload());
+    const auto cooldown = weapon.Cooldown();
+    weapon.SetInfiniteAmmo(true);
+    assert(!weapon.Reloading() && weapon.ReloadRemaining()==0 && weapon.Cooldown()==cooldown);
+    assert(!weapon.TryFire()); // Unlimited ammo must still respect fire cadence.
+    weapon.Update(1);
+    assert(weapon.TryFire());
+    std::cout << "Infinite ammo tests passed: repeated semi/full/burst/per-round shots, reload suppression, cadence, finite equip reset.\n";
+}
 static void TestExtendedModes(const WeaponSystem& system) {
     const auto pistol=*system.Find("pistol");
     const auto smg=*system.Find("smg");
@@ -228,6 +259,7 @@ int main() {
     assert(system.Load("../../resources/Data/weapons.json","../../resources/levels/fps_spawns.json",WeaponRandomSettings{true,12345}));
     assert(system.Points().size()==3 && system.InitialWeapon()->id==definitions.at("initialWeapon").get<std::string>());
     TestExtendedModes(system);
+    TestInfiniteAmmo(system);
     // Filter assertions use a fixed seven-weapon catalog; editor-created weapons
     // must not change the number or identity of random candidates in this fixture.
     auto filterDefinitions=definitions;

@@ -6,6 +6,8 @@
 #include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
 #include "scene/Flow/GameOverScene.h"
+#include "TemporarySceneTransitionCheck.h"
+#include "../../tests/TemporarySceneTransitionCheckTests.h"
 #include "Enemy.h"
 #ifdef _DEBUG
 #include "scene/Main/ShowroomScene.h"
@@ -31,6 +33,9 @@
 #include "RenderManager.h"
 
 #include <Windows.h>
+#include <shellapi.h>
+#include <string_view>
+#pragma comment(lib, "shell32.lib")
 #include <chrono>
 #include <algorithm>
 #include <cmath>
@@ -39,6 +44,20 @@
 #include "../../tests/TitleSceneTests.h"
 #include "../../tests/ClothRuntimeTests.h"
 #endif
+
+namespace {
+bool HasLaunchArgument(std::wstring_view option) {
+    int count = 0;
+    auto* arguments = CommandLineToArgvW(GetCommandLineW(),&count);
+    if (!arguments) return false;
+    bool found = false;
+    for (int i=1; i<count; ++i) {
+        if (std::wstring_view(arguments[i])==option) { found=true; break; }
+    }
+    LocalFree(arguments);
+    return found;
+}
+}
 
 GameApp::GameApp() = default;
 GameApp::~GameApp() = default;
@@ -71,6 +90,16 @@ int GameApp::Run() {
         try { RunScreenTransitionTests(*this); }
         catch (const std::exception& error) {
             std::ofstream("generated/transition-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result = 1;
+        }
+        Finalize_(); return result;
+    }
+    if (HasLaunchArgument(L"--scene-transition-check-test")) {
+        int result = 0;
+        std::filesystem::create_directories("generated/scene-transition-check");
+        try { RunTemporarySceneTransitionCheckTests(*this,*transitionCheck_); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/scene-transition-check/result.txt") << "FAIL: " << error.what() << '\n';
             result = 1;
         }
         Finalize_(); return result;
@@ -240,6 +269,11 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
     #endif
     sceneMgr_->Change(*this, "Title");
+    // Deliberately opt-in; this check is available without Debug/ImGui.
+    if (HasLaunchArgument(L"--scene-transition-check") || HasLaunchArgument(L"--scene-transition-check-test")) {
+        transitionCheck_ = std::make_unique<TemporarySceneTransitionCheck>();
+        transitionCheck_->Initialize(*this);
+    }
     if (std::wstring(GetCommandLineW()).find(L"--hotel")!=std::wstring::npos)
         sceneMgr_->Change(*this, "Stage03");
 #ifdef _DEBUG
@@ -256,6 +290,7 @@ void GameApp::Finalize_() {
 
     if (dx_) dx_->WaitForGPU();
     if (sceneMgr_ && sceneMgr_->Current()) sceneMgr_->Current()->OnExit(*this);
+    transitionCheck_.reset();
     sceneMgr_.reset();
     Enemy::ReleasePreloadedAssets();
 
@@ -294,6 +329,7 @@ void GameApp::Update(float dt) {
 void GameApp::Update(float dt, float unscaledDt) {
 
     input_->Update();
+    if (transitionCheck_) transitionCheck_->Update(*this);
 
     unsigned int simulationUpdates = 1;
     if (debugAI_) {
@@ -384,6 +420,7 @@ void GameApp::Draw() {
 #ifndef USE_IMGUI
     render_->DrawOffscreenToBackBuffer();
     sceneMgr_->DrawOverlay2D(*this);
+    if (transitionCheck_) transitionCheck_->Draw(*this);
 #endif
 
     // ③ Offscreenの中身を画面へ貼る
@@ -395,6 +432,7 @@ void GameApp::Draw() {
         imgui_->SetSceneTexture(render_->RenderPostEffectsForSceneTexture());
         if (render_->BeginSceneTextureOverlay()) {
             sceneMgr_->DrawOverlay2D(*this);
+            if (transitionCheck_) transitionCheck_->Draw(*this);
             render_->EndSceneTextureOverlay();
         }
         imgui_->SetPreviewTexture(render_->GetPreviewSrvIndex());

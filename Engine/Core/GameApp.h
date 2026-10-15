@@ -19,6 +19,7 @@ class SkinningCommon;
 class DebugAIManager;
 class OpenAIDebugActionProvider;
 class RandomDebugBot;
+class TemporarySceneTransitionCheck;
 #include "RenderManager.h"
 
 class SceneManager;
@@ -73,6 +74,7 @@ private:
     std::unique_ptr<ImGuiManagaer> imgui_;
 
     std::unique_ptr<SceneManager> sceneMgr_;
+    std::unique_ptr<TemporarySceneTransitionCheck> transitionCheck_;
     std::unique_ptr<Input> input_; 
     std::unique_ptr<SkinningCommon> skinCom_;
     std::unique_ptr<SkyboxCommon> skyboxCommon_;

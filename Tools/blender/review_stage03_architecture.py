@@ -15,8 +15,8 @@ import yanengine_level_exporter as exporter
 exporter.register()
 root=Path(__file__).resolve().parents[2]
 before='--before' in sys.argv
-source=root/('generated/hotel-interior-before/stage03/stage03.blend' if before else 'resources/levels/stage03/stage03.blend')
-output=root/'generated/hotel-interior-review'
+source=root/('generated/hotel-f3-before-20261015/stage03/stage03.blend' if before else 'resources/levels/stage03/stage03.blend')
+output=root/'generated/hotel-f3-review'
 output.mkdir(parents=True,exist_ok=True)
 bpy.ops.wm.open_mainfile(filepath=str(source))
 scene=bpy.context.scene
@@ -67,24 +67,32 @@ for index,level in enumerate(levels):
             overlap=max(0,min(a['max'][0],b['max'][0])-max(a['min'][0],b['min'][0])) * max(0,min(a['max'][2],b['max'][2])-max(a['min'][2],b['min'][2]))
             assert overlap<.001, ('duplicate slabs',a['name'],b['name'])
     # Check the whole footprint, including secondary rooms and service cores.
-    for ix in range(48 if index==2 else 76):
-        for iz in range(24 if index==2 else 72):
+    for ix in range(76):
+        for iz in range(44 if index==2 else 72):
             x,z=(ix+.5)*.5,(iz+.5)*.5
             hole=holes[level]
             expected=not (hole and hole[0]<x<hole[1] and hole[2]<z<hole[3])
-            covered=any(p['min'][0]<x<p['max'][0] and p['min'][2]<z<p['max'][2] for p in plates)
+            covered=any(p['min'][0]-.0001<=x<p['max'][0]-.0001 and p['min'][2]-.0001<=z<p['max'][2]-.0001 for p in plates)
             assert covered==expected, ('slab gap/stair obstruction',level,x,z)
     area=sum((p['max'][0]-p['min'][0])*(p['max'][2]-p['min'][2]) for p in plates)
-    assert abs(area-([1368,1308,228][index]))<.001
+    assert abs(area-([1368,1308,776][index]))<.001
     report['floors'][level]['slabArea']=area
 roof=bounds(bpy.data.objects['Hotel_Roof_MainSlab'])
-assert all(abs(actual-expected)<.001 for actual,expected in zip(roof[0]+roof[1],[0,15,0,24,15.35,12]))
+assert all(abs(actual-expected)<.001 for actual,expected in zip(roof[0]+roof[1],[0,15,0,38,15.35,22]))
 low_roofs=[obj for obj in hotel if obj.get('hotel_role')=='low_roof_slab']
-assert len(low_roofs)==2
-assert sum((bounds(o)[1][0]-bounds(o)[0][0])*(bounds(o)[1][2]-bounds(o)[0][2]) for o in low_roofs)==1080
+assert len(low_roofs)==1
+assert sum((bounds(o)[1][0]-bounds(o)[0][0])*(bounds(o)[1][2]-bounds(o)[0][2]) for o in low_roofs)==532
+# The upper floor and remaining lower roof jointly cover the second-floor ceiling.
+ceiling_plates=report['floors']['F3_Start']['slabs']+[
+    dict(name=o.name,min=bounds(o)[0],max=bounds(o)[1]) for o in low_roofs]
+for ix in range(76):
+    for iz in range(72):
+        x,z=(ix+.5)*.5,(iz+.5)*.5
+        count=sum(p['min'][0]-.0001<=x<p['max'][0]-.0001 and p['min'][2]-.0001<=z<p['max'][2]-.0001 for p in ceiling_plates)
+        assert count==(0 if x<6 and z<10 else 1), ('2F ceiling gap/duplicate',x,z,count)
 # A complete use map: each point belongs to exactly one purpose on its floor.
 zones=json.loads(scene['hotel_zones'])
-for floor,width,depth in ((1,38,36),(2,38,36),(3,24,12)):
+for floor,width,depth in ((1,38,36),(2,38,36),(3,38,22)):
     floor_zones=[z for z in zones if z['floor']==floor]
     for ix in range(width*2):
         for iz in range(depth*2):
@@ -92,9 +100,12 @@ for floor,width,depth in ((1,38,36),(2,38,36),(3,24,12)):
             matches=[v for v in floor_zones if v['bounds'][0]<=x<v['bounds'][1] and v['bounds'][2]<=z<v['bounds'][3]]
             assert len(matches)==1, ('unknown/duplicate spatial use',floor,x,z,matches)
 report['zones']=zones
-old=json.loads((root/'generated/hotel-interior-before/stage03/stage03.json').read_text(encoding='utf-8'))
+old=json.loads((root/'generated/hotel-f3-before-20261015/stage03/stage03.json').read_text(encoding='utf-8'))
 new=json.loads((root/'resources/levels/stage03/stage03.json').read_text(encoding='utf-8'))
 assert old['spawnPoints']==new['spawnPoints'], 'Future enemy spawn transforms changed'
+assert old['goalTriggers']==new['goalTriggers'], 'Outdoor goal changed'
+preserved=lambda c:c['id'].startswith(('F1_','F2_','COL_F1_','COL_F2_','Stair_F2_','COL_Stair_F2_','Outdoor_','Hotel_Shutter_','Hotel_FireDoor_','Hotel_OutdoorExit_','COL_Stair_F3_','Stair_F3_'))
+assert [c for c in old['colliders'] if preserved(c)]==[c for c in new['colliders'] if preserved(c)], 'Lower floors, stairs or exterior route changed'
 for item in old['colliders']:
     if item['id'].startswith(('Hotel_Shutter_','Hotel_FireDoor_','Hotel_OutdoorExit_')):
         assert item==next(c for c in new['colliders'] if c['id']==item['id']), ('event fixture changed',item['id'])
@@ -130,12 +141,23 @@ camera=bpy.data.objects.new('__ArchitectureReviewCamera',bpy.data.cameras.new('_
 scene.collection.objects.link(camera)
 camera.data.type='ORTHO'
 scene.camera=camera
+# ENGINE_BASIS includes an X reflection. Correct only plan renders so their
+# image axes agree with the engine-coordinate labelled plans (east at right).
+compositor=bpy.data.node_groups.new('__ArchitectureReviewCompositor','CompositorNodeTree')
+compositor.interface.new_socket(name='Image',in_out='OUTPUT',socket_type='NodeSocketColor')
+layers=compositor.nodes.new('CompositorNodeRLayers')
+flip=compositor.nodes.new('CompositorNodeFlip')
+destination=compositor.nodes.new('NodeGroupOutput')
+compositor.links.new(layers.outputs['Image'],flip.inputs['Image'])
+compositor.links.new(flip.outputs['Image'],destination.inputs['Image'])
+scene.compositing_node_group=compositor
 for obj in scene.objects:
     if obj not in geometry and obj!=camera:
         obj.hide_render=True
 
 
 def render(name,position,target,scale):
+    flip.inputs['Flip X'].default_value=name in ('01-f1-top','02-f2-top','03-f3-top','04-top-roof')
     a=(exporter.ENGINE_BASIS.inverted() @ Vector((*position,1))).to_3d()
     b=(exporter.ENGINE_BASIS.inverted() @ Vector((*target,1))).to_3d()
     camera.location=a
@@ -148,7 +170,7 @@ def render(name,position,target,scale):
 for i,level in enumerate(levels,1):
     for obj in geometry:
         obj.hide_render=not any(c.name.startswith(level) for c in obj.users_collection)
-    render(f'0{i}-f{i}-top',(21,80,18),(21,i*6-6,18),58)
+    render(f'0{i}-f{i}-top',(19,80,11 if i==3 else 18),(19,i*6-6,11 if i==3 else 18),46 if i==3 else 58)
 for obj in geometry:
     obj.hide_render=obj not in hotel
 render('04-top-roof',(21,80,18),(21,0,18),58)

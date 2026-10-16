@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 9, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 10, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
@@ -200,6 +200,33 @@ def build_level(scene, depsgraph):
     for obj in objects:
         cfg = obj.yan_level
         key = object_id(obj)
+        if cfg.role == 'SHUTTER':
+            if obj.type != 'MESH' or cfg.shutter_button is None or cfg.shutter_button.name not in scene.objects:
+                raise ValueError(f'{key}: Shutter requires a mesh and a switch object in this scene')
+            box, matrix = box_data(obj, depsgraph)
+            b = box['localBounds']
+            corners = [matrix @ Vector((x,y,z,1)) for x in (b['min'][0],b['max'][0])
+                       for y in (b['min'][1],b['max'][1]) for z in (b['min'][2],b['max'][2])]
+            origin = [(min(p[i] for p in corners)+max(p[i] for p in corners))*.5 for i in range(3)]
+            origin[1] = min(p[1] for p in corners)
+            box['position'] = [a-b for a,b in zip(box['position'],origin)]
+            button, _ = engine_transform(cfg.shutter_button.matrix_world)
+            finite([cfg.shutter_duration,cfg.shutter_distance,cfg.shutter_reach],key)
+            if min(cfg.shutter_duration,cfg.shutter_distance,cfg.shutter_reach)<=0:
+                raise ValueError(f'{key}: Shutter timing and distances must be positive')
+            markers = json.loads(cfg.shutter_progress_events)
+            if not isinstance(markers,list):
+                raise ValueError(f'{key}: Progress Events must be a JSON array')
+            for marker in markers:
+                if not 0<float(marker['progress'])<1 or not isinstance(marker['event'],str) or not marker['event']:
+                    raise ValueError(f'{key}: Invalid progress event')
+            shutters = data.setdefault('shutters',[])
+            shutters.append(dict(id=key,model=f'levels/{stage_id}/shutter_{len(shutters):03}.gltf',
+                closedPosition=origin,buttonPosition=button['position'],collider=box,
+                openDuration=cfg.shutter_duration,openDistance=cfg.shutter_distance,interactionDistance=cfg.shutter_reach,
+                sounds={'switch':cfg.shutter_switch_sound,'start':cfg.shutter_start_sound,
+                        'motor':cfg.shutter_motor_sound,'complete':cfg.shutter_complete_sound},progressEvents=markers))
+            continue
         if cfg.role == 'STATIC':
             if obj.type != 'MESH':
                 raise ValueError(f"{key}: Static Mesh requires a Mesh object")
@@ -378,10 +405,15 @@ def export_level(context):
         # glTF conversion then Model.cpp's X reflection equals ENGINE_BASIS exactly.
         letters = sorted((obj for obj in source_scene.objects if obj.yan_level.role == 'START_LETTER'), key=lambda obj: obj.name)
         exported = {}
-        for source in geometry + letters:
+        shutters = sorted((obj for obj in source_scene.objects if obj.yan_level.role == 'SHUTTER'), key=lambda obj: obj.name)
+        for source in geometry + letters + shutters:
             mesh = bpy.data.meshes.new_from_object(source.evaluated_get(depsgraph), depsgraph=depsgraph)
             finite([v for vertex in mesh.vertices for v in vertex.co], source.name)
             mesh.transform(source.matrix_world)
+            if source in shutters:
+                definition = next(s for s in data['shutters'] if s['id']==object_id(source))
+                origin = (ENGINE_BASIS.inverted() @ Vector((*definition['closedPosition'],0))).to_3d()
+                mesh.transform(Matrix.Translation(-origin))
             if source.matrix_world.determinant() < 0:
                 mesh.flip_normals()
             obj = bpy.data.objects.new(source.name, mesh)
@@ -404,6 +436,16 @@ def export_level(context):
             uri = entry.get('uri', '')
             if uri and not uri.startswith('data:') and not (scratch / uri).is_file():
                 raise ValueError(f"Missing exported dependency: {uri}")
+        for source in shutters:
+            for obj in temporary_scene.objects:
+                obj.select_set(obj == exported[source.name])
+            definition = next(s for s in data['shutters'] if s['id']==object_id(source))
+            dynamic_path = scratch / Path(definition['model']).name
+            result = bpy.ops.export_scene.gltf(filepath=str(dynamic_path), export_format='GLTF_SEPARATE',
+                use_active_scene=True, use_selection=True, export_yup=True, export_animations=False, export_skins=False,
+                export_cameras=False, export_lights=False, export_extras=False)
+            if 'FINISHED' not in result:
+                raise RuntimeError('Shutter glTF export did not finish')
         # GAME START is one Head asset, rendered and shattered by the ordinary Enemy.
         for source in letters:
             export_start_head(exported[source.name], scratch/'game_start.enemy.json')
@@ -467,7 +509,8 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
         ('ENEMY', 'Enemy Spawn', ''), ('TRIGGER', 'Spawn Trigger', ''), ('WEAPON', 'Weapon Spawn', ''),
         ('GOAL', 'Goal', ''), ('IGNORE', 'Ignore', ''),
         ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh'),
-        ('SPAWN_GROUP', 'Spawn Group', 'Spawn scheduled enemies from stage start time')])
+        ('SPAWN_GROUP', 'Spawn Group', 'Spawn scheduled enemies from stage start time'),
+        ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision')])
     identifier: StringProperty(name="ID", description="Blank uses Object name")
     group: StringProperty(name="Spawn Group", default="A")
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
@@ -490,6 +533,15 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
         ('Simultaneous', 'Simultaneous', 'Spawn every member in the same frame')])
     start_time: FloatProperty(name='Start Time', description='Seconds of gameplay from stage start', default=0, min=0)
     members: CollectionProperty(type=YAN_SpawnGroupEnemy)
+    shutter_button: PointerProperty(name='Switch Object', type=bpy.types.Object)
+    shutter_duration: FloatProperty(name='Open Duration (s)',default=30,min=.001)
+    shutter_distance: FloatProperty(name='Open Distance (m)',default=3.2,min=.001)
+    shutter_reach: FloatProperty(name='Interaction Distance (m)',default=2,min=.001)
+    shutter_progress_events: StringProperty(name='Progress Events (JSON)',default='[]')
+    shutter_switch_sound: StringProperty(name='Switch WAV',default='')
+    shutter_start_sound: StringProperty(name='Start WAV',default='')
+    shutter_motor_sound: StringProperty(name='Motor WAV (loop)',default='')
+    shutter_complete_sound: StringProperty(name='Complete WAV',default='')
     auto_collider_count: IntProperty(name="Max Box Count", description="Upper limit; simple shapes use fewer boxes", default=4, min=1, max=32)
     auto_collider_padding: FloatProperty(name="Padding", description="Extra local-space margin added to generated boxes", default=0.02, min=0.0, max=10.0)
 
@@ -1302,6 +1354,11 @@ class YAN_PT_level(bpy.types.Panel):
                 layout.prop(settings, 'identifier')
             if settings.role == 'START_LETTER':
                 layout.label(text='One combined Mesh; all faces are Head, 1 HP')
+            if settings.role == 'SHUTTER':
+                for field in ('shutter_button','shutter_duration','shutter_distance','shutter_reach',
+                              'shutter_progress_events','shutter_switch_sound','shutter_start_sound',
+                              'shutter_motor_sound','shutter_complete_sound'):
+                    layout.prop(settings,field)
             if settings.role == 'COLLIDER' or (settings.role == 'STATIC' and settings.collision == 'BOX'):
                 layout.prop(settings, 'walkable')
                 layout.prop(settings, 'player_only')

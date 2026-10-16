@@ -19,6 +19,27 @@ int main() {
     StageLoader loader;
     assert(loader.Load(path) && loader.ValidateAssets("../../resources"));
     assert(loader.id=="stage01" && loader.model=="levels/stage01/stage01.gltf");
+    {
+        const std::string hotelPath="../../resources/levels/stage03/stage03.json";
+        json hotel; std::ifstream(hotelPath)>>hotel;
+        StageLoader shutterLoader;
+        assert(shutterLoader.Load(hotelPath) && shutterLoader.ValidateAssets("../../resources"));
+        const auto rejectShutter=[&](const json& data) {
+            Save(data); assert(!shutterLoader.Load("stage-loader-test.json"));
+            assert(shutterLoader.shutters.shutters.size()==1 && shutterLoader.shutters.shutters[0].definition.openDuration==30);
+        };
+        auto invalid=hotel; invalid["shutters"][0]["openDuration"]=0; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["openDistance"]=-1; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["interactionDistance"]=0; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["collider"]["scale"]={0,1,1}; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["closedPosition"]={0,0}; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["model"]="../shutter.gltf"; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["id"]=hotel["colliders"][0]["id"]; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["progressEvents"]=json::object(); rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["progressEvents"][0]["progress"]=1; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["model"]="levels/stage03/missing.gltf";
+        Save(invalid); assert(shutterLoader.Load("stage-loader-test.json") && !shutterLoader.ValidateAssets("../../resources"));
+    }
     assert(loader.playerPosition.x==3 && loader.playerPosition.y==0 && loader.playerPosition.z==-6);
     assert(Near(loader.playerRotation.y,0) && loader.collision.colliders.size()==8);
     json valid; std::ifstream(path)>>valid;

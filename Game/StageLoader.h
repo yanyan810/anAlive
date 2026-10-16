@@ -1,5 +1,5 @@
 #pragma once
-#include "StageWorld.h"
+#include "StageShutter.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <filesystem>
@@ -11,6 +11,7 @@ public:
     std::string id, model;
     Vector3 playerPosition{3,0,-6}, playerRotation{};
     StageWorld collision;
+    StageShutterSystem shutters;
     const std::string& Error() const { return error_; }
     bool Load(const std::string& path) {
         try {
@@ -65,13 +66,62 @@ public:
                 c.inverse=Matrix4x4::Inverse(c.world);
                 next.collision.colliders.push_back(c);
             }
+            if (data.contains("shutters")) {
+                if (!data.at("shutters").is_array()) throw std::runtime_error("shutters must be an array");
+                for (const auto& item : data.at("shutters")) {
+                    ShutterDefinition s;
+                    s.id=item.at("id").get<std::string>();
+                    if (s.id.empty() || !ids.insert(s.id).second) throw std::runtime_error("Duplicate/empty shutter ID");
+                    s.model=item.at("model").get<std::string>();
+                    const std::filesystem::path asset(s.model);
+                    if (asset.is_absolute() || asset.extension()!=".gltf") throw std::runtime_error("Invalid shutter model");
+                    for (const auto& part : asset) if (part=="..") throw std::runtime_error("Invalid shutter asset path");
+                    s.closedPosition=vector(item.at("closedPosition"));
+                    s.buttonPosition=vector(item.at("buttonPosition"));
+                    s.openDuration=item.value("openDuration",30.0);
+                    s.openDistance=item.value("openDistance",3.2f);
+                    s.interactionDistance=item.value("interactionDistance",2.0f);
+                    if (!std::isfinite(s.openDuration) || s.openDuration<=0 || s.openDuration>1e6 ||
+                        !std::isfinite(s.openDistance) || s.openDistance<=0 || s.openDistance>1e6 ||
+                        !std::isfinite(s.interactionDistance) || s.interactionDistance<=0 || s.interactionDistance>1e6)
+                        throw std::runtime_error("Invalid shutter timing/distance: "+s.id);
+                    const auto& box=item.at("collider");
+                    s.collider.id=s.id;
+                    s.collider.position=vector(box.at("position")); s.collider.rotation=vector(box.at("rotation"));
+                    s.collider.scale=vector(box.at("scale"));
+                    s.collider.local={vector(box.at("localBounds").at("min")),vector(box.at("localBounds").at("max"))};
+                    if (s.collider.scale.x<=1e-5f || s.collider.scale.y<=1e-5f || s.collider.scale.z<=1e-5f ||
+                        s.collider.local.min.x>=s.collider.local.max.x || s.collider.local.min.y>=s.collider.local.max.y ||
+                        s.collider.local.min.z>=s.collider.local.max.z) throw std::runtime_error("Degenerate shutter collider");
+                    const auto sounds=item.value("sounds",nlohmann::json::object());
+                    s.switchSound=sounds.value("switch",""); s.startSound=sounds.value("start","");
+                    s.motorSound=sounds.value("motor",""); s.completeSound=sounds.value("complete","");
+                    const auto markers=item.value("progressEvents",nlohmann::json::array());
+                    if (!markers.is_array()) throw std::runtime_error("Shutter progressEvents must be an array");
+                    for (const auto& marker : markers) {
+                        const float progress=marker.at("progress").get<float>();
+                        const auto event=marker.at("event").get<std::string>();
+                        if (!std::isfinite(progress) || progress<=0 || progress>=1 || event.empty())
+                            throw std::runtime_error("Invalid shutter progress event");
+                        s.progressEvents.push_back({progress,event});
+                    }
+                    std::stable_sort(s.progressEvents.begin(),s.progressEvents.end(),[](const auto& a,const auto& b){return a.progress<b.progress;});
+                    s.colliderIndex=next.collision.colliders.size();
+                    next.collision.colliders.push_back(s.collider);
+                    next.shutters.shutters.push_back({std::move(s)});
+                }
+                next.shutters.Reset(next.collision);
+            }
             *this=std::move(next); return true;
         } catch (const std::exception& e) { error_=e.what(); return false; }
     }
     // Check assets before Object3d's importer (which asserts on missing files).
     bool ValidateAssets(const std::string& resources="resources") {
         try {
-            const auto path=std::filesystem::path(resources)/model;
+            std::vector<std::string> models{model};
+            for (const auto& shutter : shutters.shutters) models.push_back(shutter.definition.model);
+            for (const auto& name : models) {
+            const auto path=std::filesystem::path(resources)/name;
             std::ifstream input(path);
             if (!input) throw std::runtime_error("Missing stage model: "+path.string());
             const auto gltf=nlohmann::json::parse(input);
@@ -81,6 +131,7 @@ public:
                 const auto uri=asset.at("uri").get<std::string>();
                 if (!uri.starts_with("data:") && !std::filesystem::is_regular_file(path.parent_path()/uri))
                     throw std::runtime_error("Missing stage dependency: "+uri);
+            }
             }
             error_.clear(); return true;
         } catch (const std::exception& e) { error_=e.what(); return false; }

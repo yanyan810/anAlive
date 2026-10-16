@@ -18,6 +18,80 @@ namespace {
         std::numbers::pi_v<float> / 180.0f;
 }
 
+void GameScene::InitializeShutters(GameApp& app) {
+    shutterVisuals_.clear(); shutterAudio_.reset();
+    level_.shutters.Reset(level_.collision);
+    if (level_.shutters.shutters.empty()) return;
+    shutterPrompt_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/shutter_prompt.png");
+    shutterPrompt_.SetTextureCutSize({640,64});
+    shutterPrompt_.SetScale({1,1.0f/3,1});
+    shutterPrompt_.SetPosition({WinApp::kClientWidth*.5f-320,WinApp::kClientHeight*.5f+48});
+    for (const auto& shutter : level_.shutters.shutters) {
+        const auto& def=shutter.definition;
+        ShutterVisual visual;
+        visual.model=std::make_unique<Object3d>(); visual.lamp=std::make_unique<Object3d>();
+        for (auto* object : {visual.model.get(),visual.lamp.get()}) {
+            object->Initialize(app.ObjCom(),app.Dx()); object->SetCamera(&camera_);
+        }
+        visual.model->SetModel(def.model); visual.model->StopAnimation();
+        visual.model->SetMaterialColor({1,1,1,1});
+        visual.model->SetEnableLighting(2);
+        visual.model->SetDirection({.3f,-1,.5f}); visual.model->SetIntensity(1);
+        visual.model->SetPointLightIntensity(0); visual.model->SetSpotLightIntensity(0);
+        visual.lamp->SetModel("cube/cube.obj"); visual.lamp->SetTexture("resources/white1x1.png");
+        visual.lamp->SetEnableLighting(0); visual.lamp->SetScale({.12f,.08f,.14f});
+        visual.lamp->SetTranslate(def.buttonPosition+Vector3{.2f,.38f,0});
+        const std::array<std::string,4> paths{def.switchSound,def.startSound,def.motorSound,def.completeSound};
+        for (size_t i=0;i<paths.size();++i) {
+            // AudioSystem's legacy WAV loader asserts for absent files. Guard it here.
+            if (paths[i].empty() || !std::filesystem::is_regular_file(paths[i])) continue;
+            if (!shutterAudio_) {
+                shutterAudio_=std::make_unique<AudioSystem>();
+                if (!shutterAudio_->Initialize()) { shutterAudio_.reset(); break; }
+            }
+            visual.sounds[i]=shutterAudio_->LoadWave(paths[i],i==2);
+        }
+        shutterVisuals_.push_back(std::move(visual));
+    }
+    SyncShutterVisuals();
+}
+
+void GameScene::SyncShutterVisuals() {
+    for (size_t i=0;i<shutterVisuals_.size();++i) {
+        const auto& shutter=level_.shutters.shutters[i]; auto& visual=shutterVisuals_[i];
+        visual.model->SetTranslate(shutter.Position()); visual.model->Update(0);
+        const bool blink=std::fmod(shutter.elapsedTime,1.0)<.5;
+        const Vector4 color=shutter.state==ShutterState::Closed ? Vector4{.1f,.6f,.15f,1} :
+            shutter.state==ShutterState::Open ? Vector4{.1f,.5f,1,1} :
+            blink ? Vector4{1,.35f,.02f,1} : Vector4{.25f,.08f,.01f,1};
+        visual.lamp->SetMaterialColor(color); visual.lamp->Update(0);
+    }
+}
+
+void GameScene::ProcessShutterEvents() {
+    for (const auto& event : level_.shutters.TakeEvents()) {
+        for (size_t i=0;i<shutterVisuals_.size();++i) {
+            if (level_.shutters.shutters[i].definition.id!=event.shutterId || !shutterAudio_) continue;
+            const auto& sounds=shutterVisuals_[i].sounds;
+            if (event.type==ShutterEventType::Started) { shutterAudio_->Play(sounds[0]); shutterAudio_->Play(sounds[1]); }
+            if (event.type==ShutterEventType::Completed) shutterAudio_->Play(sounds[3]);
+        }
+        if (shutterEventHandler_) shutterEventHandler_(event);
+    }
+}
+
+void GameScene::UpdateShutterAudio(bool running) {
+    if (!shutterAudio_) return;
+    for (size_t i=0;i<shutterVisuals_.size();++i) {
+        auto& visual=shutterVisuals_[i];
+        const bool motor=running && level_.shutters.shutters[i].state==ShutterState::Opening;
+        if (motor && !visual.motorPlaying) shutterAudio_->Play(visual.sounds[2],.45f);
+        if (!motor && visual.motorPlaying) shutterAudio_->Stop(visual.sounds[2]);
+        visual.motorPlaying=motor;
+    }
+    shutterAudio_->Update();
+}
+
 void GameScene::OnEnter(GameApp& app) {
 #ifdef _DEBUG
     debugHistory_.Clear(); debugFrame_=0; debugStep_=0; debugJson_=DebugJsonEditor{};
@@ -60,6 +134,7 @@ void GameScene::OnEnter(GameApp& app) {
         if (!showroom_ && !stage_.LoadGoals(fallback)) OutputDebugStringA(stage_.Error().c_str());
     }
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
+    InitializeShutters(app);
     weaponVisuals_.clear();
     if (const auto* initial = weapons_.InitialWeapon()) player_.CurrentWeapon().Equip(*initial);
     pelletRandom_.seed(weapons_.ActualSeed() ^ 0x9e3779b9u); // independent of placement lottery
@@ -138,6 +213,7 @@ void GameScene::OnEnter(GameApp& app) {
         // Prepare a drawable first frame without processing the outgoing shot,
         // mouse delta, spawn triggers or goals while the incoming view is black.
         player_.RefreshVisuals(); ground_.Update(0);
+        SyncShutterVisuals();
         // Pickup WVPs were created before the camera moved to the spawn point.
         // Refresh them now; simulation remains frozen throughout FadeIn.
         for (auto& visual : weaponVisuals_) visual->Update(0);
@@ -150,6 +226,8 @@ void GameScene::OnEnter(GameApp& app) {
 #endif
 }
 void GameScene::OnExit(GameApp& app) {
+    if (shutterAudio_) shutterAudio_->StopAll();
+    shutterAudio_.reset(); shutterVisuals_.clear();
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_) app.ImGui()->SetWeaponWorkspace(false);
     beforeWeaponTest_.reset(); weaponPreview_.reset();
@@ -255,7 +333,9 @@ void GameScene::Update(GameApp& app, float dt) {
             if (const auto* state=debugHistory_.Forward()) { RestoreDebug(app,*state); return; }
             dt=1.0f/60.0f;
         } else {
+            UpdateShutterAudio(false);
             player_.RefreshDebug(); ground_.Update(0);
+            SyncShutterVisuals();
             for (auto& visual : weaponVisuals_) visual->Update(0);
             for (auto& enemy : enemies_) enemy->UpdateVisuals(0);
             SyncProjectileVisuals(app);
@@ -291,6 +371,9 @@ void GameScene::Update(GameApp& app, float dt) {
         suppressFireUntilRelease_ = false;
     }
 
+    // Once started, motion also finishes if the player reaches the Goal early.
+    // Debug pause / scene transitions still suspend the entire simulation.
+    level_.shutters.Update(dt,level_.collision);
     if (stage_.IsPlaying()) {
 
         for (const auto& enemy : enemies_) {
@@ -317,6 +400,9 @@ void GameScene::Update(GameApp& app, float dt) {
     // Combat applies all damage before SceneManager consumes the transition.
     if (player_.GetHP() <= 0) { RequestChangeScene_("GameOver"); return; }
     ground_.Update(dt);
+    SyncShutterVisuals();
+    ProcessShutterEvents();
+    UpdateShutterAudio(true);
 
     for (auto& visual : weaponVisuals_) {
         visual->Update(dt);
@@ -452,6 +538,12 @@ void GameScene::UpdateADS(
         sensitivityMultiplier);
 }
 
+bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
+    if (!pressed) return false;
+    if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
+    return allowPickup && weapons_.TryPickup(player_.GetTransform().translate,player_.CurrentWeapon());
+}
+
 void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     Input& input = *app.GetInput();
     auto& weapon = player_.CurrentWeapon();
@@ -460,7 +552,10 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
 #if defined(_DEBUG) && defined(USE_IMGUI)
     allowPickup=!(showroom_ && weaponEditor_.mode==WeaponEditorMode::Test);
 #endif
-    const bool pickedUp = allowPickup && controls && input.IsKeyTrigger(DIK_E) && weapons_.TryPickup(player_.GetTransform().translate,weapon);
+    // Consume E once: a nearby closed switch takes priority over weapon pickup.
+    // Shooting remains on its independent mouse path, including this same frame.
+    const bool interact=controls && input.IsKeyTrigger(DIK_E);
+    const bool pickedUp=HandleInteraction(interact,allowPickup);
     const bool allowFire = controls && !pickedUp && !suppressFireUntilRelease_;
 #ifdef _DEBUG
     const bool cancelBurst = !debugPaused_;
@@ -566,6 +661,7 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
 }
 void GameScene::DrawRender(GameApp&) {
     ground_.Draw();
+    for (auto& shutter : shutterVisuals_) { shutter.model->Draw(); shutter.lamp->Draw(); }
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) {
         if (weaponPreview_ && weaponEditor_.Selected()) weaponPreview_->Draw();
@@ -807,6 +903,19 @@ void GameScene::DrawImGui(GameApp& app) {
         ImGui::TreePop();
     }
     ImGui::Checkbox("Show Stage Colliders", &showStageColliders_);
+    for (const auto& shutter : level_.shutters.shutters) {
+        ImGui::PushID(shutter.definition.id.c_str());
+        ImGui::Text("Shutter: %s | %s | %.1f%% | %.2f / %.2f s",shutter.definition.id.c_str(),
+            shutter.state==ShutterState::Closed ? "Closed" : shutter.state==ShutterState::Opening ? "Opening" : "Open",
+            shutter.Progress()*100,shutter.elapsedTime,shutter.definition.openDuration);
+        if (!captured && ImGui::Button("Teleport to shutter switch")) {
+            const auto position=shutter.definition.buttonPosition+Vector3{1.75f,-1.25f,.5f};
+            const auto target=(shutter.definition.closedPosition+shutter.definition.buttonPosition)*.5f;
+            player_.SetStage(&level_.collision,position,{0,std::atan2(target.x-position.x,target.z-position.z),0});
+            player_.RefreshDebug(); SyncShutterVisuals(); suppressFireUntilRelease_=true;
+        }
+        ImGui::PopID();
+    }
     ImGui::End();
     }
     if ((showSpawnDebug_ || showGoalDebug_ || showStageColliders_) && app.ImGui()->GetSceneImageRect(sceneRect))
@@ -836,9 +945,17 @@ void GameScene::DrawOverlay2D(GameApp&) {
     crosshairHorizontal_.Draw();
     crosshairVertical_.Draw();
     // Refresh here so debug rewind, HP reset and weapon changes appear even while paused.
+    const auto closed=level_.shutters.Nearest(player_.GetTransform().translate);
     gameHUD_.Update(player_, weapons_, static_cast<float>(WinApp::kClientWidth),
-        static_cast<float>(WinApp::kClientHeight));
+        static_cast<float>(WinApp::kClientHeight),!closed.has_value());
     gameHUD_.Draw(view, projection);
+    const auto nearby=closed ? closed : level_.shutters.Nearest(player_.GetTransform().translate,false);
+    if (nearby) {
+        const auto state=level_.shutters.shutters[*nearby].state;
+        const float row=state==ShutterState::Closed ? 0.0f : state==ShutterState::Opening ? 1.0f : 2.0f;
+        shutterPrompt_.SetTextureTopLeft({0,row*64});
+        shutterPrompt_.Update(view,projection); shutterPrompt_.Draw();
+    }
 }
 
 void GameScene::SyncProjectileVisuals(GameApp& app) {
@@ -866,6 +983,7 @@ GameScene::DebugFrame GameScene::CaptureDebug() const {
     for (const auto& enemy : enemies_) state.enemies.push_back(enemy->CaptureDebug());
     state.bullets=bullets_.Capture();
     state.projectiles=enemyProjectiles_; state.spawns=spawnSystem_; state.weapons=weapons_; state.stage=stage_;
+    state.shutters=level_.shutters;
     state.pelletRandom=pelletRandom_; state.nextEnemy=nextEnemyId_; state.frame=debugFrame_;
     state.shots=shotCount_; state.hits=hitCount_; state.attacks=enemyAttackCount_;
     state.selectedEnemy=selectedEnemy_; state.lastHitEnemy=lastHitEnemy_; state.lastHitPart=lastHitPart_; state.lastHitPartName=lastHitPartName_;
@@ -885,6 +1003,8 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
     player_.RestoreDebug(state.player); camera_.SetFovY(state.fov); camera_.Update();
     bullets_.Restore(state.bullets);
     enemyProjectiles_=state.projectiles; spawnSystem_=state.spawns; weapons_=state.weapons; stage_=state.stage;
+    level_.shutters=state.shutters; level_.shutters.Sync(level_.collision);
+    SyncShutterVisuals(); UpdateShutterAudio(false);
     pelletRandom_=state.pelletRandom; nextEnemyId_=state.nextEnemy; debugFrame_=state.frame;
     shotCount_=state.shots; hitCount_=state.hits; enemyAttackCount_=state.attacks;
     selectedEnemy_=state.selectedEnemy; lastHitEnemy_=state.lastHitEnemy; lastHitPart_=state.lastHitPart; lastHitPartName_=state.lastHitPartName;

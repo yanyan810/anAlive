@@ -3,29 +3,104 @@
 <text x="76" y="42.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="28" fill="#172941">Stage03 ホテル・3階 平面図</text>
 <text x="76" y="83.0" text-anchor="start" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="18" fill="#172941">床 Y=12 m　｜　上が北（Z=0）、右が東（+X）　｜　単位 m</text>
 <rect x="76" y="145" width="988" height="936" fill="#e4e7ec" stroke="#bec7d3"/>
-<text x="596" y="715.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">低い屋根（上面Y=12）</text>
-<text x="596" y="743.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">この下は2階ホール・前室</text>
-<text x="596" y="771.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">屋内の3階フロアには含めない</text>
-<rect x="232" y="145" width="156" height="208" fill="#d8e9ff" stroke="#b4c0cf"/>
-<rect x="388" y="145" width="156" height="208" fill="#d8e9ff" stroke="#b4c0cf"/>
-<rect x="544" y="145" width="156" height="208" fill="#d8e9ff" stroke="#b4c0cf"/>
-<rect x="232" y="353" width="468" height="104" fill="#e9eff7" stroke="#b4c0cf"/>
+<text x="596" y="871.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">低い屋根（上面Y=12）</text>
+<text x="596" y="899.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">この下は2階ホール・前室</text>
+<text x="596" y="927.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="24" fill="#6f7d90">屋内の3階フロアには含めない</text>
+<rect x="232.0" y="145" width="169.0" height="260" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="401.0" y="145" width="169.0" height="260" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="570.0" y="145" width="169.0" height="260" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="739.0" y="145" width="169.0" height="260" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="310.0" y="483" width="188.5" height="234" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="498.5" y="483" width="188.5" height="234" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="687.0" y="483" width="188.5" height="234" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="875.5" y="483" width="188.5" height="234" fill="#d8e9ff" stroke="#b4c0cf"/>
+<rect x="232" y="405" width="832" height="78" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="232" y="483" width="78" height="234" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="76" y="457" width="156" height="130" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="76" y="587" width="156" height="130" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="908" y="223" width="156" height="182" fill="#e9eff7" stroke="#b4c0cf"/>
+<rect x="908" y="145" width="156" height="78" fill="#e9eff7" stroke="#b4c0cf"/>
 <rect x="76" y="145" width="156" height="312" fill="#d5e2f0" stroke="#b4c0cf"/>
-<rect x="692.2000097632408" y="145.0" width="7.800000309944153" height="312.0" fill="#344358" stroke="#344358"/>
-<rect x="76.0" y="145.0" width="624.0" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="76.0" y="449.2000097632408" width="624.0" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="76.0" y="145.0" width="7.800000309944153" height="312.0" fill="#344358" stroke="#344358"/>
-<rect x="232.00000309944153" y="349.0999998450279" width="46.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="341.2000012397766" y="349.0999998450279" width="93.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="497.2000012397766" y="349.0999998450279" width="93.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="653.2000198364258" y="349.0999998450279" width="39.0" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<rect x="384.0999998450279" y="152.80000495910645" width="7.800000309944153" height="200.19999504089355" fill="#344358" stroke="#344358"/>
-<rect x="540.0999998450279" y="152.80000495910645" width="7.800000309944153" height="200.19999504089355" fill="#344358" stroke="#344358"/>
+<rect x="228.09999984502792" y="586.9999907016754" width="7.800000309944153" height="46.79999876022339" fill="#344358" stroke="#344358"/>
+<rect x="228.09999984502792" y="670.2000198364258" width="7.800000309944153" height="39.0" fill="#344358" stroke="#344358"/>
+<rect x="911.9000024795532" y="152.7999987602234" width="148.19999504089355" height="70.20000123977661" fill="#344358" stroke="#344358"/>
+<rect x="1056.1999601721764" y="145.0" width="7.800000309944153" height="572.0" fill="#344358" stroke="#344358"/>
+<rect x="76.0" y="145.0" width="228.80000495910645" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="372.4000086784363" y="145.0" width="101.40000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="541.4000086784363" y="145.0" width="101.40000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="710.4000086784363" y="145.0" width="101.40000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="879.4000210762024" y="145.0" width="184.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="304.8000111579895" y="145.0" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="473.8000111579895" y="145.0" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="642.8000111579895" y="145.0" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="811.8000111579895" y="145.0" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="76.0" y="709.2000097632408" width="306.80000495910645" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="450.4000086784363" y="709.2000097632408" width="120.90000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="638.9000086784363" y="709.2000097632408" width="120.90000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="827.4000086784363" y="709.2000097632408" width="120.90000247955322" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="1015.9000195264816" y="709.2000097632408" width="48.100000619888306" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="382.8000111579895" y="709.2000097632408" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="571.3000111579895" y="709.2000097632408" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="759.8000111579895" y="709.2000097632408" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="948.299961566925" y="709.2000097632408" width="67.59999752044678" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="76.0" y="145.0" width="7.800000309944153" height="572.0" fill="#344358" stroke="#344358"/>
+<rect x="904.0999998450279" y="152.80000495910645" width="7.800000309944153" height="252.19999504089355" fill="#344358" stroke="#344358"/>
+<rect x="228.09999984502792" y="456.9999907016754" width="7.800000309944153" height="72.79999876022339" fill="#344358" stroke="#344358"/>
+<rect x="228.09999984502792" y="566.2000097632408" width="7.800000309944153" height="20.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="83.80000495910645" y="583.0999998450279" width="148.19999504089355" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="232.0" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="282.69999504089355" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="298.2999948859215" y="327.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="232.00000309944153" y="401.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="367.2000105381012" y="401.0999998450279" width="33.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="401.0" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="451.69999504089355" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="467.2999948859215" y="327.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="400.9999907016754" y="401.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="536.2000105381012" y="401.0999998450279" width="33.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="397.0999998450279" y="145.0" width="7.800000309944153" height="260.0" fill="#344358" stroke="#344358"/>
+<rect x="570.0" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="620.7000198364258" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="636.3000196814537" y="327.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="569.9999907016754" y="401.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="705.2000105381012" y="401.0999998450279" width="33.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="566.0999998450279" y="145.0" width="7.800000309944153" height="260.0" fill="#344358" stroke="#344358"/>
+<rect x="739.0" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="789.7000198364258" y="323.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="805.3000196814537" y="327.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="738.9999907016754" y="401.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="874.2000105381012" y="401.0999998450279" width="33.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="735.0999998450279" y="145.0" width="7.800000309944153" height="260.0" fill="#344358" stroke="#344358"/>
+<rect x="310.0" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="360.69999504089355" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="376.2999948859215" y="483.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="309.9999907016754" y="479.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="445.2000105381012" y="479.0999998450279" width="53.29999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="498.5" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="549.2000198364258" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="564.8000196814537" y="483.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="498.4999907016754" y="479.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="633.7000105381012" y="479.0999998450279" width="53.29999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="494.5999998450279" y="483.0" width="7.800000309944153" height="234.0" fill="#344358" stroke="#344358"/>
+<rect x="687.0" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="737.7000198364258" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="753.3000196814537" y="483.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="686.9999907016754" y="479.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="822.2000105381012" y="479.0999998450279" width="53.29999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="683.0999998450279" y="483.0" width="7.800000309944153" height="234.0" fill="#344358" stroke="#344358"/>
+<rect x="875.5" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="926.2000198364258" y="557.0999998450279" width="19.5" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="941.8000196814537" y="483.0" width="7.800000309944153" height="78.0" fill="#344358" stroke="#344358"/>
+<rect x="875.5000402927399" y="479.0999998450279" width="98.79999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="1010.6999609470367" y="479.0999998450279" width="53.29999876022339" height="7.800000309944153" fill="#344358" stroke="#344358"/>
+<rect x="871.5999998450279" y="483.0" width="7.800000309944153" height="234.0" fill="#344358" stroke="#344358"/>
+<rect x="306.0999998450279" y="483.0000123977661" width="7.800000309944153" height="226.19999504089355" fill="#344358" stroke="#344358"/>
 <rect x="228.09999984502792" y="152.80000495910645" width="7.800000309944153" height="252.19999504089355" fill="#344358" stroke="#344358"/>
 <rect x="228.09999984502792" y="446.6000048816204" width="7.800000309944153" height="10.400000154972076" fill="#344358" stroke="#344358"/>
+<rect x="83.80000495910645" y="453.0999998450279" width="148.19999504089355" height="7.800000309944153" fill="#344358" stroke="#344358"/>
 <rect x="150.09999984502792" y="197.0" width="7.800000309944153" height="208.0" fill="#344358" stroke="#344358"/>
 <rect x="83.79999876022339" y="401.0999998450279" width="70.20000123977661" height="7.800000309944153" fill="#344358" stroke="#344358"/>
-<polyline points="310,249 310,405 258,405 258,425.8 190.4,425.8" fill="none" stroke="#cd7920" stroke-width="4"/>
+<polyline points="960,639 992.5,639 992.5,444.0 284,444.0 284,425.8 190.4,425.8" fill="none" stroke="#cd7920" stroke-width="4"/>
 <polyline points="90.3,197.0 144.9,197.0" fill="none" stroke="#657d97" stroke-width="1"/>
 <polyline points="90.3,207.4 144.9,207.4" fill="none" stroke="#657d97" stroke-width="1"/>
 <polyline points="90.3,217.8 144.9,217.8" fill="none" stroke="#657d97" stroke-width="1"/>
@@ -67,13 +142,29 @@
 <polyline points="163.10000000000002,384.2 217.70000000000002,384.2" fill="none" stroke="#657d97" stroke-width="1"/>
 <polyline points="163.10000000000002,394.6 217.70000000000002,394.6" fill="none" stroke="#657d97" stroke-width="1"/>
 <polyline points="190.4,405 190.4,173.6 117.6,173.6 117.6,405" fill="none" stroke="#507296" stroke-width="3"/>
-<text x="310.0" y="236.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">301</text>
-<text x="310.0" y="261.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">開始客室</text>
-<text x="466.0" y="236.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">302</text>
-<text x="466.0" y="261.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
-<text x="622.0" y="236.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">303</text>
-<text x="622.0" y="261.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
-<text x="466.0" y="431.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室前廊下</text>
+<text x="316.5" y="262.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">301</text>
+<text x="316.5" y="287.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="485.5" y="262.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">302</text>
+<text x="485.5" y="287.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="654.5" y="262.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">303</text>
+<text x="654.5" y="287.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="823.5" y="262.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">304</text>
+<text x="823.5" y="287.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="404.25" y="587.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">305</text>
+<text x="404.25" y="612.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="592.75" y="587.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">306</text>
+<text x="592.75" y="612.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="781.25" y="587.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">307</text>
+<text x="781.25" y="612.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室</text>
+<text x="969.75" y="587.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">308</text>
+<text x="969.75" y="612.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">START</text>
+<text x="648.0" y="444.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">客室前廊下</text>
+<text x="271.0" y="587.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">設備</text>
+<text x="271.0" y="612.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">通路</text>
+<text x="154.0" y="522.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">リネン室</text>
+<text x="154.0" y="652.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">清掃用具室</text>
+<text x="986.0" y="314.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">EVホール</text>
+<text x="986.0" y="184.0" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">停止EV</text>
 <rect x="91.6" y="262.0" width="124.80000000000001" height="78.0" fill="#d5e2f0" stroke="#d5e2f0"/>
 <text x="154.0" y="288.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">西階段</text>
 <text x="154.0" y="313.5" text-anchor="middle" dominant-baseline="central" font-family="Meiryo, sans-serif" font-size="21" fill="#172941">3F ↔ 2F</text>

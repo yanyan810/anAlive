@@ -18,6 +18,10 @@ struct StageCollider {
     Vector3 position{}, rotation{}, scale{1,1,1};
     AABB local{};
     Matrix4x4 world=Matrix4x4::MakeIdentity4x4(), inverse=Matrix4x4::MakeIdentity4x4();
+    void UpdateMatrices() {
+        world=Matrix4x4::MakeAffineMatrix(scale,rotation,position);
+        inverse=Matrix4x4::Inverse(world);
+    }
 };
 struct StageHit { float distance=0; Vector3 normal{}; };
 class StageWorld {

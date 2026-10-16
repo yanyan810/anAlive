@@ -14,6 +14,8 @@
 #include "StageClearOverlay.h"
 #include "GameHUD.h"
 #include "BulletManager.h"
+#include "AudioSystem.h"
+#include <array>
 #ifdef _DEBUG
 #include "DebugTimeline.h"
 #include "DebugJsonEditor.h"
@@ -37,6 +39,8 @@ public:
     void Draw(GameApp&) override {}
     void DrawImGui(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
+    // Future event -> SpawnGroup wiring belongs here; it never gates shutter motion.
+    void SetShutterEventHandler(std::function<void(const ShutterEvent&)> handler) { shutterEventHandler_=std::move(handler); }
 private:
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
@@ -47,6 +51,7 @@ private:
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
+    bool HandleInteraction(bool pressed,bool allowPickup);
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void OnStageClear(GameApp& app);
     void UpdateClearMenu(GameApp& app);
@@ -74,6 +79,7 @@ private:
         EnemySpawnSystem spawns;
         WeaponSystem weapons;
         StageProgress stage;
+        StageShutterSystem shutters;
         std::mt19937 pelletRandom;
         uint64_t nextEnemy=0,frame=0;
         unsigned long long shots=0,hits=0,attacks=0;
@@ -103,6 +109,19 @@ private:
     inline static bool debugPauseOnEnter_=false;
 #endif
     StageLoader level_;
+    void InitializeShutters(GameApp& app);
+    void SyncShutterVisuals();
+    void ProcessShutterEvents();
+    void UpdateShutterAudio(bool running);
+    struct ShutterVisual {
+        std::unique_ptr<Object3d> model, lamp;
+        std::array<int,4> sounds{}; // switch, start, motor (loop), complete
+        bool motorPlaying=false;
+    };
+    std::vector<ShutterVisual> shutterVisuals_;
+    std::unique_ptr<AudioSystem> shutterAudio_;
+    Sprite shutterPrompt_;
+    std::function<void(const ShutterEvent&)> shutterEventHandler_;
     bool stageLoaded_=false, showStageColliders_=false;
     void UpdateADS(const Input& input, float dt);
 

@@ -17,7 +17,7 @@ void GameHUD::Initialize(SpriteCommon* common, DirectXCommon* dx) {
     hpBar_.SetColor({0, 0, 0, 1});
 }
 
-void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float width, float height) {
+void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float width, float height,bool showPickup) {
     constexpr float maxHP = 100.0f;
     hp_ = std::isfinite(player.GetHP()) ? std::clamp(player.GetHP(), 0.0f, maxHP) : 0.0f;
     // Match the weapon panel's bottom margin, scaling both panels on smaller viewports.
@@ -33,7 +33,7 @@ void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float wi
     font_.DrawText(std::to_string(static_cast<int>(std::ceil(hp_))) + " / 100",
         x, height - 60 * scale, 20 * scale, {0, 0, 0, 1});
     const auto nearest = weapons.Nearest(player.GetTransform().translate);
-    const auto* nearby = nearest ? weapons.Find(weapons.Pickups()[*nearest].weaponId) : nullptr;
+    const auto* nearby = showPickup && nearest ? weapons.Find(weapons.Pickups()[*nearest].weaponId) : nullptr;
     weaponHUD_.Update(player.CurrentWeapon(), nearby, width, height);
 }
 

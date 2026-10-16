@@ -668,6 +668,7 @@
     <ClInclude Include="Game\DebugJsonEditor.h" />
     <ClInclude Include="Game\DebugEnemyTuning.h" />
     <ClInclude Include="Game\StageWorld.h" />
+    <ClInclude Include="Game\StageShutter.h" />
     <ClInclude Include="Game\StageProjectile.h" />
 
     <ClInclude Include="Game\enemy\EnemyDefinition.h" />

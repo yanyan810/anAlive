@@ -13,13 +13,14 @@ level=json.loads((source/'stage03.json').read_text(encoding='utf-8'))
 output=root/'docs/stage03-floor-plans'
 output.mkdir(parents=True,exist_ok=True)
 font_path=Path('C:/Windows/Fonts/meiryo.ttc')
-labels={'Room301':'301\n開始客室','Room302':'302\n客室','Room303':'303\n客室',
+labels={**{f'Room{i}':f'{i}\n客室' for i in range(301,309)},'Room308':'308\nSTART',
+    'Linen':'リネン室','Cleaning':'清掃用具室','ServiceAccess':'設備\n通路','ElevatorHall':'EVホール', 'ElevatorBay':'停止EV',
     'GuestCorridor':'客室前廊下','WestStair':'西階段\n3F ↔ 2F','EastStair':'東階段\n2F ↔ 1F',
     'StairLobby':'階段\nロビー','Foyer':'宴会ホール\n前室','Cloakroom':'クローク区画',
     'Preparation':'宴会準備室','Ballroom':'宴会ホール','BanquetStore':'宴会備品庫',
     'EastGallery':'ホール\n東廊下','ReceptionLobby':'ホテル入口ロビー',
     'EntranceLounge':'入口待合ロビー','ExitPassage':'出口通路'}
-paths={3:[(9,4),(9,10),(7,10),(7,10.8),(4.4,10.8)],
+paths={3:[(34,19),(35.25,19),(35.25,11.5),(8,11.5),(8,10.8),(4.4,10.8)],
     2:[(1.6,10.8),(9,10.8),(9,26),(16,26),(29,26),(35,26),(36.4,14),(36.4,10.8)],
     1:[(33.6,10.8),(33.6,14),(35,18),(30,18),(12,18),(0,18),(-16,18)]}
 
@@ -57,7 +58,7 @@ for floor in (1,2,3):
         text_at(*point(-10,14),'屋外道路',20)
     if floor==3:
         rectangle((0,38,0,36),'#e4e7ec','#bec7d3')
-        text_at(*point(20,23),'低い屋根（上面Y=12）\nこの下は2階ホール・前室\n屋内の3階フロアには含めない',24,color='#6f7d90')
+        text_at(*point(20,29),'低い屋根（上面Y=12）\nこの下は2階ホール・前室\n屋内の3階フロアには含めない',24,color='#6f7d90')
     floor_zones=[zone for zone in layout['zones'] if zone['floor']==floor]
     for zone in floor_zones:
         name=zone['name']
@@ -87,7 +88,7 @@ for floor in (1,2,3):
         if zone['access']=='enemy_only': label=f'敵待機 {zone["name"][-1]}\n侵入不可'
         if zone['name']=='ExitPassage': continue
         x,z=(x1+x2)/2,(z1+z2)/2
-        if zone['name']=='GuestCorridor': z=11
+        if zone['name']=='GuestCorridor': z=11.5
         if zone['name']=='Ballroom': z=16 if floor==2 else 22
         if zone['name']=='EastGallery': z=21
         if zone['name']=='StairLobby': z=6

@@ -8,9 +8,9 @@
   ],
   "guestFootprint": [
     0,
-    24,
+    38,
     0,
-    12
+    22
   ],
   "floorHeights": [
     0,
@@ -21,16 +21,142 @@
     12,
     15.35
   ],
+  "corridorWidth": 3,
+  "guestDoorWidth": 1.4,
+  "guestCeilingHeight": 3,
+  "playerStartRoom": 308,
+  "rooms": [
+    {
+      "number": 301,
+      "bounds": [
+        6.0,
+        12.5,
+        0,
+        10
+      ],
+      "door": [
+        10.5,
+        10
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "north"
+    },
+    {
+      "number": 302,
+      "bounds": [
+        12.5,
+        19.0,
+        0,
+        10
+      ],
+      "door": [
+        17.0,
+        10
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "north"
+    },
+    {
+      "number": 303,
+      "bounds": [
+        19.0,
+        25.5,
+        0,
+        10
+      ],
+      "door": [
+        23.5,
+        10
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "north"
+    },
+    {
+      "number": 304,
+      "bounds": [
+        25.5,
+        32.0,
+        0,
+        10
+      ],
+      "door": [
+        30.0,
+        10
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "north"
+    },
+    {
+      "number": 305,
+      "bounds": [
+        9.0,
+        16.25,
+        13,
+        22
+      ],
+      "door": [
+        13.5,
+        13
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "south"
+    },
+    {
+      "number": 306,
+      "bounds": [
+        16.25,
+        23.5,
+        13,
+        22
+      ],
+      "door": [
+        20.75,
+        13
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "south"
+    },
+    {
+      "number": 307,
+      "bounds": [
+        23.5,
+        30.75,
+        13,
+        22
+      ],
+      "door": [
+        28.0,
+        13
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "south"
+    },
+    {
+      "number": 308,
+      "bounds": [
+        30.75,
+        38.0,
+        13,
+        22
+      ],
+      "door": [
+        35.25,
+        13
+      ],
+      "bathroomDepth": 3,
+      "windowFacade": "south"
+    }
+  ],
   "zones": [
     {
       "floor": 3,
       "name": "Room301",
-      "use": "客室・開始室",
+      "use": "客室（入口・水回り骨組み含む）",
       "bounds": [
-        6,
-        12,
+        6.0,
+        12.5,
         0,
-        8
+        10
       ],
       "connections": [
         "GuestCorridor"
@@ -40,12 +166,12 @@
     {
       "floor": 3,
       "name": "Room302",
-      "use": "客室",
+      "use": "客室（入口・水回り骨組み含む）",
       "bounds": [
-        12,
-        18,
+        12.5,
+        19.0,
         0,
-        8
+        10
       ],
       "connections": [
         "GuestCorridor"
@@ -55,12 +181,87 @@
     {
       "floor": 3,
       "name": "Room303",
-      "use": "客室",
+      "use": "客室（入口・水回り骨組み含む）",
       "bounds": [
-        18,
-        24,
+        19.0,
+        25.5,
         0,
-        8
+        10
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room304",
+      "use": "客室（入口・水回り骨組み含む）",
+      "bounds": [
+        25.5,
+        32.0,
+        0,
+        10
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room305",
+      "use": "客室（入口・水回り骨組み含む）",
+      "bounds": [
+        9.0,
+        16.25,
+        13,
+        22
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room306",
+      "use": "客室（入口・水回り骨組み含む）",
+      "bounds": [
+        16.25,
+        23.5,
+        13,
+        22
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room307",
+      "use": "客室（入口・水回り骨組み含む）",
+      "bounds": [
+        23.5,
+        30.75,
+        13,
+        22
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Room308",
+      "use": "客室・開始室",
+      "bounds": [
+        30.75,
+        38.0,
+        13,
+        22
       ],
       "connections": [
         "GuestCorridor"
@@ -70,20 +271,104 @@
     {
       "floor": 3,
       "name": "GuestCorridor",
-      "use": "客室前廊下",
+      "use": "幅3mの客室廊下",
       "bounds": [
         6,
-        24,
-        8,
-        12
+        38,
+        10,
+        13
       ],
       "connections": [
         "Room301",
         "Room302",
         "Room303",
-        "WestStair"
+        "Room304",
+        "Room305",
+        "Room306",
+        "Room307",
+        "Room308",
+        "WestStair",
+        "ServiceAccess",
+        "ElevatorHall"
       ],
       "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "ServiceAccess",
+      "use": "設備室への幅3mの通路",
+      "bounds": [
+        6,
+        9,
+        13,
+        22
+      ],
+      "connections": [
+        "GuestCorridor",
+        "Linen",
+        "Cleaning"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Linen",
+      "use": "リネン室",
+      "bounds": [
+        0,
+        6,
+        12,
+        17
+      ],
+      "connections": [
+        "ServiceAccess"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "Cleaning",
+      "use": "清掃用具室",
+      "bounds": [
+        0,
+        6,
+        17,
+        22
+      ],
+      "connections": [
+        "ServiceAccess"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "ElevatorHall",
+      "use": "EVホール・停止中EV前",
+      "bounds": [
+        32,
+        38,
+        3,
+        10
+      ],
+      "connections": [
+        "GuestCorridor"
+      ],
+      "access": "player"
+    },
+    {
+      "floor": 3,
+      "name": "ElevatorBay",
+      "use": "使用不可・閉鎖EV設備",
+      "bounds": [
+        32,
+        38,
+        0,
+        3
+      ],
+      "connections": [
+        "ElevatorHall"
+      ],
+      "access": "sealed_equipment"
     },
     {
       "floor": 3,

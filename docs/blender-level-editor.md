@@ -1,5 +1,7 @@
 # Blenderでステージを作る
 
+EnemySpawnの独立設定（ステージ開始・トリガー・手動起動）、日本語UI、旧設定の互換については [enemy-spawn-activation.md](enemy-spawn-activation.md) を参照してください。以下のEnemy PoolとTrigger共有設定の説明は「旧形式（互換）」向けです。
+
 YanEngine Levelアドオンを使い、Blenderの配置から見た目のglTFとゲーム設定のJSONをまとめて出力できます。本番ゲームUIは追加していません。
 
 ## まず付属サンプルを開く

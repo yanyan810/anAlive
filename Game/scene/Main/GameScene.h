@@ -41,6 +41,8 @@ public:
     void DrawOverlay2D(GameApp& app) override;
     // Future event -> SpawnGroup wiring belongs here; it never gates shutter motion.
     void SetShutterEventHandler(std::function<void(const ShutterEvent&)> handler) { shutterEventHandler_=std::move(handler); }
+    // Event-facing API, independent of any specific switch/shutter implementation.
+    bool ActivateEnemySpawn(const std::string& id) { return spawnSystem_.ActivateSpawn(id); }
 private:
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
@@ -51,6 +53,7 @@ private:
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
+    void UpdateEnemySpawns(float dt, bool processTriggers = true);
     bool HandleInteraction(bool pressed,bool allowPickup);
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void OnStageClear(GameApp& app);

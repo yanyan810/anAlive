@@ -226,7 +226,10 @@
     <ClCompile Include="Engine\DebugAI\DebugReplayRecorder.cpp" />
     <ClCompile Include="Engine\DebugAI\RandomDebugBot.cpp" />
     <ClCompile Include="Engine\Core\ImGuiManagaer.cpp" />
-    <ClCompile Include="Engine\Core\GameApp.cpp" />
+    <ClCompile Include="Engine\Core\GameApp.cpp">
+      <!-- Embedded D3D regression fixtures exceed the standard COFF section limit. -->
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="main.cpp">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">MaxSpeed</Optimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">false</WholeProgramOptimization>

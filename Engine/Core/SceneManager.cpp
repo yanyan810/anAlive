@@ -272,6 +272,7 @@ bool SceneManager::HasObjectLuminanceOutlineTargets() const {
 
 void SceneManager::DrawTransitionImGui_([[maybe_unused]] GameApp& app) {
 #ifdef USE_IMGUI
+    if (current_ && !current_->ShowTransitionDebugUI()) return;
     if (ImGui::Begin("Screen Transition")) {
         static const char* states[] = {"Idle", "FadeOut", "Hold", "FadeIn"};
         ImGui::Text("TransitionState: %s", states[static_cast<size_t>(fade_.State())]);

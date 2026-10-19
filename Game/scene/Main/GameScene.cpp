@@ -605,7 +605,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         if (showroom_ && freezeEnemies_) { enemies_[i]->UpdateVisuals(dt); continue; }
         const auto previous=enemies_[i]->GetPosition();
         enemies_[i]->SetPosition(previous+correction[i]);
-        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate);
+        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate,&level_.collision,player_.Settings().cameraHeight);
         if (!enemies_[i]->IsDead()) {
             const auto& definition=enemies_[i]->Definition();
             enemies_[i]->SetPosition(level_.collision.Move(previous,enemies_[i]->GetPosition(),definition.collisionRadius,definition.collisionHeight));

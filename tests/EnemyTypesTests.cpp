@@ -113,6 +113,7 @@ int main() {
     for (auto id : {"ranged"}) {
         const auto& d=*definitions.Find(id);
         EnemyAI ai; ai.settings={d.detectionRange,d.attackRange,d.moveSpeed,d.attackDamage,d.attackInterval,d.IsRanged(),d.minRange,d.maxRange};
+        ai.settings.senses={d.detectionRange,360,0};
         Vector3 pos{}, rot{};
         ai.Update(pos,rot,{0,0,d.maxRange+2},.1f,false); assert(pos.z>0 && ai.attacksThisUpdate==0);
         pos={}; ai.Update(pos,rot,{0,0,d.minRange-2},.1f,false); assert(pos.z<0 && ai.attacksThisUpdate==0);
@@ -126,6 +127,7 @@ int main() {
     assert(bomber.moveSpeed>0 && Near(bomber.moveSpeed,definitions.Find("normal")->moveSpeed));
     EnemyAI slow; slow.settings={bomber.detectionRange,bomber.attackRange,bomber.moveSpeed,
         bomber.attackDamage,bomber.attackInterval,bomber.IsRanged(),bomber.minRange,bomber.maxRange};
+    slow.settings.senses={bomber.detectionRange,360,0};
     Vector3 slowPosition{},slowRotation{};
     slow.Update(slowPosition,slowRotation,{0,0,5},1,false);
     assert(Near(slowPosition.z,bomber.moveSpeed) && slow.state==EnemyState::Chase);

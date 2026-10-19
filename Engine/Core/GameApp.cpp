@@ -14,6 +14,9 @@
 #include "scene/Main/ClothShowroomScene.h"
 #endif
 #include "GameApp.h"
+#include "scene/Debug/EnemyAITestScene.h"
+#include "../../tests/EnemyAITestSceneTests.h"
+#include "../../tests/EnemyAIStageSmokeTests.h"
 #include "SceneManager.h"
 
 #include "WinApp.h"
@@ -67,6 +70,24 @@ int GameApp::Run() {
     if (!Initialize_()) {
         Finalize_();
         return -1;
+    }
+    if (HasLaunchArgument(L"--enemy-ai-scene-test")) {
+        int result=0; std::filesystem::create_directories("generated/enemy-ai-tests");
+        try { RunEnemyAITestSceneTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
+    }
+    for (const auto& stage: {std::string("stage01"),std::string("stage02"),std::string("stage03")}) {
+        const auto option=L"--enemy-ai-"+std::wstring(stage.begin(),stage.end())+L"-smoke";
+        if (!HasLaunchArgument(option)) continue;
+        int result=0; std::filesystem::create_directories("generated/enemy-ai-tests");
+        try { RunEnemyAIStageSmokeTests(*this,stage); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/enemy-ai-tests/"+stage+"-smoke.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
     }
     if (std::wstring(GetCommandLineW()).find(L"--hotel-stage-test")!=std::wstring::npos) {
         int result=0;
@@ -261,6 +282,7 @@ bool GameApp::Initialize_() {
     sceneMgr_ = std::make_unique<SceneManager>();
     sceneMgr_->Initialize(*this);
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
+    sceneMgr_->Register("EnemyAITest", [] { return std::make_unique<EnemyAITestScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
     sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
@@ -269,6 +291,7 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
     #endif
     sceneMgr_->Change(*this, "Title");
+    if (HasLaunchArgument(L"--enemy-ai-test")) sceneMgr_->Change(*this,"EnemyAITest");
     // Deliberately opt-in; this check is available without Debug/ImGui.
     if (HasLaunchArgument(L"--scene-transition-check") || HasLaunchArgument(L"--scene-transition-check-test")) {
         transitionCheck_ = std::make_unique<TemporarySceneTransitionCheck>();

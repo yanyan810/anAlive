@@ -57,6 +57,7 @@ public:
                 c.id=item.at("id").get<std::string>();
                 c.walkable=item.value("walkable",false);
                 c.playerOnly=item.value("playerOnly",false);
+                c.blocksSight=item.value("blocksSight",true);
                 c.position=vector(item.at("position")); c.rotation=vector(item.at("rotation")); c.scale=vector(item.at("scale"));
                 c.local={vector(item.at("localBounds").at("min")),vector(item.at("localBounds").at("max"))};
                 if (c.scale.x<=1e-5f || c.scale.y<=1e-5f || c.scale.z<=1e-5f ||

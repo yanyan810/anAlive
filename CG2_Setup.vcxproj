@@ -14,6 +14,13 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Game\enemy\EnemySenses.h" />
+    <ClInclude Include="Game\enemy\EnemyObservationMemory.h" />
+    <ClInclude Include="Game\enemy\EnemyNavigation.h" />
+    <ClInclude Include="Game\scene\Debug\EnemyAITestScene.h" />
+    <ClCompile Include="Game\scene\Debug\EnemyAITestScene.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>

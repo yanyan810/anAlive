@@ -58,6 +58,14 @@ public:
         }
         return false;
     }
+    // Explicit debug deletion. Caller waits for GPU and drops all borrowed references first.
+    bool ReleaseForReset(Enemy* enemy) {
+        for (auto& [id,bucket]:buckets_) for (auto& slot:bucket.slots)
+            if (slot.enemy.get()==enemy && slot.active) {
+                enemy->RetireFromPool(); slot.active=false; return true;
+            }
+        return false;
+    }
     // Scene reset/rewind only: caller must wait for GPU work before discarding debris.
     void ReleaseAll() {
         for (auto& [id,bucket]:buckets_) for (auto& slot:bucket.slots) {

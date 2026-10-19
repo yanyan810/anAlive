@@ -36,6 +36,7 @@ int main() {
 #endif
     DebugTimeline<State> history;
     State state;
+    state.ai.settings.senses.detectionTime=0; state.ai.settings.senses.fieldOfView=360;
     EnemyDefinitions definitions; assert(definitions.Load("../../resources/Data/enemies.json"));
     assert(state.spawns.Load("../../resources/levels/fps_spawns.json",definitions));
     assert(state.stage.LoadGoals("../../resources/levels/fps_spawns.json"));

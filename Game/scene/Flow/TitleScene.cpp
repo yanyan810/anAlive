@@ -535,6 +535,8 @@ void TitleScene::OnEnter(GameApp& app) {
     crosshairHorizontal_.SetScale({12.0f/static_cast<float>(white.width),2.0f/static_cast<float>(white.height),1});
     crosshairVertical_.SetScale({2.0f/static_cast<float>(white.width),12.0f/static_cast<float>(white.height),1});
     crosshairHorizontal_.Update(uiView_,uiProjection_); crosshairVertical_.Update(uiView_,uiProjection_);
+    enemyAITestEntry_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_ai_entry.png");
+    enemyAITestEntry_.SetPosition({20,650}); enemyAITestEntry_.Update(uiView_,uiProjection_);
     ready_ = true;
     SetWindowTextW(app.Win()->GetHwnd(), L"アンアライブ");
 }
@@ -568,6 +570,9 @@ void TitleScene::OnExit(GameApp& app) {
 void TitleScene::Update(GameApp& app, float dt) {
     if (!ready_ || !NextScene().empty()) return;
     auto& input = *app.GetInput();
+    if (input.HasFocus() && input.IsKeyTrigger(DIK_F6) && !start_.Starting() && !explosionPreview_) {
+        app.Scenes().TransitionTo("EnemyAITest"); return;
+    }
     const bool wasCaptured = input.IsCameraControlEnabled();
     bool viewReady = true, clickedView = false;
 #ifdef USE_IMGUI
@@ -668,12 +673,16 @@ void TitleScene::DrawRender(GameApp&) {
 void TitleScene::DrawOverlay2D(GameApp&) {
     if (!ready_ || start_.Starting()) return;
     crosshairHorizontal_.Draw(); crosshairVertical_.Draw();
+    enemyAITestEntry_.Draw();
 }
 
 void TitleScene::DrawImGui(GameApp& app) {
 #ifdef USE_IMGUI
     if (!ready_) return;
     if (ImGui::Begin("Title Lighting")) {
+        ImGui::BeginDisabled(start_.Starting() || explosionPreview_ || app.Scenes().IsTransitioning());
+        if (ImGui::Button("Enemy AI Test（敵AIテスト） F6")) app.Scenes().TransitionTo("EnemyAITest");
+        ImGui::EndDisabled();
 #ifdef _DEBUG
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
 #endif

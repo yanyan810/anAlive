@@ -97,9 +97,17 @@ public:
     DebugState CaptureDebug() const;
     void RestoreDebug(const DebugState& state);
 #endif
-    float Update(float dt, const Vector3& playerPosition);
+    float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f);
+    const EnemyAI& AI() const { return ai_; }
+    EnemySenses& Senses() { return ai_.settings.senses; }
+    void SetAIPaused(bool paused) { ai_.paused=paused; ai_.attacksThisUpdate=0; }
+    void ResetAI() {
+        const auto settings=ai_.settings; ai_={}; ai_.settings=settings;
+        ai_.random=static_cast<uint32_t>(spawnId_)^0x9e3779b9u;
+    }
     void UpdateVisuals(float dt); // Includes fragment lifetime/physics, but no AI or attacks.
     const Vector3& GetPosition() const { return position_; }
+    const Vector3& GetRotation() const { return rotation_; }
     void SetPosition(const Vector3& position) { position_ = position; }
     void SetRotation(const Vector3& rotation) { rotation_ = rotation; }
     void SetSpawnIdentity(uint64_t id, const std::string& trigger) {

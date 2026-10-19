@@ -35,9 +35,12 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(pool.Capacity()==definitions.All().size() && pool.Active()==0,"prewarm capacity");
     check(pool.RuntimeAllocations()==0,"prewarm counted as runtime allocation");
     uint64_t next=100;
-    const auto verifyReset=[&](Enemy* enemy,const Enemy::DebugState& original) {
+    const auto verifyReset=[&](Enemy* enemy,const Enemy::DebugState& original,bool alreadyUpdated=false) {
         const auto state=enemy->CaptureDebug();
         check(!enemy->IsDead() && state.ai.state==EnemyState::Idle && state.ai.cooldown==0 && state.ai.attacksThisUpdate==0,"AI reset");
+        check(state.ai.searchElapsed==0 && state.ai.searchPointsVisited==0 && state.ai.SearchRemaining()==0 &&
+            !state.ai.searchFinishing && !state.ai.lastSeenReached && !state.ai.investigateUnreachable && state.ai.investigateBlockedTime==0,"search reset");
+        check(state.ai.memory.count==0 && !state.ai.memory.hasDirection && (alreadyUpdated || state.ai.memory.clock==0),"observation memory reset");
         check(state.attacks==0 && state.damage==0 && state.flash==0 && state.blastHitTime==0 && state.lastBlastDamage==0,"feedback reset");
         check(!state.exploded && state.explosionTime==0 && state.faces.empty() && state.detached.empty(),"death debris reset");
         check(!state.parts.deathProcessed && state.parts.size()==original.parts.size(),"part state reset");
@@ -82,6 +85,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
         (void)definition;
         const auto gpuBefore=Object3d::debugInitializationCount;
         auto* enemy=pool.Acquire(id,next++,"first",{0,0,12},{});
+        enemy->Senses().detectionTime=0; enemy->Senses().fieldOfView=360;
         const auto original=enemy->CaptureDebug();
         verifyRenderedCollision(enemy);
         if (id=="normal") {
@@ -147,6 +151,8 @@ inline void RunEnemyPoolTests(GameApp& app) {
             check(!enemy->Raycast(oldHead+Vector3{0,0,-2},{0,0,1},4,oldHit),"old upright head still collides during crawl");
             enemy->RestoreDebug(walking); enemy->UpdateVisuals(0);
             const auto restored=enemy->CaptureDebug();
+            check(restored.ai.memory.count==walking.ai.memory.count && restored.ai.memory.clock==walking.ai.memory.clock &&
+                StageLength(restored.ai.memory.escapeDirection-walking.ai.memory.escapeDirection)==0,"rewind lost observation history");
             for (size_t i=0;i<walking.visualTransforms.size();++i) {
                 const auto& a=walking.visualTransforms[i]; const auto& b=restored.visualTransforms[i];
                 check(closeEnough(a.translate.x,b.translate.x) && closeEnough(a.translate.y,b.translate.y) && closeEnough(a.translate.z,b.translate.z)
@@ -321,6 +327,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     const auto broken=rangedTarget->CaptureDebug();
     check(!rangedTarget->IsDead() && broken.parts[2].Destroyed() && !broken.visible[2],"group nonfatal part destruction");
     for (auto* enemy:game.enemies_) if (!enemy->IsDead()) {
+        enemy->Senses().detectionTime=0; enemy->Senses().fieldOfView=360;
         enemy->Update(.125f,enemy->GetPosition()+Vector3{0,0,2});
         check(enemy->GetState()!=EnemyState::Idle,"group AI did not advance");
         enemy->Die();
@@ -335,7 +342,10 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(game.enemies_==groupPointers && game.enemyPool_.RuntimeAllocations()==1,"group slots not reused after reset");
     check(Object3d::debugInitializationCount==reusedGpu,"group reuse initialized renderers");
     for (size_t i=0;i<game.enemies_.size();++i) {
-        verifyReset(game.enemies_[i],groupOriginal[i]);
+        // UpdateCombat(3) above includes three seconds of fresh simulation after
+        // acquire: the clock must advance, but hidden targets must leave no samples.
+        verifyReset(game.enemies_[i],groupOriginal[i],true);
+        check(game.enemies_[i]->AI().memory.clock==3,"fresh post-spawn observation clock");
         check(!groupIds.count(game.enemies_[i]->GetSpawnId()),"group reuse retained a dead spawn ID");
     }
     game.RestoreDebug(app,beforeGroup);

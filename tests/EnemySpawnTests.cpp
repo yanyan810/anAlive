@@ -51,7 +51,172 @@ static json GroupConfiguration(const char* mode = "Sequential") {
             {{"enemy", "fast"}, {"spawnPoint", "B"}}, {{"enemy", "tank"}, {"spawnPoint", "C"}}})}}});
     return data;
 }
+static json IndependentConfiguration() {
+    auto data = Configuration();
+    for (auto& point : data["spawnPoints"]) {
+        point["activation"] = "OnTrigger"; point["groupId"] = "A";
+        point["enemy"] = "normal"; point["spawnCount"] = 3; point["maxAlive"] = 3;
+        point["mode"] = "Simultaneous"; point["spawnInterval"] = 100;
+    }
+    auto& second = data["spawnPoints"][1];
+    second["spawnCount"] = 5; second["maxAlive"] = 5;
+    second["mode"] = "Sequential"; second["spawnInterval"] = .5; second["enemy"] = "fast";
+    auto& third = data["spawnPoints"][2];
+    third["activation"] = "StageStart"; third["spawnCount"] = 2; third["enemy"] = "tank";
+    data["spawnTriggers"] = json::array({{{"id", "T"}, {"position", {0,0,0}}, {"size", {2,2,2}},
+        {"groupId", "A"}, {"oneShot", true}, {"condition", "PlayerEnter"}}});
+    return data;
+}
+static json CompositionConfiguration(const char* mode, const char* activation) {
+    json point={{"id","A"},{"position",{1,0,5}},{"activation",activation},{"groupId","A"},
+        {"spawnCount",5},{"maxAlive",5},{"mode",mode},{"spawnInterval",.5},{"initialDelay",1},
+        {"enemyComposition",json::array({{{"enemy","normal"},{"count",3}},{{"enemy","fast"},{"count",2}}})}};
+    json data={{"spawnPoints",json::array({point})}};
+    if (std::string(activation)=="OnTrigger")
+        data["spawnTriggers"]=json::array({{{"id","T"},{"groupId","A"},{"position",{0,0,0}},{"size",{2,2,2}}}});
+    return data;
+}
 int main() {
+    for (const char* mode : {"Sequential", "Simultaneous"}) for (const char* activation : {"StageStart", "OnTrigger", "Manual"}) {
+        Harness h; h.Load(CompositionConfiguration(mode,activation));
+        if (std::string(activation)=="Manual") assert(h.system.ActivateSpawn("A"));
+        h.Tick(0); h.Tick(.75f); assert(h.next==0);
+        h.Tick(.25f);
+        assert(h.next==(std::string(mode)=="Simultaneous" ? 5u : 1u));
+        h.Tick(2); assert(h.next==5);
+        for (size_t i=0;i<5;++i) {
+            assert(h.events[i].enemy==(i<3 ? "normal" : "fast"));
+            assert(h.events[i].position.x==1 && h.events[i].position.z==5);
+        }
+        auto state=h.system;
+        h.alive.clear(); h.system.Reset();
+        if (std::string(activation)=="Manual") assert(h.system.ActivateSpawn("A"));
+        h.Tick(0); h.Tick(3); assert(h.next==10);
+        h.system=state; h.Tick(100); assert(h.next==10); // completed snapshot stays completed
+    }
+    {
+        auto data=CompositionConfiguration("Simultaneous","StageStart");
+        data["spawnPoints"][0]["initialDelay"]=0; data["spawnPoints"][0]["maxAlive"]=2;
+        Harness h; h.Load(data); h.Tick(0); assert(h.next==2);
+        h.Tick(100); assert(h.next==2);
+        h.alive.erase(0); h.Tick(0); assert(h.next==3 && h.events.back().enemy=="normal");
+        auto saved=h.system;
+        h.alive.clear(); h.Tick(0); assert(h.next==5 && h.events[3].enemy=="fast" && h.events[4].enemy=="fast");
+        h.system=saved; h.alive.clear(); h.Tick(0); assert(h.next==7 && h.events[5].enemy=="fast");
+        h.alive.clear(); assert(h.system.ActivateSpawn("A")); h.Tick(0);
+        assert(h.next==9 && h.events[7].enemy=="normal" && h.events[8].enemy=="normal");
+    }
+    {
+        Harness h; auto data=CompositionConfiguration("Simultaneous","StageStart"); h.Load(data);
+        std::vector<std::string> selected;
+        h.system.Update(1, {}, [&](const EnemySpawnPoint& p,const std::string&) {
+            selected.push_back(h.system.SelectEnemyId(p)); return uint64_t{selected.size()};
+        }, [](uint64_t) { return true; });
+        assert((selected==std::vector<std::string>{"normal","normal","normal","fast","fast"}));
+        const auto reject=[&](const json& bad) {
+            std::ofstream("spawn-test.json")<<bad;
+            assert(!h.system.Load("spawn-test.json",h.definitions));
+            assert(h.system.Points()[0].spawned==5 && h.system.Points()[0].enemyComposition.size()==2);
+        };
+        auto bad=data; bad["spawnPoints"][0]["enemyComposition"]=json::array(); reject(bad);
+        bad=data; bad["spawnPoints"][0]["enemyComposition"]=json::object(); reject(bad);
+        for (const auto& value : std::vector<json>{0,-1,1.5,10001,true}) {
+            bad=data; bad["spawnPoints"][0]["enemyComposition"][0]["count"]=value; reject(bad);
+        }
+        bad=data; bad["spawnPoints"][0]["enemyComposition"][0]["enemy"]="missing"; reject(bad);
+        bad=data; bad["spawnPoints"][0]["spawnCount"]=4; reject(bad);
+        bad=data; bad["spawnPoints"][0]["enemy"]="normal"; reject(bad);
+        bad=data; bad["spawnPoints"][0]["enemyComposition"][0]["count"]=10000; reject(bad);
+    }
+    {
+        Harness h; h.Load(IndependentConfiguration());
+        h.Tick(0, {100,0,0}); assert(h.next == 2 && h.events[0].enemy == "tank");
+        h.Tick(100); assert(h.next == 6); // trigger fires now: A=3, B=1, C stays 2
+        assert(h.system.Points()[0].spawned == 3 && h.system.Points()[1].spawned == 1);
+        for (size_t i=2; i<5; ++i) assert(h.events[i].frame == h.frame);
+        h.Tick(.25f); assert(h.next == 6); h.Tick(.25f); assert(h.next == 7);
+        h.Tick(1.5f); assert(h.next == 10 && h.system.Points()[1].spawned == 5);
+        h.Tick(0, {100,0,0}); h.Tick(10); assert(h.next == 10);
+        h.alive.clear(); h.system.Reset(); h.Tick(0, {100,0,0}); assert(h.next == 12);
+        assert(h.system.Points()[0].spawned == 0 && !h.system.Triggers()[0].activated);
+    }
+    for (const char* mode : {"Sequential", "Simultaneous"}) {
+        auto data = IndependentConfiguration(); data.erase("spawnTriggers");
+        auto& points = data["spawnPoints"];
+        points.erase(points.begin() + 1, points.end());
+        auto& point = data["spawnPoints"][0];
+        point["activation"] = "Manual"; point["initialDelay"] = 1;
+        point["maxAlive"] = 1; point["mode"] = mode; point["spawnInterval"] = .5;
+        Harness h; h.Load(data); h.Tick(50); assert(h.next == 0);
+        assert(!h.system.ActivateSpawn("missing"));
+        assert(h.system.ActivateSpawn("A") && !h.system.ActivateSpawn("A"));
+        h.Tick(.75f); assert(h.next == 0); h.Tick(.25f); assert(h.next == 1);
+        h.Tick(50); assert(h.next == 1 && h.system.Points()[0].active);
+        h.alive.clear(); h.Tick(0); assert(h.next == 2);
+        h.alive.clear(); h.Tick(0);
+        if (std::string(mode) == "Sequential") { assert(h.next == 2); h.Tick(.5f); }
+        assert(h.next == 3 && !h.system.Points()[0].active);
+        // Retriggering a completed wave retains living IDs and does not exceed maxAlive.
+        assert(h.system.ActivateSpawn("A")); h.Tick(1); assert(h.next == 3);
+        h.alive.clear(); h.Tick(0); assert(h.next == 4);
+        auto snapshot = h.system;
+        h.system.Reset(); h.Tick(100); assert(h.next == 4 && !h.system.Points()[0].active);
+        h.system = snapshot; h.alive.clear(); h.Tick(1); assert(h.next == 5);
+    }
+    {
+        auto data = IndependentConfiguration(); auto& trigger = data["spawnTriggers"][0];
+        trigger["initialDelay"] = 2; trigger["oneShot"] = false;
+        data["spawnPoints"][0]["initialDelay"] = 1;
+        Harness h; h.Load(data); h.Tick(10); assert(h.next == 2);
+        h.Tick(1.5f); assert(h.next == 2); h.Tick(.5f); assert(h.next == 3); // B only
+        h.Tick(1); assert(h.next == 8); // A delayed independently; B catches up
+        h.Tick(1); assert(h.next == 10);
+        h.alive.clear(); h.Tick(0, {100,0,0}); h.Tick(0); h.Tick(2);
+        assert(h.next == 11); // reusable trigger starts the completed B wave
+        assert(h.system.Points()[0].active);
+        h.Load(data); h.Tick(0); h.Tick(3);
+        assert(h.system.Points()[0].spawned == 3 && h.system.Points()[1].spawned == 3);
+    }
+    {
+        Harness h; h.Load(IndependentConfiguration());
+        const auto reject = [&](const json& bad) {
+            std::ofstream("spawn-test.json") << bad;
+            assert(!h.system.Load("spawn-test.json", h.definitions));
+            assert(h.system.Points().size() == 3 && h.system.Points()[2].active);
+        };
+        for (const char* field : {"spawnCount", "maxAlive"}) for (const auto value : {0.0, -1.0, 1.5, 10001.0}) {
+            auto bad = IndependentConfiguration(); bad["spawnPoints"][0][field] = value; reject(bad);
+        }
+        for (const char* field : {"initialDelay", "spawnInterval"}) {
+            auto bad = IndependentConfiguration(); bad["spawnPoints"][0][field] = -1; reject(bad);
+            bad["spawnPoints"][0][field] = 1000001; reject(bad);
+        }
+        for (const auto& [field, value] : std::vector<std::pair<std::string, std::string>>{
+                {"activation", "typo"}, {"mode", "typo"}, {"enemy", "missing"}, {"groupId", " "}, {"id", "B"}}) {
+            auto bad = IndependentConfiguration(); bad["spawnPoints"][0][field] = value; reject(bad);
+        }
+        auto bad = IndependentConfiguration(); bad["spawnTriggers"][0]["groupId"] = "missing"; reject(bad);
+        bad = IndependentConfiguration(); bad["spawnTriggers"][0]["condition"] = "typo"; reject(bad);
+        bad = IndependentConfiguration(); bad["spawnTriggers"][0]["spawnCount"] = 99; reject(bad);
+        bad = IndependentConfiguration(); bad["spawnTriggers"] = Configuration()["spawnTriggers"]; reject(bad);
+    }
+    {
+        // Preparation during FadeIn must not enter a trigger or advance old groups.
+        Harness h; h.Load(IndependentConfiguration());
+        size_t count = 0;
+        h.system.Update(0, {}, EnemySpawnSystem::SpawnEnemy{[&](const auto&, const auto&, const auto&) { return uint64_t{++count}; }},
+            [](uint64_t) { return true; }, false);
+        assert(count == 2 && !h.system.Triggers()[0].activated && h.system.ElapsedTime() == 0);
+    }
+    for (const char* stage : {"stage01", "stage02", "stage03"}) {
+        Harness h;
+        const std::string path = std::string("../../resources/levels/") + stage + "/" + stage + ".json";
+        assert(h.system.Load(path, h.definitions));
+        if (std::string(stage)!="stage03") {
+            for (const auto& point : h.system.Points()) assert(point.activation == SpawnActivation::Legacy);
+            h.Tick(0, {10000,10000,10000}); assert(h.next == 0);
+        } // Stage03 may contain the user's newly authored Stage Start waves.
+    }
     {
         Harness h; h.Load(Configuration());
         h.Tick(10, {5,0,0}); assert(h.next == 0);
@@ -231,5 +396,22 @@ int main() {
         h.Tick(.5f, {1000,0,0}); assert(h.next == 5);
         h.Tick(.5f, {1000,0,0}); assert(h.next == 6);
     }
-    std::cout << "Enemy spawn tests passed: legacy timing/capacity/map, Sequential, same-frame Simultaneous, positions/rotations/definitions, reset/reload, mixed groups/triggers, validation, Blender fixture.\n";
+    if (std::ifstream("../spawn-activation-tests/project/resources/levels/stage01/stage01.json").good()) {
+        Harness h;
+        assert(h.system.Load("../spawn-activation-tests/project/resources/levels/stage01/stage01.json", h.definitions));
+        h.Tick(0, {1000,0,0}); assert(h.next == 2);
+        h.Tick(0, {-50,0,0}); assert(h.next == 6);
+        h.Tick(2, {-50,0,0}); assert(h.next == 10);
+        assert(h.system.ActivateSpawn("Independent_D"));
+        h.Tick(.5f, {1000,0,0}); assert(h.next == 10);
+        h.Tick(.5f, {1000,0,0}); assert(h.next == 11);
+        h.Tick(10, {1000,0,0}); assert(h.next == 11);
+        h.alive.clear(); h.Tick(0, {1000,0,0}); assert(h.next == 12);
+    }
+    if (std::ifstream("../spawn-composition-tests/project/resources/levels/stage01/stage01.json").good()) {
+        Harness h; assert(h.system.Load("../spawn-composition-tests/project/resources/levels/stage01/stage01.json",h.definitions));
+        h.Tick(0, {1000,0,0}); assert(h.next==5);
+        for (size_t i=0;i<5;++i) assert(h.events[i].enemy==(i<3 ? "normal" : "fast"));
+    }
+    std::cout << "Enemy spawn tests passed: exact mixed-type counts/order/capacity/reset, StageStart/OnTrigger/Manual, independent counts, modes, delays, capacity refill, retrigger, rewind/reset, legacy Stage01-03, scheduled groups, validation, Blender fixtures.\n";
 }

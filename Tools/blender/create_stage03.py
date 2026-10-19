@@ -74,6 +74,8 @@ def make(name,group,position,size=None,rotation=(0,0,0),role='STATIC',
                              Vector(tuple(v*.5 for v in size) if size else (1,1,1)))
     obj.matrix_world=exporter.ENGINE_BASIS.inverted() @ engine @ exporter.ENGINE_BASIS
     obj.yan_level.role=role
+    if role=='ENEMY': obj.yan_level.spawn_activation='LEGACY'
+    if role=='TRIGGER': obj.yan_level.trigger_mode='LEGACY'
     obj.yan_level.collision='BOX' if collision else 'NONE'
     obj.yan_level.walkable=walkable
     obj.yan_level.player_only=player_only

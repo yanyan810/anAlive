@@ -1,7 +1,8 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 10, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 12, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
+from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
 from mathutils import Matrix, Vector
 import json
@@ -77,6 +78,57 @@ def trigger_volume(obj, depsgraph):
 
 def object_id(obj):
     return obj.yan_level.identifier.strip() or obj.name
+
+
+@persistent
+def preserve_legacy_spawns(_=None):
+    """Mark old authoring data in memory; never save or distribute shared totals.
+
+    RNA defaults apply to newly placed objects. Files without the new properties
+    remain location/pool + shared trigger waves, including weighted random order.
+    """
+    for obj in bpy.data.objects:
+        cfg = obj.yan_level
+        if cfg.role == 'ENEMY' and not cfg.is_property_set('spawn_activation'):
+            cfg.spawn_activation = 'LEGACY'
+        if cfg.role == 'TRIGGER' and not cfg.is_property_set('trigger_mode'):
+            cfg.trigger_mode = 'LEGACY'
+
+
+def initialize_legacy_spawns():
+    # Blender runs register() with _RestrictData, including during installation.
+    # Access loaded objects only after that registration context has ended.
+    preserve_legacy_spawns()
+    return None
+
+
+def spawn_total(cfg):
+    if cfg.spawn_activation != 'LEGACY' and cfg.spawn_composition_mode == 'COUNTS':
+        return sum(row.count for row in cfg.enemy_composition)
+    return cfg.spawn_count
+
+
+def composition_data(cfg, enemies, label):
+    if not 1 <= len(cfg.enemy_composition) <= 10000:
+        raise ValueError(f'{label}: 敵の種類と体数を1行以上追加してください')
+    entries = []
+    for row in cfg.enemy_composition:
+        identifier = row.identifier.strip()
+        if identifier not in enemies:
+            raise ValueError(f'{label}: 存在しない敵定義: {identifier}')
+        count = row.get('count', row.count)
+        if type(count) is not int or not 1 <= count <= 10000:
+            raise ValueError(f'{label}: 種類ごとの体数は1～10000の整数で指定してください')
+        entries.append({'enemy': identifier, 'count': count})
+    if sum(row['count'] for row in entries) > 10000:
+        raise ValueError(f'{label}: 総出現数は10000体以下にしてください')
+    return entries
+
+
+def composition_changed(self, context):
+    if self.spawn_composition_mode == 'COUNTS' and not self.enemy_composition:
+        row = self.enemy_composition.add()
+        row.identifier, row.count = self.enemy_definition, self.spawn_count
 
 
 def pool_data(pool, label, known=None):
@@ -172,6 +224,10 @@ def matched_weapons(cfg, weapons):
 
 
 def build_level(scene, depsgraph):
+    # Scripts may validate/export immediately after enabling, before timers run.
+    if bpy.app.timers.is_registered(initialize_legacy_spawns):
+        initialize_legacy_spawns()
+        bpy.app.timers.unregister(initialize_legacy_spawns)
     settings = scene.yan_level
     stage_id = settings.stage_id.strip()
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', stage_id):
@@ -181,7 +237,7 @@ def build_level(scene, depsgraph):
     for obj in objects:
         key = object_id(obj)
         if key in ids:
-            raise ValueError(f"Duplicate ID: {key}")
+            raise ValueError(f'IDが重複しています: {key}')
         ids.add(key)
         finite([v for row in obj.matrix_world for v in row], obj.name)
     players = [o for o in objects if o.yan_level.role == 'PLAYER']
@@ -251,10 +307,40 @@ def build_level(scene, depsgraph):
             if cfg.role == 'PLAYER':
                 data['playerSpawn'] = pose
             elif cfg.role == 'ENEMY':
-                if not cfg.group.strip():
-                    raise ValueError(f"{key}: Spawn Group required")
-                groups.setdefault(cfg.group.strip(), []).append(key)
-                data['spawnPoints'].append(dict(id=key, **pose, enemyPool=pool_data(cfg.pool, key, enemies)))
+                point = dict(id=key, **pose)
+                if cfg.spawn_activation == 'LEGACY':
+                    if not cfg.group.strip():
+                        raise ValueError(f'{key}: 旧形式の敵出現地点にはグループIDが必要です')
+                    groups.setdefault(cfg.group.strip(), []).append(key)
+                    point['enemyPool'] = pool_data(cfg.pool, key, enemies)
+                else:
+                    composition = composition_data(cfg, enemies, key) if cfg.spawn_composition_mode == 'COUNTS' else None
+                    enemy_id = cfg.enemy_definition.strip()
+                    if composition is None and enemy_id not in enemies:
+                        raise ValueError(f'{key}: 存在しない敵定義: {enemy_id}')
+                    # Inspect raw saved values too: RNA may clamp malformed stored
+                    # values on access, hiding corruption from Validate otherwise.
+                    for field in (('max_alive',) if composition is not None else ('spawn_count', 'max_alive')):
+                        value = cfg.get(field, getattr(cfg, field))
+                        if type(value) is not int or not 1 <= value <= 10000:
+                            raise ValueError(f'{key}: 総出現数・同時生存上限は1～10000の整数で指定してください')
+                    for field in ('spawn_interval', 'initial_delay'):
+                        value = cfg.get(field, getattr(cfg, field))
+                        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1e6:
+                            raise ValueError(f'{key}: 出現間隔・初回待機時間は0～1000000秒で指定してください')
+                    if cfg.spawn_activation == 'OnTrigger' and not cfg.group.strip():
+                        raise ValueError(f'{key}: トリガー起動にはグループIDが必要です')
+                    point.update(activation=cfg.spawn_activation,
+                                 spawnCount=spawn_total(cfg), maxAlive=cfg.max_alive, mode=cfg.spawn_mode,
+                                 spawnInterval=cfg.spawn_interval, initialDelay=cfg.initial_delay)
+                    if composition is not None:
+                        point['enemyComposition'] = composition
+                        point['enemyPool'] = [{'id': row['enemy'], 'weight': row['count']} for row in composition]
+                    else:
+                        point.update(enemy=enemy_id, enemyPool=[{'id': enemy_id, 'weight': 1}])
+                    if cfg.spawn_activation == 'OnTrigger':
+                        point['groupId'] = cfg.group.strip()
+                data['spawnPoints'].append(point)
             else:
                 candidates = matched_weapons(cfg, weapons)
                 if not candidates or sum(p['weight'] for p in candidates) <= 0:
@@ -285,7 +371,19 @@ def build_level(scene, depsgraph):
             continue
         if cfg.role != 'TRIGGER':
             continue
+        if cfg.trigger_mode == 'GROUP':
+            group = cfg.group.strip()
+            if not group or not any(p.get('activation') == 'OnTrigger' and p.get('groupId') == group for p in data['spawnPoints']):
+                raise ValueError(f'{obj.name}: 同じグループIDの「トリガー起動」敵出現地点が必要です')
+            finite([cfg.initial_delay], obj.name)
+            if not 0 <= cfg.initial_delay <= 1e6:
+                raise ValueError(f'{obj.name}: 起動遅延は0～1000000秒で指定してください')
+            data['spawnTriggers'].append(dict(id=object_id(obj), **trigger_volume(obj, depsgraph),
+                groupId=group, condition=cfg.trigger_condition, initialDelay=cfg.initial_delay, oneShot=cfg.one_shot))
+            continue
         points = groups.get(cfg.group.strip(), [])
+        if any(p.get('activation') == 'OnTrigger' and p.get('groupId') == cfg.group.strip() for p in data['spawnPoints']):
+            raise ValueError(f'{obj.name}: 旧形式と独立設定の地点が同じグループに混在しています。トリガー方式と各地点を確認してください')
         if not points:
             raise ValueError(f"{obj.name}: Spawn Group '{cfg.group}' has no Enemy Spawn")
         finite([cfg.spawn_interval, cfg.initial_delay], obj.name)
@@ -474,6 +572,12 @@ def role_changed(self, context):
     obj = self.id_data
     if not isinstance(obj, bpy.types.Object):
         return
+    # Persist defaults for new placements so a saved new point is distinguishable
+    # from an old .blend which never had these properties.
+    if self.role == 'ENEMY' and not self.is_property_set('spawn_activation'):
+        self.spawn_activation = 'StageStart'
+    if self.role == 'TRIGGER' and not self.is_property_set('trigger_mode'):
+        self.trigger_mode = 'GROUP'
     if obj.type == 'EMPTY':
         obj.empty_display_type = 'CUBE' if self.role in {'COLLIDER', 'TRIGGER', 'GOAL'} else 'ARROWS'
         obj.empty_display_size = 1.0
@@ -503,16 +607,36 @@ class YAN_SpawnGroupEnemy(bpy.types.PropertyGroup):
     spawn_point: PointerProperty(name='Spawn Point', type=bpy.types.Object, poll=spawn_point_poll)
 
 
+class YAN_EnemySpawnCount(bpy.types.PropertyGroup):
+    identifier: StringProperty(name='敵定義', default='normal')
+    count: IntProperty(name='体数', default=1, min=1, max=10000)
+
+
 class YAN_ObjectSettings(bpy.types.PropertyGroup):
-    role: EnumProperty(name="YanEngine Object Type", default='IGNORE', update=role_changed, items=[
-        ('STATIC', 'Static Mesh', ''), ('COLLIDER', 'Collider', ''), ('PLAYER', 'Player Spawn', ''),
-        ('ENEMY', 'Enemy Spawn', ''), ('TRIGGER', 'Spawn Trigger', ''), ('WEAPON', 'Weapon Spawn', ''),
-        ('GOAL', 'Goal', ''), ('IGNORE', 'Ignore', ''),
+    role: EnumProperty(name="オブジェクト種別", default='IGNORE', update=role_changed, items=[
+        ('STATIC', '固定メッシュ', ''), ('COLLIDER', '当たり判定', ''), ('PLAYER', 'プレイヤー出現地点', ''),
+        ('ENEMY', '敵出現地点', ''), ('TRIGGER', '出現起動トリガー', ''), ('WEAPON', '武器出現地点', ''),
+        ('GOAL', 'ゴール', ''), ('IGNORE', '対象外', ''),
         ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh'),
-        ('SPAWN_GROUP', 'Spawn Group', 'Spawn scheduled enemies from stage start time'),
+        ('SPAWN_GROUP', '時刻指定の出現グループ', 'ステージ開始からの時刻で敵を出現させます'),
         ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision')])
-    identifier: StringProperty(name="ID", description="Blank uses Object name")
-    group: StringProperty(name="Spawn Group", default="A")
+    identifier: StringProperty(name="ID", description="空欄ならオブジェクト名を使用します")
+    group: StringProperty(name="出現グループID", default="A")
+    spawn_activation: EnumProperty(name='起動方法', default='StageStart', items=[
+        ('LEGACY', '旧形式（互換）', '旧トリガーの共有出現設定または時刻指定グループを使用します'),
+        ('StageStart', 'ステージ開始時', 'トリガー不要。初回待機時間の後に出現します'),
+        ('OnTrigger', 'トリガー起動', '同じグループIDのトリガーから起動します'),
+        ('Manual', '手動・外部イベント', '出現IDを指定した共通APIから起動します')])
+    enemy_definition: StringProperty(name='敵定義', default='normal')
+    spawn_composition_mode: EnumProperty(name='敵の設定', default='SINGLE', update=composition_changed, items=[
+        ('SINGLE', '1種類', '選択した敵を総出現数だけ出現させます'),
+        ('COUNTS', '種類ごとの体数', '例：通常3体＋高速2体。順次出現ではリストの上から出現します')])
+    enemy_composition: CollectionProperty(type=YAN_EnemySpawnCount)
+    trigger_mode: EnumProperty(name='トリガー方式', default='GROUP', items=[
+        ('LEGACY', '旧形式（共有出現設定）', '既存ステージの総数・抽選順・タイミングを維持します'),
+        ('GROUP', 'グループを起動', '対応する敵出現地点が各自の設定に従って出現します')])
+    trigger_condition: EnumProperty(name='起動条件', default='PlayerEnter', items=[
+        ('PlayerEnter', 'プレイヤー進入', '範囲外から範囲内へ入ると起動します')])
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
     custom_collider: PointerProperty(name="Collider Object", type=bpy.types.Object)
     walkable: BoolProperty(name='Walkable Ramp', description='Smooth floor support proxy; never enable on walls or ceilings', default=False)
@@ -522,16 +646,16 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     min_rarity: EnumProperty(name='Min Rarity', items=[(str(i), f'★{i}', '') for i in range(1, 6)], default='1')
     max_rarity: EnumProperty(name='Max Rarity', items=[(str(i), f'★{i}', '') for i in range(1, 6)], default='5')
     weapon_types: CollectionProperty(type=YAN_WeaponType)
-    spawn_count: IntProperty(name="Spawn Count", default=5, min=1, max=10000)
-    spawn_interval: FloatProperty(name="Spawn Interval", default=.5, min=0)
-    initial_delay: FloatProperty(name="Initial Delay", default=0, min=0)
-    max_alive: IntProperty(name="Max Alive", default=5, min=1, max=10000)
-    selection: EnumProperty(name="Selection", items=[('Random', 'Random', ''), ('RoundRobin', 'RoundRobin', '')])
-    one_shot: BoolProperty(name="One Shot", default=True)
-    spawn_mode: EnumProperty(name='Mode', default='Sequential', items=[
-        ('Sequential', 'Sequential', 'Spawn members in list order at the specified interval'),
-        ('Simultaneous', 'Simultaneous', 'Spawn every member in the same frame')])
-    start_time: FloatProperty(name='Start Time', description='Seconds of gameplay from stage start', default=0, min=0)
+    spawn_count: IntProperty(name="総出現数", default=5, min=1, max=10000)
+    spawn_interval: FloatProperty(name="出現間隔（秒）", default=.5, min=0, max=1e6)
+    initial_delay: FloatProperty(name="初回待機時間（秒）", default=0, min=0, max=1e6)
+    max_alive: IntProperty(name="同時生存上限", default=5, min=1, max=10000)
+    selection: EnumProperty(name="地点の選択", items=[('Random', 'ランダム', ''), ('RoundRobin', '順番', '')])
+    one_shot: BoolProperty(name="一度だけ起動", default=True)
+    spawn_mode: EnumProperty(name='出現方式', default='Sequential', items=[
+        ('Sequential', '順次出現', '設定した出現間隔で順番に出現します'),
+        ('Simultaneous', '同時出現', '同じフレームに出現。生存上限を超える分は空きを待ちます')])
+    start_time: FloatProperty(name='開始時刻（秒）', description='ステージ開始からのゲーム内秒数', default=0, min=0)
     members: CollectionProperty(type=YAN_SpawnGroupEnemy)
     shutter_button: PointerProperty(name='Switch Object', type=bpy.types.Object)
     shutter_duration: FloatProperty(name='Open Duration (s)',default=30,min=.001)
@@ -547,12 +671,12 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
 
 
 class YAN_SceneSettings(bpy.types.PropertyGroup):
-    player_gravity: BoolProperty(name='Player Gravity', description='Enable floor support, falling and smooth ramp walking', default=False)
-    stage_id: StringProperty(name="Stage ID", default="stage01")
-    project_root: StringProperty(name="Project Root", description="Engine project folder; // paths are relative to the blend file")
-    output_directory: StringProperty(name="Output Directory", default="resources/levels/stage01", subtype='DIR_PATH')
-    fixed_seed: BoolProperty(name="Fixed Seed", default=False)
-    seed: IntProperty(name="Seed", default=12345, min=0)
+    player_gravity: BoolProperty(name='プレイヤー重力', description='床の支持・落下・坂の歩行を使用します', default=False)
+    stage_id: StringProperty(name="ステージID", default="stage01")
+    project_root: StringProperty(name="プロジェクトの場所", description="エンジンのプロジェクトフォルダー。//はblendファイルからの相対パスです")
+    output_directory: StringProperty(name="出力フォルダー", default="resources/levels/stage01", subtype='DIR_PATH')
+    fixed_seed: BoolProperty(name="乱数シードを固定", default=False)
+    seed: IntProperty(name="乱数シード", default=12345, min=0)
     title_weapon: StringProperty(name='Title Weapon ID', default='pistol')
     title_start_delay: FloatProperty(name='Explosion Hold Before Fade', default=.45, min=.4, max=.5)
 
@@ -807,14 +931,17 @@ class YAN_OT_pool(bpy.types.Operator):
 
 class YAN_OT_choose_pool(bpy.types.Operator):
     bl_idname = 'yanengine.choose_pool'
-    bl_label = 'Choose Pool ID'
+    bl_label = '敵・武器定義を選択'
     bl_options = {'UNDO'}
     index: IntProperty()
     identifier: StringProperty()
 
     def execute(self, context):
         cfg = context.object.yan_level
-        entries = cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
+        if self.index == -1 and cfg.role == 'ENEMY':
+            cfg.enemy_definition = self.identifier
+            return {'FINISHED'}
+        entries = cfg.enemy_composition if cfg.role == 'ENEMY' and cfg.spawn_activation != 'LEGACY' and cfg.spawn_composition_mode == 'COUNTS' else cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
         if 0 <= self.index < len(entries):
             entries[self.index].identifier = self.identifier
             return {'FINISHED'}
@@ -822,22 +949,63 @@ class YAN_OT_choose_pool(bpy.types.Operator):
 
 
 class YAN_MT_pool_choices(bpy.types.Menu):
-    bl_label = 'Choose Definition'
+    bl_label = '定義を選択'
 
     def draw(self, context):
         cfg = context.object.yan_level
-        entry = context.yan_pool_entry
-        entries = cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
-        index = next(i for i, row in enumerate(entries) if row.as_pointer() == entry.as_pointer())
+        independent = cfg.role == 'ENEMY' and cfg.spawn_activation != 'LEGACY'
+        if independent and cfg.spawn_composition_mode == 'SINGLE':
+            identifier, index = cfg.enemy_definition.strip(), -1
+        else:
+            entry = context.yan_pool_entry
+            entries = cfg.enemy_composition if independent else cfg.members if cfg.role == 'SPAWN_GROUP' else cfg.pool
+            index = next(i for i, row in enumerate(entries) if row.as_pointer() == entry.as_pointer())
+            identifier = entry.identifier.strip()
         try:
             choices = definitions(context.scene, 'weapons' if cfg.role == 'WEAPON' else 'enemies')
-            if entry.identifier.strip() not in choices:
-                self.layout.label(text=f'Missing / Unknown: {entry.identifier}', icon='ERROR')
+            if identifier not in choices:
+                self.layout.label(text=f'不明な定義: {identifier}', icon='ERROR')
             for identifier, definition in choices.items():
                 op = self.layout.operator('yanengine.choose_pool', text=definition_label(definition, cfg.role == 'WEAPON'))
                 op.index, op.identifier = index, identifier
         except ValueError as error:
             self.layout.label(text=str(error), icon='ERROR')
+
+
+class YAN_OT_enemy_composition(bpy.types.Operator):
+    bl_idname = 'yanengine.enemy_composition'
+    bl_label = '敵の種類別体数を編集'
+    bl_options = {'UNDO'}
+    index: IntProperty(default=-1)
+    move: IntProperty(default=0, min=-1, max=1)
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None and context.object.yan_level.role == 'ENEMY' and context.object.yan_level.spawn_activation != 'LEGACY'
+
+    def execute(self, context):
+        cfg = context.object.yan_level
+        entries = cfg.enemy_composition
+        if self.index < 0:
+            try:
+                choices = definitions(context.scene, 'enemies')
+                if not choices or len(entries) >= 10000:
+                    raise ValueError('敵定義を確認してください。追加できるのは10000行までです')
+            except ValueError as error:
+                self.report({'ERROR'}, str(error))
+                return {'CANCELLED'}
+            row = entries.add()
+            row.identifier = cfg.enemy_definition if cfg.enemy_definition in choices else next(iter(choices))
+        elif 0 <= self.index < len(entries):
+            if self.move:
+                destination = self.index + self.move
+                if 0 <= destination < len(entries):
+                    entries.move(self.index, destination)
+            else:
+                entries.remove(self.index)
+        else:
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 class YAN_OT_group_member(bpy.types.Operator):
@@ -899,7 +1067,7 @@ class YAN_OT_weapon_type(bpy.types.Operator):
 
 class YAN_OT_refresh_definitions(bpy.types.Operator):
     bl_idname = 'yanengine.refresh_definitions'
-    bl_label = 'Refresh Definitions'
+    bl_label = '定義を再読み込み'
 
     def execute(self, context):
         _definition_cache.clear()
@@ -1302,13 +1470,13 @@ class YAN_OT_clear_auto_colliders(bpy.types.Operator):
 
 class YAN_OT_validate(bpy.types.Operator):
     bl_idname = 'yanengine.validate'
-    bl_label = 'Validate Level'
+    bl_label = 'レベルを検証'
     def execute(self, context):
         try:
             context.view_layer.update()
             build_level(context.scene, context.evaluated_depsgraph_get())
             output_path(context.scene)
-            self.report({'INFO'}, "Level valid")
+            self.report({'INFO'}, 'レベルの検証に成功しました')
             return {'FINISHED'}
         except Exception as error:
             self.report({'ERROR'}, str(error))
@@ -1317,11 +1485,11 @@ class YAN_OT_validate(bpy.types.Operator):
 
 class YAN_OT_export(bpy.types.Operator):
     bl_idname = 'yanengine.export'
-    bl_label = 'Export Level'
+    bl_label = 'レベルを書き出す'
     def execute(self, context):
         try:
             target = export_level(context)
-            self.report({'INFO'}, f"Exported {target}")
+            self.report({'INFO'}, f'書き出しました: {target}')
             return {'FINISHED'}
         except Exception as error:
             self.report({'ERROR'}, str(error))
@@ -1351,7 +1519,7 @@ class YAN_PT_level(bpy.types.Panel):
             settings = obj.yan_level
             layout.prop(settings, 'role')
             if settings.role != 'IGNORE':
-                layout.prop(settings, 'identifier')
+                layout.prop(settings, 'identifier', text='出現ID' if settings.role == 'ENEMY' else 'トリガーID' if settings.role == 'TRIGGER' else 'ID')
             if settings.role == 'START_LETTER':
                 layout.label(text='One combined Mesh; all faces are Head, 1 HP')
             if settings.role == 'SHUTTER':
@@ -1374,10 +1542,71 @@ class YAN_PT_level(bpy.types.Panel):
                 row.operator('yanengine.generate_auto_colliders', icon='MOD_BUILD')
                 row.operator('yanengine.clear_auto_colliders', text='Clear', icon='TRASH')
                 auto.label(text='Generated boxes are editable Collider objects.')
-            if settings.role in {'ENEMY', 'TRIGGER'}:
+            if settings.role == 'ENEMY':
+                layout.prop(settings, 'spawn_activation')
+                if settings.spawn_activation == 'LEGACY':
+                    layout.label(text='旧設定を維持（共有総数の自動コピーなし）', icon='INFO')
+                    layout.prop(settings, 'group')
+                else:
+                    if settings.spawn_activation == 'OnTrigger':
+                        layout.prop(settings, 'group')
+                    if settings.spawn_activation == 'Manual':
+                        layout.label(text='出現IDを指定して外部APIから起動します')
+                    choices = {}
+                    try:
+                        choices = definitions(context.scene, 'enemies')
+                    except ValueError as error:
+                        layout.label(text=str(error), icon='ERROR')
+                    layout.prop(settings, 'spawn_composition_mode')
+                    if settings.spawn_composition_mode == 'COUNTS':
+                        box = layout.box()
+                        box.label(text='出現する敵と体数（リスト順）')
+                        for index, entry in enumerate(settings.enemy_composition):
+                            row = box.row(align=True)
+                            row.context_pointer_set('yan_pool_entry', entry)
+                            definition = choices.get(entry.identifier.strip())
+                            picker = row.row(align=True)
+                            picker.alert = definition is None
+                            picker.menu('YAN_MT_pool_choices', text=definition_label(definition) if definition else f'不明: {entry.identifier}')
+                            row.prop(entry, 'count')
+                            for direction, icon in ((-1, 'TRIA_UP'), (1, 'TRIA_DOWN')):
+                                button = row.row(align=True)
+                                button.enabled = 0 <= index + direction < len(settings.enemy_composition)
+                                op = button.operator('yanengine.enemy_composition', text='', icon=icon)
+                                op.index, op.move = index, direction
+                            box_op = row.operator('yanengine.enemy_composition', text='', icon='REMOVE')
+                            box_op.index = index
+                        box.operator('yanengine.enemy_composition', text='敵の種類を追加', icon='ADD')
+                        box.label(text=f'総出現数: {spawn_total(settings)} 体')
+                    else:
+                        definition = choices.get(settings.enemy_definition.strip())
+                        picker = layout.row()
+                        picker.alert = definition is None
+                        picker.menu('YAN_MT_pool_choices', text='敵定義: ' + (definition_label(definition) if definition else f'不明: {settings.enemy_definition}'))
+                        layout.prop(settings, 'spawn_count')
+                    for field in ('spawn_mode', 'initial_delay', 'max_alive'):
+                        layout.prop(settings, field)
+                    interval = layout.row()
+                    interval.enabled = settings.spawn_mode == 'Sequential'
+                    interval.prop(settings, 'spawn_interval')
+                    if settings.spawn_mode == 'Simultaneous':
+                        layout.label(text='出現間隔は使いません。上限超過分は空きを待ちます')
+                    layout.label(text=f'実効出現ID: {object_id(obj)}')
+            if settings.role == 'TRIGGER':
+                layout.prop(settings, 'trigger_mode')
                 layout.prop(settings, 'group')
-            if settings.role in {'ENEMY', 'WEAPON'}:
-                layout.label(text='Enemy Pool' if settings.role == 'ENEMY' else 'Weapon Pool (Manual Pool)')
+                layout.prop(settings, 'trigger_condition')
+                if settings.trigger_mode == 'GROUP':
+                    matches = [o for o in context.scene.objects if o.yan_level.role == 'ENEMY'
+                               and o.yan_level.spawn_activation == 'OnTrigger'
+                               and o.yan_level.group.strip() == settings.group.strip()]
+                    layout.label(text=f'起動対象: {len(matches)} 地点')
+                    for point in sorted(matches, key=lambda o: o.name):
+                        layout.label(text=f'{object_id(point)}: 総数 {spawn_total(point.yan_level)} / 上限 {point.yan_level.max_alive}')
+                else:
+                    layout.label(text='旧形式: 総数・上限を全地点で共有します', icon='INFO')
+            if settings.role == 'WEAPON' or (settings.role == 'ENEMY' and settings.spawn_activation == 'LEGACY'):
+                layout.label(text='敵の抽選候補（旧形式）' if settings.role == 'ENEMY' else '武器の抽選候補（手動）')
                 choices = {}
                 try:
                     choices = definitions(context.scene, 'weapons' if settings.role == 'WEAPON' else 'enemies')
@@ -1393,22 +1622,26 @@ class YAN_PT_level(bpy.types.Panel):
                     picker.menu('YAN_MT_pool_choices', text=label)
                     row.prop(entry, 'weight')
                     row.operator('yanengine.pool', text='', icon='REMOVE').index = index
-                layout.operator('yanengine.pool', text='Add Entry', icon='ADD').index = -1
+                layout.operator('yanengine.pool', text='候補を追加', icon='ADD').index = -1
                 if settings.role == 'WEAPON':
                     layout.operator('yanengine.catalog_open', text='Open Weapon Catalog').matched_only = False
                     draw_weapon_filter(layout, settings, choices)
             if settings.role == 'TRIGGER':
-                for key in ('spawn_count', 'spawn_interval', 'initial_delay', 'max_alive', 'selection', 'one_shot'):
+                fields = ('initial_delay', 'one_shot') if settings.trigger_mode == 'GROUP' else ('spawn_count', 'spawn_interval', 'initial_delay', 'max_alive', 'selection', 'one_shot')
+                for key in fields:
+                    if key == 'initial_delay':
+                        layout.prop(settings, key, text='起動遅延（秒）')
+                        continue
                     layout.prop(settings, key)
             if settings.role == 'SPAWN_GROUP':
                 box = layout.box()
-                box.label(text='Spawn Group')
+                box.label(text='時刻指定の出現グループ')
                 box.prop(settings, 'spawn_mode')
                 box.prop(settings, 'start_time')
                 interval = box.row()
                 interval.enabled = settings.spawn_mode == 'Sequential'
-                interval.prop(settings, 'spawn_interval', text='Interval')
-                box.label(text='Enemies (list order)')
+                interval.prop(settings, 'spawn_interval')
+                box.label(text='出現する敵（リスト順）')
                 choices = {}
                 try:
                     choices = definitions(context.scene, 'enemies')
@@ -1428,18 +1661,18 @@ class YAN_PT_level(bpy.types.Panel):
                         op = button.operator('yanengine.group_member', text='', icon=icon)
                         op.index, op.move = index, direction
                     row.operator('yanengine.group_member', text='', icon='REMOVE').index = index
-                box.operator('yanengine.group_member', text='Add Enemy', icon='ADD')
+                box.operator('yanengine.group_member', text='敵を追加', icon='ADD')
             if settings.role in {'COLLIDER', 'TRIGGER', 'GOAL'}:
-                layout.label(text='Resize the Cube / Cube Empty in the viewport')
+                layout.label(text='範囲はビューポートで拡縮してください')
         layout.separator()
         layout.operator('yanengine.validate', icon='CHECKMARK')
         layout.operator('yanengine.export', icon='EXPORT')
 
 
-CLASSES = (YAN_PoolEntry, YAN_WeaponType, YAN_SpawnGroupEnemy, YAN_ObjectSettings, YAN_SceneSettings, YAN_OT_pool,
+CLASSES = (YAN_PoolEntry, YAN_WeaponType, YAN_SpawnGroupEnemy, YAN_EnemySpawnCount, YAN_ObjectSettings, YAN_SceneSettings, YAN_OT_pool,
            YAN_CatalogEntry, YAN_CatalogState, YAN_OT_catalog_open, YAN_OT_catalog_action,
            YAN_OT_catalog_type, YAN_MT_catalog_types, YAN_OT_catalog_apply, YAN_UL_catalog, YAN_PT_weapon_catalog,
-           YAN_OT_choose_pool, YAN_MT_pool_choices, YAN_OT_group_member, YAN_OT_weapon_type, YAN_OT_refresh_definitions,
+           YAN_OT_choose_pool, YAN_MT_pool_choices, YAN_OT_enemy_composition, YAN_OT_group_member, YAN_OT_weapon_type, YAN_OT_refresh_definitions,
            YAN_OT_generate_auto_colliders, YAN_OT_clear_auto_colliders,
            YAN_OT_validate, YAN_OT_export, YAN_PT_level)
 
@@ -1450,10 +1683,16 @@ def register():
     bpy.types.Object.yan_level = PointerProperty(type=YAN_ObjectSettings)
     bpy.types.Scene.yan_level = PointerProperty(type=YAN_SceneSettings)
     bpy.types.WindowManager.yan_catalog = PointerProperty(type=YAN_CatalogState, options={'SKIP_SAVE'})
+    bpy.app.handlers.load_post.append(preserve_legacy_spawns)
+    bpy.app.timers.register(initialize_legacy_spawns, first_interval=0.0)
 
 
 def unregister():
     _definition_cache.clear()
+    if bpy.app.timers.is_registered(initialize_legacy_spawns):
+        bpy.app.timers.unregister(initialize_legacy_spawns)
+    if preserve_legacy_spawns in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(preserve_legacy_spawns)
     del bpy.types.WindowManager.yan_catalog
     del bpy.types.Scene.yan_level
     del bpy.types.Object.yan_level

@@ -161,6 +161,9 @@ void GameScene::OnEnter(GameApp& app) {
     catch (const std::exception& error) { OutputDebugStringA((std::string("Enemy Pool config: ")+error.what()+"; using defaults\n").c_str()); }
     enemyPool_.Initialize(app.ObjCom(),app.Dx(),&camera_,enemyDefinitions_,poolSettings);
     enemies_.reserve(enemyPool_.Capacity());
+    // Build immediate Stage Start waves before player controls / incoming FadeIn.
+    UpdateEnemySpawns(0, false);
+    for (auto* enemy : enemies_) enemy->UpdateVisuals(0);
     enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
     clearOverlay_.Initialize(app.SpriteCom(), app.Dx());
     selectedEnemy_ = 0; lastHitEnemy_ = -1;
@@ -544,6 +547,22 @@ bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
     return allowPickup && weapons_.TryPickup(player_.GetTransform().translate,player_.CurrentWeapon());
 }
 
+void GameScene::UpdateEnemySpawns(float dt, bool processTriggers) {
+    if (showroom_) return;
+    spawnSystem_.Update(dt, player_.GetTransform().translate,
+        [&](const EnemySpawnPoint& point, const std::string& source, const std::string& enemyId) {
+            const uint64_t id = nextEnemyId_++;
+            enemies_.push_back(enemyPool_.Acquire(enemyId.empty() ? spawnSystem_.SelectEnemyId(point) : enemyId,
+                id,source,point.position,point.rotation));
+            return id;
+        },
+        [&](uint64_t id) {
+            for (const auto* enemy : enemies_)
+                if (enemy->GetSpawnId() == id) return !enemy->IsDead();
+            return false;
+        }, processTriggers);
+}
+
 void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     Input& input = *app.GetInput();
     auto& weapon = player_.CurrentWeapon();
@@ -565,18 +584,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     const int weaponShots = player_.UpdateShooting(input, pickedUp ? 0.0f : dt,
         allowFire, controls, cancelBurst);
     if (showroom_ && pickedUp) weapons_.ResetPickups();
-    if (!showroom_) spawnSystem_.Update(dt, player_.GetTransform().translate,
-        [&](const EnemySpawnPoint& point, const std::string& trigger, const std::string& enemyId) {
-            const uint64_t id = nextEnemyId_++;
-            enemies_.push_back(enemyPool_.Acquire(enemyId.empty() ? spawnSystem_.SelectEnemyId(point) : enemyId,
-                id,trigger,point.position,point.rotation));
-            return id;
-        },
-        [&](uint64_t id) {
-            for (const auto& enemy : enemies_)
-                if (enemy->GetSpawnId() == id) return !enemy->IsDead();
-            return false;
-        });
+    UpdateEnemySpawns(dt);
     playerDamagedFlash_ = std::max(0.0f, playerDamagedFlash_-dt);
     const float projectileDamage=stageLoaded_ ? UpdateStageProjectiles(enemyProjectiles_,dt,player_.GetTransform().translate,level_.collision) :
         enemyProjectiles_.Update(dt,player_.GetTransform().translate);
@@ -866,40 +874,63 @@ void GameScene::DrawImGui(GameApp& app) {
     }
     ImGui::EndDisabled();
     ImGui::End();
-    ImGui::Begin("Spawn System");
-    if (!stage_.IsPlaying()) ImGui::TextUnformatted("Stage cleared: all spawn schedules are frozen.");
-    ImGui::Checkbox("Show trigger boxes / points / links", &showSpawnDebug_);
-    ImGui::Text("Map: %s (restart to reload)",LevelPath().c_str());
+    ImGui::Begin("敵の出現設定###Spawn System");
+    if (!stage_.IsPlaying()) ImGui::TextUnformatted("ステージクリア: 出現処理は停止中です。");
+    ImGui::Checkbox("トリガー・出現地点・接続線を表示", &showSpawnDebug_);
+    ImGui::Text("ステージ: %s（再起動で再読込）",LevelPath().c_str());
     for (const auto& trigger : spawnSystem_.Triggers()) {
         if (!ImGui::TreeNode(trigger.id.c_str())) continue;
         size_t alive = 0;
         for (const auto& enemy : enemies_)
             if (enemy->GetSpawnTriggerId() == trigger.id && !enemy->IsDead()) ++alive;
-        ImGui::Text("State: %s", trigger.active ? "Active" : trigger.activated ? "Completed" : "Inactive");
-        ImGui::Text("Spawned: %d / %d | Alive: %zu / %d", trigger.spawned, trigger.spawnCount, alive, trigger.maxAlive);
-        ImGui::Text("Next Spawn: %.2f sec %s", std::max(0.0, trigger.nextSpawn),
-            trigger.active && alive >= static_cast<size_t>(trigger.maxAlive) ? "(waiting for capacity)" : "");
-        ImGui::Text("Interval: %.2f | InitialDelay: %.2f", trigger.spawnInterval, trigger.initialDelay);
-        ImGui::Text("OneShot: %s | Selection: %s", trigger.oneShot ? "true" : "false",
-            trigger.selection == SpawnPointSelection::Random ? "Random" : "RoundRobin");
+        ImGui::Text("状態: %s", trigger.active ? "実行中" : trigger.activated ? "起動済み" : "未起動");
+        if (trigger.groupId.empty()) {
+            ImGui::Text("旧共有設定: 出現 %d / %d | 生存 %zu / %d", trigger.spawned, trigger.spawnCount, alive, trigger.maxAlive);
+            ImGui::Text("次の出現: %.2f 秒 %s", std::max(0.0, trigger.nextSpawn),
+                trigger.active && alive >= static_cast<size_t>(trigger.maxAlive) ? "（空き待ち）" : "");
+            ImGui::Text("間隔: %.2f | 初回待機: %.2f", trigger.spawnInterval, trigger.initialDelay);
+            ImGui::Text("地点の選択: %s", trigger.selection == SpawnPointSelection::Random ? "ランダム" : "順番");
+        } else {
+            ImGui::Text("起動グループ: %s | 起動遅延: %.2f 秒", trigger.groupId.c_str(), trigger.initialDelay);
+        }
+        ImGui::Text("一度だけ起動: %s", trigger.oneShot ? "はい" : "いいえ");
         for (const auto& id : trigger.spawnPointIds) ImGui::BulletText("%s", id.c_str());
         ImGui::TreePop();
     }
-    if (ImGui::TreeNode("Spawn Groups")) {
-        ImGui::Text("Stage time: %.2f sec", spawnSystem_.ElapsedTime());
+    if (ImGui::TreeNode("時刻指定の出現グループ")) {
+        ImGui::Text("経過時間: %.2f 秒", spawnSystem_.ElapsedTime());
         for (const auto& group : spawnSystem_.Groups()) {
             if (!ImGui::TreeNode(group.id.c_str())) continue;
-            ImGui::Text("Mode: %s | Start: %.2f", group.mode == SpawnMode::Simultaneous ? "Simultaneous" : "Sequential", group.startTime);
-            if (group.mode == SpawnMode::Sequential) ImGui::Text("Interval: %.2f", group.interval);
-            ImGui::Text("Spawned: %zu / %zu", group.spawned, group.enemies.size());
+            ImGui::Text("方式: %s | 開始: %.2f", group.mode == SpawnMode::Simultaneous ? "同時出現" : "順次出現", group.startTime);
+            if (group.mode == SpawnMode::Sequential) ImGui::Text("間隔: %.2f 秒", group.interval);
+            ImGui::Text("出現済み: %zu / %zu", group.spawned, group.enemies.size());
             for (const auto& entry : group.enemies) ImGui::BulletText("%s / %s", entry.enemyId.c_str(), entry.spawnPointId.c_str());
             ImGui::TreePop();
         }
         ImGui::TreePop();
     }
-    if (ImGui::TreeNode("Spawn Points")) {
-        for (const auto& point : spawnSystem_.Points()) ImGui::Text("%s: (%.1f, %.1f, %.1f)",
-            point.id.c_str(), point.position.x, point.position.y, point.position.z);
+    if (ImGui::TreeNode("敵出現地点")) {
+        for (const auto& point : spawnSystem_.Points()) {
+            if (!ImGui::TreeNode(point.id.c_str())) continue;
+            ImGui::Text("位置: (%.1f, %.1f, %.1f)", point.position.x, point.position.y, point.position.z);
+            if (point.activation == SpawnActivation::Legacy) ImGui::TextUnformatted("旧形式: トリガー共有設定・時刻指定グループを使用");
+            else {
+                size_t alive = 0;
+                for (const auto* enemy : enemies_)
+                    if (enemy->GetSpawnTriggerId() == point.id && !enemy->IsDead()) ++alive;
+                ImGui::Text("起動: %s | 敵: %s", point.activation == SpawnActivation::StageStart ? "ステージ開始時" :
+                    point.activation == SpawnActivation::OnTrigger ? "トリガー起動" : "手動・外部イベント",
+                    point.enemyComposition.empty() ? point.enemyId.c_str() : "種類ごとの体数");
+                for (const auto& entry : point.enemyComposition) ImGui::BulletText("%s: %d 体", entry.enemyId.c_str(), entry.count);
+                ImGui::Text("方式: %s | 出現 %d / %d | 生存 %zu / %d", point.mode == SpawnMode::Sequential ? "順次出現" : "同時出現",
+                    point.spawned, point.spawnCount, alive, point.maxAlive);
+                ImGui::Text("状態: %s | 初回待機 %.2f 秒", point.active ? "実行中" : point.activated ? "完了" : "未起動", point.initialDelay);
+                if (point.active) ImGui::Text("次の出現まで: %.2f 秒 %s", std::max(0.0, point.nextSpawn - spawnSystem_.ElapsedTime()),
+                    alive >= static_cast<size_t>(point.maxAlive) ? "（空き待ち）" : "");
+                if (point.activation == SpawnActivation::OnTrigger) ImGui::Text("グループID: %s", point.groupId.c_str());
+            }
+            ImGui::TreePop();
+        }
         ImGui::TreePop();
     }
     ImGui::Checkbox("Show Stage Colliders", &showStageColliders_);

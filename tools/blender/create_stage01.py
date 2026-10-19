@@ -38,6 +38,8 @@ def make(name, role, collection, position, size=None, rotation=(0,0,0), mesh=Fal
     obj.name = name
     collections[collection].objects.link(obj)
     obj.yan_level.role = role
+    if role == 'ENEMY': obj.yan_level.spawn_activation = 'LEGACY'
+    if role == 'TRIGGER': obj.yan_level.trigger_mode = 'LEGACY'
     pose(obj,position,rotation,tuple(v*.5 for v in size) if size else (1,1,1))
     return obj
 

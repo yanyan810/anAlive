@@ -7461,6 +7461,61 @@
           "weight": 1.0
         }
       ]
+    },
+    {
+      "id": "enemySpawn",
+      "position": [
+        27.801408767700195,
+        12.0,
+        19.0
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 5,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 2
+        },
+        {
+          "enemy": "fast",
+          "count": 1
+        },
+        {
+          "enemy": "tank",
+          "count": 1
+        },
+        {
+          "enemy": "bomber",
+          "count": 1
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 2
+        },
+        {
+          "id": "fast",
+          "weight": 1
+        },
+        {
+          "id": "tank",
+          "weight": 1
+        },
+        {
+          "id": "bomber",
+          "weight": 1
+        }
+      ]
     }
   ],
   "spawnTriggers": [],

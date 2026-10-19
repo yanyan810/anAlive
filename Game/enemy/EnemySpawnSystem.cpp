@@ -23,6 +23,11 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             if (number < 1 || number > 10000) throw std::runtime_error("Counts must be in [1, 10000]");
             return static_cast<int>(number);
         };
+        const auto timing = [](double value) {
+            if (!std::isfinite(value) || value < 0 || value > 1000000)
+                throw std::runtime_error("出現時間は0～1000000秒で指定してください");
+            return value;
+        };
         std::vector<EnemySpawnPoint> points;
         std::vector<EnemySpawnTrigger> triggers;
         std::vector<SpawnGroup> groups;
@@ -36,6 +41,44 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             if (point.id.empty() || !pointIds.insert(point.id).second) throw std::runtime_error("Empty/duplicate point ID: " + point.id);
             point.position = vector(item.at("position"));
             if (item.contains("rotation")) point.rotation = vector(item.at("rotation"));
+            if (item.contains("activation")) {
+                const auto activation = item.at("activation").get<std::string>();
+                if (activation == "StageStart") point.activation = SpawnActivation::StageStart;
+                else if (activation == "OnTrigger") point.activation = SpawnActivation::OnTrigger;
+                else if (activation == "Manual") point.activation = SpawnActivation::Manual;
+                else throw std::runtime_error("不明な起動方法: " + activation);
+                int compositionTotal = 0;
+                if (item.contains("enemyComposition")) {
+                    const auto& entries = item.at("enemyComposition");
+                    if (!entries.is_array() || entries.empty() || entries.size() > 10000 || item.contains("enemy"))
+                        throw std::runtime_error("敵の種類別体数は1～10000行で指定し、単一の敵定義と混在させないでください: " + point.id);
+                    for (const auto& entry : entries) {
+                        EnemySpawnCount row;
+                        row.enemyId = entry.at("enemy").get<std::string>();
+                        if (!definitions.Find(row.enemyId)) throw std::runtime_error("存在しない敵定義: " + row.enemyId);
+                        row.count = integer(entry.at("count"));
+                        compositionTotal += row.count;
+                        if (compositionTotal > 10000) throw std::runtime_error("種類別体数の合計は10000体以下にしてください: " + point.id);
+                        row.endCount = compositionTotal;
+                        point.enemyComposition.push_back(std::move(row));
+                    }
+                } else {
+                    point.enemyId = item.at("enemy").get<std::string>();
+                    if (!definitions.Find(point.enemyId)) throw std::runtime_error("存在しない敵定義: " + point.enemyId);
+                }
+                point.groupId = item.value("groupId", std::string{});
+                if (point.activation == SpawnActivation::OnTrigger && point.groupId.find_first_not_of(" \t\r\n") == std::string::npos)
+                    throw std::runtime_error("トリガー起動にはグループIDが必要です: " + point.id);
+                point.spawnCount = integer(item.at("spawnCount"));
+                if (!point.enemyComposition.empty() && point.spawnCount != compositionTotal)
+                    throw std::runtime_error("総出現数と種類別体数の合計が一致しません: " + point.id);
+                point.maxAlive = item.contains("maxAlive") ? integer(item.at("maxAlive")) : point.spawnCount;
+                point.spawnInterval = timing(item.value("spawnInterval", .5));
+                point.initialDelay = timing(item.value("initialDelay", 0.0));
+                const auto mode = item.value("mode", std::string("Sequential"));
+                if (mode == "Simultaneous") point.mode = SpawnMode::Simultaneous;
+                else if (mode != "Sequential") throw std::runtime_error("不明な出現方式: " + mode);
+            }
             if (item.contains("enemyPool")) {
                 const auto& pool=item.at("enemyPool");
                 if (!pool.is_array()) throw std::runtime_error("enemyPool must be an array");
@@ -53,14 +96,33 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
         for (const auto& item : triggerData) {
             EnemySpawnTrigger trigger;
             trigger.id = item.at("id").get<std::string>();
-            if (trigger.id.empty() || !triggerIds.insert(trigger.id).second) throw std::runtime_error("Empty/duplicate trigger ID: " + trigger.id);
+            if (trigger.id.empty() || pointIds.count(trigger.id) || !triggerIds.insert(trigger.id).second) throw std::runtime_error("Empty/duplicate trigger ID: " + trigger.id);
             trigger.position = vector(item.at("position"));
             trigger.size = vector(item.at("size"));
             if (trigger.size.x <= 0 || trigger.size.y <= 0 || trigger.size.z <= 0) throw std::runtime_error("Invalid size: " + trigger.id);
+            if (item.contains("groupId")) {
+                trigger.groupId = item.at("groupId").get<std::string>();
+                const auto condition = item.value("condition", std::string("PlayerEnter"));
+                if (condition != "PlayerEnter") throw std::runtime_error("不明な起動条件: " + condition);
+                if (trigger.groupId.find_first_not_of(" \t\r\n") == std::string::npos) throw std::runtime_error("トリガーのグループIDが空です");
+                for (const auto& point : points)
+                    if (point.activation == SpawnActivation::OnTrigger && point.groupId == trigger.groupId)
+                        trigger.spawnPointIds.push_back(point.id);
+                if (trigger.spawnPointIds.empty()) throw std::runtime_error("対応する敵出現地点がありません: " + trigger.groupId);
+                // Ambiguous mixed schemas must not silently discard old shared totals.
+                for (const char* field : {"spawnCount", "spawnInterval", "maxAlive", "spawnPointIds", "selection"})
+                    if (item.contains(field)) throw std::runtime_error("新旧トリガー設定が混在しています: " + trigger.id);
+                trigger.initialDelay = timing(item.value("initialDelay", 0.0));
+                trigger.oneShot = item.value("oneShot", true);
+                triggers.push_back(std::move(trigger));
+                continue;
+            }
             trigger.spawnPointIds = item.at("spawnPointIds").get<std::vector<std::string>>();
             if (trigger.spawnPointIds.empty()) throw std::runtime_error("No spawn points: " + trigger.id);
             for (const auto& id : trigger.spawnPointIds)
                 if (!pointIds.count(id)) throw std::runtime_error("Unknown spawn point: " + id);
+                else if (std::find_if(points.begin(), points.end(), [&](const auto& p) { return p.id == id; })->activation != SpawnActivation::Legacy)
+                    throw std::runtime_error("旧トリガーから独立設定の敵出現地点は参照できません: " + id);
             trigger.spawnCount = integer(item.at("spawnCount"));
             trigger.maxAlive = item.contains("maxAlive") ? integer(item.at("maxAlive")) : trigger.spawnCount;
             trigger.spawnInterval = item.value("spawnInterval", 0.0);
@@ -117,7 +179,7 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
         points_ = std::move(points);
         triggers_ = std::move(triggers);
         groups_ = std::move(groups);
-        elapsedTime_ = 0;
+        Reset();
         error_.clear();
         return true;
     } catch (const std::exception& exception) {

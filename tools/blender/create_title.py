@@ -91,6 +91,7 @@ pose(player, (0,0,-5), rotation=(-.06,0,0))
 enemy = bpy.data.objects.new('EnemySpawn_Title', None)
 scene.collection.objects.link(enemy)
 enemy.yan_level.role = 'ENEMY'
+enemy.yan_level.spawn_activation = 'LEGACY'
 pose(enemy, (-4,0,10.5), rotation=(0,-math.pi/2,0))
 enemy.yan_level.group = 'Title'
 entry = enemy.yan_level.pool.add()

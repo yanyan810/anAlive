@@ -349,6 +349,77 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(game.spawnSystem_.ElapsedTime()==0 && game.spawnSystem_.Groups()[0].spawned==0 && game.enemies_.empty(),"restart group state");
     game.UpdateCombat(app,2.5f,false); check(game.enemies_.empty(),"restart group spawned early");
     game.UpdateCombat(app,.5f,false); check(game.enemies_.size()==6 && game.enemyPool_.Active()==6,"restart group did not refire");
+
+    // All activation methods share GameScene's real pool callback.
+    // Reuse this scene/pool instead of creating extra scenes: the engine's SRV
+    // allocator is monotonic, and the existing lifecycle tests already cover OnEnter.
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies();
+    const char* independentPath="generated/enemy-pool-tests/independent.json";
+    const nlohmann::json independentFixture={
+        {"spawnPoints",nlohmann::json::array({
+            {{"id","auto"},{"position",{0,0,40}},{"activation","StageStart"},{"enemy","normal_test"},
+                {"spawnCount",3},{"maxAlive",1},{"mode","Sequential"},{"spawnInterval",.5}},
+            {{"id","linked"},{"position",{10,0,40}},{"activation","OnTrigger"},{"groupId","A"},{"enemy","normal_test"},
+                {"spawnCount",2},{"maxAlive",2},{"mode","Simultaneous"}},
+            {{"id","manual"},{"position",{-10,0,40}},{"activation","Manual"},{"enemy","normal_test"},
+                {"spawnCount",2},{"maxAlive",1},{"mode","Simultaneous"},{"initialDelay",1}}})},
+        {"spawnTriggers",nlohmann::json::array({{{"id","activate"},{"groupId","A"},
+            {"position",{0,0,0}},{"size",{2,2,2}}}})}};
+    std::ofstream(independentPath)<<independentFixture;
+    check(game.spawnSystem_.Load(independentPath,game.enemyDefinitions_),"independent scene fixture");
+    game.level_.collision.colliders.clear(); game.player_.SetStage(&game.level_.collision,{1000,0,0},{});
+    game.UpdateEnemySpawns(0,false); // same preparation used by OnEnter during FadeIn
+    check(game.enemies_.size()==1 && !game.spawnSystem_.Triggers()[0].activated,"initial Stage Start preparation");
+    auto* automatic=game.enemies_[0]; const auto automaticId=automatic->GetSpawnId();
+    const auto preparedFrame=game.CaptureDebug();
+    check(game.ActivateEnemySpawn("manual") && !game.ActivateEnemySpawn("manual") && !game.ActivateEnemySpawn("missing"),"manual common API");
+    game.player_.SetStage(&game.level_.collision,{},{});
+    game.UpdateEnemySpawns(0);
+    check(game.enemies_.size()==3 && game.spawnSystem_.Points()[1].spawned==2,"trigger linked simultaneous scene wave");
+    game.UpdateEnemySpawns(1);
+    check(game.enemies_.size()==4 && game.spawnSystem_.Points()[2].spawned==1,"manual delay/capacity");
+    const auto independentGpu=Object3d::debugInitializationCount;
+    automatic->Die(); automatic->UpdateVisuals(10); game.RecycleEnemies();
+    game.UpdateEnemySpawns(0);
+    check(game.enemies_.size()==4 && game.enemies_.back()==automatic && automatic->GetSpawnId()!=automaticId,"independent pooled refill");
+    auto* manual=game.enemies_[2]; // linked[0], linked[1], manual, auto after recycle
+    check(manual->GetSpawnTriggerId()=="manual","manual source identity");
+    manual->Die(); manual->UpdateVisuals(10); game.RecycleEnemies(); game.UpdateEnemySpawns(0);
+    check(game.enemies_.size()==4 && game.spawnSystem_.Points()[2].spawned==2,"simultaneous remainder lost after death");
+    check(Object3d::debugInitializationCount==independentGpu,"independent refill initialized renderer");
+    game.RestoreDebug(app,preparedFrame);
+    check(game.enemies_.size()==1 && game.spawnSystem_.Points()[0].spawned==1 && !game.spawnSystem_.Points()[2].activated,
+        "independent rewind state");
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies(); game.spawnSystem_.Reset(); game.UpdateEnemySpawns(0,false);
+    check(game.enemies_.size()==1 && game.spawnSystem_.Points()[0].spawned==1 && !game.spawnSystem_.Triggers()[0].activated,
+        "independent reset preparation");
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies();
+    check(game.spawnSystem_.Load(independentPath,game.enemyDefinitions_),"independent restart reload");
+    game.UpdateEnemySpawns(0,false);
+    check(game.enemies_.size()==1 && game.spawnSystem_.Points()[0].spawned==1 && !game.spawnSystem_.Points()[2].activated,
+        "independent restart state");
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies();
+    auto mixed=independentFixture;
+    mixed["spawnTriggers"]=nlohmann::json::array();
+    mixed["spawnPoints"]=nlohmann::json::array({mixed["spawnPoints"][0]});
+    auto& mixedPoint=mixed["spawnPoints"][0];
+    mixedPoint.erase("enemy"); mixedPoint["spawnCount"]=5; mixedPoint["maxAlive"]=5; mixedPoint["mode"]="Simultaneous";
+    mixedPoint["enemyComposition"]=nlohmann::json::array({{{"enemy","normal_test"},{"count",3}},{{"enemy","fast"},{"count",2}}});
+    std::ofstream(independentPath)<<mixed;
+    check(game.spawnSystem_.Load(independentPath,game.enemyDefinitions_),"mixed counts scene fixture");
+    const auto mixedGpu=Object3d::debugInitializationCount;
+    game.UpdateEnemySpawns(0,false);
+    check(game.enemies_.size()==5,"mixed counts simultaneous total");
+    for (size_t i=0;i<5;++i) check(game.enemies_[i]->Definition().id==(i<3 ? "normal_test" : "fast"),"mixed counts exact definition order");
+    check(Object3d::debugInitializationCount==mixedGpu,"mixed counts allocated a warmed renderer");
+    for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
+    game.RecycleEnemies(); game.spawnSystem_.Reset(); game.UpdateEnemySpawns(0,false);
+    check(game.enemies_.size()==5 && Object3d::debugInitializationCount==mixedGpu,"mixed counts reset/reuse");
+    for (size_t i=0;i<5;++i) check(game.enemies_[i]->Definition().id==(i<3 ? "normal_test" : "fast"),"mixed counts reset order");
     game.OnExit(app);
 
     // Exercise the same reset and rewind functions used by F5 and the timeline.

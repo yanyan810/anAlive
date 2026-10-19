@@ -189,6 +189,7 @@ void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vect
     RetireFromPool();
     definition_=spawnDefinition_; parts_=spawnParts_; ai_=spawnAI_;
     position_=position; rotation_=rotation; scale_={2,2,2};
+    ai_.random=static_cast<uint32_t>(spawnId)^0x9e3779b9u;
     SetSpawnIdentity(spawnId,trigger);
     attackCount_=0; lastAttackDamage_=0; attackFlash_=0;
     exploded_=false; explosionCenter_={}; lastBlastDamage_=0;
@@ -215,6 +216,7 @@ void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
     ai_={}; exploded_=false;
     ai_.settings={definition.detectionRange,definition.attackRange,definition.moveSpeed,
         definition.attackDamage,definition.attackInterval,definition.IsRanged(),definition.minRange,definition.maxRange};
+    ai_.settings.senses=definition.senses;
     if (definition.partAsset) {
         asset_=PrepareAssetModels(definition.partAsset);
         parts_=asset_->source->Instantiate(definition.hpMultiplier);
@@ -476,9 +478,10 @@ void Enemy::ShowHitFeedback(EnemyPartType type) { ShowHitFeedback(FindLegacyPart
 void Enemy::ShowHitFeedback(size_t index) {
     if (index<parts_.size()) parts_[index].flashRemaining=0.2f;
 }
-float Enemy::Update(float dt, const Vector3& playerPosition) {
+float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight) {
     const auto previous = position_;
-    const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead());
+    const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead(),world,
+        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight);
     const bool moving = !IsDead() && std::hypot(position_.x-previous.x, position_.z-previous.z) > 1e-6f;
     animation_.Advance(dt, moving, parts_);
     UpdateVisuals(dt);
@@ -676,7 +679,7 @@ void Enemy::DrawImGui() {
         locomotion == EnemyLocomotionPose::MissingLeftLeg ? "Missing Left Leg" : "Missing Right Leg");
     ImGui::Text("Last Enemy Attack: %s | Attack Count: %llu", attackFlash_ > 0 ? "HIT" : "-", attackCount_);
     ImGui::Text("Last applied damage: %.0f | Attack Cooldown: %.2f", lastAttackDamage_, ai_.cooldown);
-    ImGui::SliderFloat("Detection Range", &ai_.settings.detectionRange, 1, 50);
+    ImGui::SliderFloat("Detection Range", &ai_.settings.senses.viewDistance, 1, 50);
     ImGui::SliderFloat("Attack Range", &ai_.settings.attackRange, .2f, 30);
     ImGui::SliderFloat("Enemy Move Speed", &ai_.settings.moveSpeed, 0, 10);
     ImGui::SliderFloat("Attack Damage", &ai_.settings.attackDamage, 0, 50);

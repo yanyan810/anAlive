@@ -28,6 +28,7 @@ public:
     void DrawOverlay2D(GameApp& app) override;
     void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
+    Sprite enemyAITestEntry_;
 private:
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);

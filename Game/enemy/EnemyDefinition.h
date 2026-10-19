@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include "Vector3.h"
 #include "EnemyAsset.h"
+#include "EnemySenses.h"
 #include <cmath>
 #include <fstream>
 #include <map>
@@ -29,6 +30,7 @@ struct EnemyDefinition {
     EnemyType type = EnemyType::Normal;
     std::shared_ptr<const EnemyAsset> partAsset;
     float detectionRange=20, moveSpeed=2.5f, attackRange=1.5f, attackDamage=10, attackInterval=1;
+    EnemySenses senses{};
     float hpMultiplier=1, preferredRange=12, minRange=7, maxRange=16;
     float projectileSpeed=12, projectileRadius=.2f, projectileLifetime=5;
     float explosionRadius=4, explosionDamage=25, fuseTime=1.2f;
@@ -76,6 +78,33 @@ public:
                 };
                 number("collisionRadius",d.collisionRadius,true); number("collisionHeight",d.collisionHeight,true);
                 number("detectionRange",d.detectionRange); number("moveSpeed",d.moveSpeed);
+                d.senses.viewDistance=d.detectionRange; // Legacy key remains a fallback.
+                if (item.contains("senses")) {
+                    const auto& senses=item.at("senses");
+                    if (!senses.is_object()) throw std::runtime_error("senses must be an object");
+                    const auto senseNumber=[&](const char* key,float& value,float maximum) {
+                        value=senses.value(key,value);
+                        if (!std::isfinite(value) || value<0 || value>maximum)
+                            throw std::runtime_error(d.id+": invalid senses."+key);
+                    };
+                    senseNumber("viewDistance",d.senses.viewDistance,1000);
+                    senseNumber("fieldOfView",d.senses.fieldOfView,360);
+                    senseNumber("detectionTime",d.senses.detectionTime,60);
+                    senseNumber("loseSightTime",d.senses.loseSightTime,60);
+                    senseNumber("investigateSpeedMultiplier",d.senses.investigateSpeedMultiplier,5);
+                    senseNumber("searchDuration",d.senses.searchDuration,60);
+                    senseNumber("searchRadius",d.senses.searchRadius,100);
+                    senseNumber("searchSpeedMultiplier",d.senses.searchSpeedMultiplier,5);
+                    senseNumber("investigateUnreachableTime",d.senses.investigateUnreachableTime,60);
+                    senseNumber("memoryRetentionTime",d.senses.memoryRetentionTime,60);
+                    senseNumber("memoryRecordInterval",d.senses.memoryRecordInterval,10);
+                    senseNumber("memoryRecordDistance",d.senses.memoryRecordDistance,20);
+                    senseNumber("searchDirectionPriority",d.senses.searchDirectionPriority,1);
+                    senseNumber("arrivalDistance",d.senses.arrivalDistance,10);
+                    senseNumber("wanderRadius",d.senses.wanderRadius,100);
+                    senseNumber("wanderSpeedMultiplier",d.senses.wanderSpeedMultiplier,5);
+                    senseNumber("wanderWaitTime",d.senses.wanderWaitTime,60);
+                }
                 number("attackRange",d.attackRange); number("attackDamage",d.attackDamage);
                 number("attackInterval",d.attackInterval,true); number("hpMultiplier",d.hpMultiplier,true);
                 number("minRange",d.minRange); number("preferredRange",d.preferredRange); number("maxRange",d.maxRange);

@@ -36,6 +36,7 @@ public:
 
     // ImGui描画
     virtual void DrawImGui(GameApp& app) {}
+    virtual bool ShowTransitionDebugUI() const { return true; }
 
     virtual void DrawPreview(GameApp& app) {}
 

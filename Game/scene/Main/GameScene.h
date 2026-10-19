@@ -48,6 +48,7 @@ private:
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
     friend void RunScreenTransitionTests(GameApp& app);
     friend void RunHotelStageRuntimeTests(GameApp& app);
+    friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
 #ifdef _DEBUG
     friend void RunEnemyPoolTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);

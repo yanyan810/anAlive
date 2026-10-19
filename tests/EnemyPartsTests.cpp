@@ -136,6 +136,7 @@ int main() {
     assert(std::hypot(sum.x/3-face.position.x,sum.y/3-face.position.y,sum.z/3-face.position.z)<.0001f);
     std::puts("Face centroid-pivot test passed.");
     EnemyAI ai;
+    ai.settings.senses.detectionTime=0; ai.settings.senses.fieldOfView=360;
     Vector3 aiPosition{0,0,24}, aiRotation{};
     assert(ai.Update(aiPosition,aiRotation,{},.1f,false)==0 && ai.state==EnemyState::Idle);
     aiPosition={0,0,10};
@@ -156,15 +157,18 @@ int main() {
     deadParts=parts; DamageEnemyPart(deadParts,EnemyPartType::Body,1000); assert(EnemyPartsDead(deadParts));
     for(int fps : {30,60,144}) {
         EnemyAI chase; Vector3 pos{0,0,10}, rot{}; float dealt=0;
+        chase.settings.senses.detectionTime=0; chase.settings.senses.fieldOfView=360;
         for(int i=0;i<fps*5;++i)dealt+=chase.Update(pos,rot,{},1.0f/static_cast<float>(fps),false);
         assert(std::abs(pos.z-1.5f)<.0001f && dealt==20);
     }
     EnemyAI far; Vector3 zero{}, rotate{};
+    far.settings.senses.detectionTime=0; far.settings.senses.fieldOfView=360;
     assert(far.Update(zero,rotate,{},.01f,false)==10);
     assert(std::isfinite(rotate.y));
-    assert(far.Update(zero,rotate,{0,0,30},.1f,false)==0 && far.state==EnemyState::Idle);
+    assert(far.Update(zero,rotate,{0,0,30},.1f,false)==0 && far.state==EnemyState::Chase && far.lastSeen.z==0);
     assert(far.Update(zero,rotate,{},.1f,false)==0); // range reentry cannot reset cooldown
     EnemyAI moving;
+    moving.settings.senses.detectionTime=0; moving.settings.senses.fieldOfView=360;
     Vector3 movingPosition{7,0,12}, movingRotation{};
     moving.Update(movingPosition,movingRotation,{-3,0,-4},2,false);
     const auto movedWorld=Matrix4x4::MakeAffineMatrix({2,2,2},movingRotation,movingPosition);
@@ -184,6 +188,7 @@ int main() {
     std::puts("AI tests passed: idle/chase/attack/dead, model facing, stop radius, cadence across 30/60/144Hz, death conditions, range reentry.");
     // Two independently ticking attackers; no per-frame damage and no shared cooldown.
     std::array<EnemyAI,2> attackers{};
+    for (auto& attacker:attackers) { attacker.settings.senses.detectionTime=0; attacker.settings.senses.fieldOfView=360; }
     std::array<Vector3,2> attackPositions{{{0,0,1},{1,0,0}}};
     std::array<Vector3,2> attackRotations{};
     attackers[1].cooldown=.5f;

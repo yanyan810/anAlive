@@ -15,6 +15,7 @@ struct StageCollider {
     std::string id;
     bool walkable = false; // Smooth support proxy; do not use on walls/ceilings.
     bool playerOnly = false; // Spawn-room gates do not obstruct enemies or shots.
+    bool blocksSight = true; // Opt-out for future transparent colliders; physical collision is independent.
     Vector3 position{}, rotation{}, scale{1,1,1};
     AABB local{};
     Matrix4x4 world=Matrix4x4::MakeIdentity4x4(), inverse=Matrix4x4::MakeIdentity4x4();
@@ -60,13 +61,14 @@ public:
         const float length=StageLength(n);
         hit={enter,length>0 ? n*(1/length) : Vector3{}}; return true;
     }
-    bool Raycast(const Vector3& origin,const Vector3& direction,float range,StageHit& hit,float radius=0) const {
+    bool Raycast(const Vector3& origin,const Vector3& direction,float range,StageHit& hit,float radius=0,bool sight=false) const {
         const float length=StageLength(direction);
         if (!std::isfinite(length) || length<=0 || !std::isfinite(range) || range<0) return false;
         const auto unit=direction*(1/length);
         bool found=false;
         for (const auto& c : colliders) {
             if (c.playerOnly) continue;
+            if (sight && !c.blocksSight) continue;
             Vector3 padding{};
             padding.x=radius*std::hypot(c.inverse.m[0][0],c.inverse.m[1][0],c.inverse.m[2][0]);
             padding.y=radius*std::hypot(c.inverse.m[0][1],c.inverse.m[1][1],c.inverse.m[2][1]);

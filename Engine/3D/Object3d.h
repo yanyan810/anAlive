@@ -61,7 +61,7 @@ public:
 
 public:
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     inline static size_t debugInitializationCount=0; // Pool regression checks (main render thread).
 #endif
 	void Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx);

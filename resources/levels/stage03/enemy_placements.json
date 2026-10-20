@@ -175,7 +175,7 @@
       "enemies": [
         {
           "enabled": true,
-          "enemy": "normal",
+          "enemy": "tank",
           "id": "placement-10",
           "offset": [
             0.0,
@@ -193,7 +193,7 @@
             0.0,
             -0.6214504241943359
           ],
-          "yaw": 0.0
+          "yaw": -2.2514753341674805
         },
         {
           "enabled": true,
@@ -204,11 +204,11 @@
             0.0,
             1.2960948944091797
           ],
-          "yaw": 0.0
+          "yaw": 1.413716435432434
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,
@@ -218,7 +218,7 @@
       "enemies": [
         {
           "enabled": true,
-          "enemy": "normal",
+          "enemy": "fast",
           "id": "placement-13",
           "offset": [
             0.0,
@@ -236,7 +236,7 @@
             0.0,
             -0.6214504241943359
           ],
-          "yaw": 0.0
+          "yaw": 2.8972463607788086
         },
         {
           "enabled": true,
@@ -247,11 +247,11 @@
             0.0,
             1.2960948944091797
           ],
-          "yaw": 0.0
+          "yaw": 4.520402908325195
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,
@@ -261,25 +261,25 @@
       "enemies": [
         {
           "enabled": true,
-          "enemy": "normal",
+          "enemy": "ranged",
           "id": "placement-16",
           "offset": [
             0.0,
             0.0,
             0.0
           ],
-          "yaw": 0.0
+          "yaw": 1.6929692029953003
         },
         {
           "enabled": true,
-          "enemy": "normal",
+          "enemy": "fast",
           "id": "placement-17",
           "offset": [
             0.6783790588378906,
             0.0,
             -0.6214513778686523
           ],
-          "yaw": 0.0
+          "yaw": -0.8726649284362793
         },
         {
           "enabled": true,
@@ -290,11 +290,11 @@
             0.0,
             1.2960948944091797
           ],
-          "yaw": 0.0
+          "yaw": 1.3439033031463623
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,
@@ -311,7 +311,7 @@
             0.0,
             0.0
           ],
-          "yaw": 0.0
+          "yaw": 1.6057026386260986
         },
         {
           "enabled": true,
@@ -322,22 +322,22 @@
             0.0,
             -0.6214513778686523
           ],
-          "yaw": 0.0
+          "yaw": 0.575958251953125
         },
         {
           "enabled": true,
-          "enemy": "normal",
+          "enemy": "bomber",
           "id": "placement-21",
           "offset": [
             -0.11374664306640625,
             0.0,
             1.2960948944091797
           ],
-          "yaw": 0.0
+          "yaw": 2.4958205223083496
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,
@@ -354,7 +354,7 @@
             0.0,
             0.0
           ],
-          "yaw": 0.0
+          "yaw": 1.3962631225585938
         },
         {
           "enabled": true,
@@ -365,7 +365,7 @@
             0.0,
             -0.6214513778686523
           ],
-          "yaw": 0.0
+          "yaw": -1.4660768508911133
         },
         {
           "enabled": true,
@@ -376,11 +376,11 @@
             0.0,
             1.2960946559906006
           ],
-          "yaw": 0.0
+          "yaw": 1.3788098096847534
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,
@@ -397,33 +397,33 @@
             0.0,
             0.0
           ],
-          "yaw": 0.0
+          "yaw": -1.5358901023864746
         },
         {
           "enabled": true,
           "enemy": "normal",
           "id": "placement-26",
           "offset": [
-            0.6783790588378906,
+            1.8288211822509766,
             0.0,
-            -0.6214513778686523
+            -0.6214656829833984
           ],
-          "yaw": 0.0
+          "yaw": -0.9773845672607422
         },
         {
           "enabled": true,
           "enemy": "normal",
           "id": "placement-27",
           "offset": [
-            -0.11374664306640625,
+            1.3858222961425781,
             0.0,
-            1.2960946559906006
+            1.2960915565490723
           ],
-          "yaw": 0.0
+          "yaw": -1.3788104057312012
         }
       ],
       "initialYaw": 0.0,
-      "mode": "Automatic",
+      "mode": "Individual",
       "overrideEnabled": true,
       "radius": 3.0,
       "randomYaw": false,

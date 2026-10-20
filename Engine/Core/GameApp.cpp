@@ -10,7 +10,7 @@
 #include "TemporarySceneTransitionCheck.h"
 #include "../../tests/TemporarySceneTransitionCheckTests.h"
 #include "Enemy.h"
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "scene/Main/ShowroomScene.h"
 #include "scene/Main/ClothShowroomScene.h"
 #endif
@@ -45,7 +45,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "../../tests/EnemyPoolTests.h"
 #include "../../tests/TitleSceneTests.h"
 #include "../../tests/ClothRuntimeTests.h"
@@ -145,7 +145,7 @@ int GameApp::Run() {
         }
         Finalize_(); return result;
     }
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (std::wstring(GetCommandLineW()).find(L"--cloth-performance-test")!=std::wstring::npos) {
         int result=0;
         try { RunClothPerformanceTests(*this); }
@@ -307,7 +307,7 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
     sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
-    #ifdef _DEBUG
+    #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     sceneMgr_->Register("Showroom", [] { return std::make_unique<ShowroomScene>(); });
     sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
     #endif
@@ -321,7 +321,7 @@ bool GameApp::Initialize_() {
     }
     if (std::wstring(GetCommandLineW()).find(L"--hotel")!=std::wstring::npos)
         sceneMgr_->Change(*this, "Stage03");
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (std::wstring(GetCommandLineW()).find(L"--cloth-showroom")!=std::wstring::npos)
         sceneMgr_->Change(*this, "ClothShowroom");
 #endif

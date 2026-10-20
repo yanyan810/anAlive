@@ -1,4 +1,4 @@
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugEnemyTuning.h"
 #endif
 #include "Enemy.h"
@@ -199,7 +199,7 @@ void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vect
     maxFacesPerBreak_=64; faceLifetime_=5; spreadPower_=1.5f; outwardPower_=1.5f;
     showPartColliders_=false; showMovementCollider_=false; showExplosionRange_=true;
     random_.seed(static_cast<uint32_t>(spawnId)^0x9e3779b9u);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     dimensionFileStatus_.clear();
 #endif
     for (size_t i=0;i<visuals_.size();++i) {
@@ -617,7 +617,7 @@ void Enemy::DrawImGui() {
     ImGui::Text("HP Multiplier: %.2f", definition_.hpMultiplier);
     for (const auto& part : parts_) if (part.role == EnemyPartRole::Body)
         ImGui::Text("Body HP: %.0f / %.0f | Last blast damage received: %.0f", part.hp, part.maxHp, lastBlastDamage_);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     // Change only dimensions: ApplyDefinition would reset HP and AI state.
     float uniform=definition_.visualScaleMultiplier.x;
     if (ImGui::DragFloat("Visual Scale (Uniform)",&uniform,.005f,.01f,5.0f,"%.3f",ImGuiSliderFlags_AlwaysClamp) && std::isfinite(uniform))
@@ -915,7 +915,7 @@ void Enemy::DrawFaces() {
     faceBatch_->Draw();
 }
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 Enemy::DebugState Enemy::CaptureDebug() const {
     DebugState state;
     state.definition=definition_; state.ai=ai_; state.parts=parts_;

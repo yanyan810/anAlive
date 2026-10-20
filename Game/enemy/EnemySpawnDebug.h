@@ -1,5 +1,5 @@
 #pragma once
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
 #include "EnemySpawnSystem.h"
 #include "StageProgress.h"
 #include "StageWorld.h"

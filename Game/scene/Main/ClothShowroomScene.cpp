@@ -1,5 +1,5 @@
 #include "ClothShowroomScene.h"
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "GameApp.h"
 #include "ImGuiManagaer.h"
 #include <cmath>

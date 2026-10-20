@@ -4,12 +4,15 @@ TitleSceneは `resources/levels/title/title.json` を読み込みます。`title
 
 ## 操作と動作
 
+- タイトルのF6/F7キー案内はDebug / Developmentのみ表示します。Releaseでは案内画像を読み込まず、非表示の案内へのクリック判定も行いません。
+- Developmentは `DEVELOPMENT_BUILD` 定義により、Debugと同じゲーム内デバッグ機能（F1で一時停止、コマ送り・巻き戻し、武器・敵・JSON編集、Showroom / ClothShowroom）を使えます。CRTとDirectX検証レイヤーの設定は各ビルド構成のままです。
+
 - WASDで移動、マウスで視点操作、左クリックで射撃します。タイトルでは弾数が無限でリロードは不要です。移動・壁の衝突処理は既存Player / StageWorldと共通です。
 - ESCでマウスを解放。DebugではScene画像をクリックするとFPS操作に戻り、その復帰クリックでは発砲しません。フォーカスを失った間は更新を止めます。
 - 左側のEnemyは既存Enemy / EnemyPoolで管理。AIと攻撃を止め、部位ダメージ・色変化・部位破壊・死亡・破片を更新します。破片が消えた後に再出現します。
 - GAME STARTは**1つのモデル、1つのHead部位**です。文字表面のどこに命中してもHead判定となります。文字の穴や文字間の空白はメッシュ判定により外れます。
 - HeadのHPは1で、1発の射撃で既存 `Enemy::ApplyBulletDamage` → `Enemy::Die` → `SpawnFaces` が動きます。文字が丸ごと飛ぶ方式から、Enemyと同じ三角形の面破片が散って回転・落下する方式へ変更しました。文字の色・破片の表現も既存Enemyの描画を使います。
-- 爆散開始後は移動と追加射撃を止め、0.45秒の演出後に共通SceneManagerのFadeOutを開始。0.75秒で黒くなり、黒フレームを描画してからStage01を読み込み、0.75秒のFadeIn後にゲームを開始します。FadeIn中は操作・敵・ステージ時間を停止します。
+- 爆散開始後は移動と追加射撃を止め、0.45秒の演出後に共通SceneManagerのFadeOutを開始。0.75秒で黒くなり、黒フレームを描画してからHotel（Stage03）を読み込み、0.75秒のFadeIn後にゲームを開始します。FadeIn中は操作・敵・ステージ時間を停止します。
 - 壁や左側Enemyが手前にある場合はそちらに先に命中します。左側Enemyを倒してもゲームは開始しません。プレイヤーへのダメージはありません。
 - タイトル用のWeaponRuntimeだけ無限弾を有効にし、発射間隔・バーストのタイミングを保ったまま弾を消費しません。Rでもリロード待ちに入りません。装備時に無限弾設定は解除され、ゲームシーンでは通常の弾数管理を使います。
 
@@ -42,6 +45,6 @@ TitleSceneは `resources/levels/title/title.json` を読み込みます。`title
 ./tools/test-blender-level.ps1
 ```
 
-タイトル専用テストは実D3Dで1つのHeadモデル、各文字のHead命中、遮蔽、1発での死亡、既存Enemyの面破片生成・回転、GPUリソースの命中時追加生成がないこと、0.45秒の待機、黒フレームを挟む遷移、Stage01のFadeIn中の停止と再開を検証します。結果と描画画像は `generated/title-tests/` に保存します。
+タイトル専用テストは実D3Dで1つのHeadモデル、各文字のHead命中、遮蔽、1発での死亡、既存Enemyの面破片生成・回転、GPUリソースの命中時追加生成がないこと、0.45秒の待機、黒フレームを挟む遷移、Hotel（Stage03）のFadeIn中の停止と再開を検証します。結果と描画画像は `generated/title-tests/` に保存します。
 
 `tools/blender/merge_title_start.py` は既存サンプルを読み込み、配置を保持して文字を結合・再出力します。`create_title.py` は仮配置を初期状態から作り直すためのスクリプトで、編集済みのtitleアセットを上書きするため通常の編集にはExport Levelを使ってください。

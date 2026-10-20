@@ -64,7 +64,7 @@ void GameScene::FinishStartSequence(GameApp& app) {
     sequenceInputGuard_=true; suppressFireUntilRelease_=true; initialCapturePending_=true;
     app.GetInput()->SetCameraControlEnabled(false);
     RefreshSequenceVisuals();
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     debugHistory_.Clear(); debugHistory_.Push(CaptureDebug());
 #endif
 }
@@ -146,7 +146,7 @@ void GameScene::UpdateShutterAudio(bool running) {
 void GameScene::OnEnter(GameApp& app) {
     startSequence_=CameraSequence{}; sequenceOwnsCamera_=false; sequenceWaiting_=false; sequenceInputGuard_=false; sequenceDebugCommand_=0;
     initialCapturePending_=true;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     debugHistory_.Clear(); debugFrame_=0; debugStep_=0; debugJson_=DebugJsonEditor{};
     debugPaused_=debugPauseOnEnter_; debugPauseOnEnter_=false;
 #endif
@@ -250,7 +250,7 @@ void GameScene::OnEnter(GameApp& app) {
     crosshairHorizontal_.SetScale({12.0f / width, 2.0f / height, 1.0f});
     crosshairVertical_.SetScale({2.0f / width, 12.0f / height, 1.0f});
     if (showroom_) { freezeEnemies_=true; ResetShowroomEnemies(app); }
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
         weaponEditor_.visible=true; weaponEditor_.returnToGame=false;
         beforeWeaponTest_.reset();
@@ -291,7 +291,7 @@ void GameScene::OnEnter(GameApp& app) {
         Update(app, 0.0f);
     }
     if (placementTest_) suppressFireUntilRelease_=true;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (debugHistory_.Size()==0) debugHistory_.Push(CaptureDebug());
 #endif
 }
@@ -299,7 +299,7 @@ void GameScene::OnExit(GameApp& app) {
     startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
     if (shutterAudio_) shutterAudio_->StopAll();
     shutterAudio_.reset(); shutterVisuals_.clear();
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) app.ImGui()->SetWeaponWorkspace(false);
     beforeWeaponTest_.reset(); weaponPreview_.reset();
 #endif
@@ -355,7 +355,7 @@ void GameScene::Update(GameApp& app, float dt) {
         UpdateClearMenu(app);
         if (app.Scenes().IsTransitioning()) return;
     }
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F5) && !ImGui::GetIO().WantTextInput)
         resetEnemiesPending_=true;
 #endif
@@ -367,13 +367,13 @@ void GameScene::Update(GameApp& app, float dt) {
         player_.CurrentWeapon().Equip(equipped);
         shotCount_=0; hitCount_=0; lastDamage_=0;
         suppressFireUntilRelease_=true;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
         debugHistory_.Clear(); debugHistory_.Push(CaptureDebug());
 #endif
     }
     if (player_.GetHP() <= 0 && !placementTest_) { RequestChangeScene_("GameOver"); return; }
     dt = std::isfinite(dt) ? std::max(dt, 0.0f) : 0.0f;
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
         if (weaponEditor_.mode==WeaponEditorMode::Test && input.IsKeyTrigger(DIK_ESCAPE)) {
             weaponEditor_.mode=WeaponEditorMode::Edit;
@@ -409,7 +409,7 @@ void GameScene::Update(GameApp& app, float dt) {
     GetClientRect(app.Win()->GetHwnd(), &client);
     clickedView = PtInRect(&client, cursor) && input.IsLeftMouseTrigger();
 #endif
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     bool typing=false;
 #ifdef USE_IMGUI
     typing=ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive();
@@ -452,7 +452,7 @@ void GameScene::Update(GameApp& app, float dt) {
         if (input.IsKeyTrigger(DIK_ESCAPE)) initialCapturePending_ = false;
     }
     else if (initialCapturePending_ || clickedView) {
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
         if (!debugPaused_)
 #endif
         {
@@ -511,7 +511,7 @@ void GameScene::Update(GameApp& app, float dt) {
     for (auto& visual : weaponVisuals_) {
         visual->Update(dt);
     }
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (dt>0) { ++debugFrame_; debugHistory_.Push(CaptureDebug()); }
 #endif
 }
@@ -670,7 +670,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     auto& weapon = player_.CurrentWeapon();
     const bool controls = wasCaptured && input.IsCameraControlEnabled() && input.HasFocus();
     bool allowPickup=true;
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     allowPickup=!(showroom_ && weaponEditor_.mode==WeaponEditorMode::Test);
 #endif
     // Consume E once: a nearby closed switch takes priority over weapon pickup.
@@ -678,7 +678,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     const bool interact=controls && input.IsKeyTrigger(DIK_E);
     const bool pickedUp=HandleInteraction(interact,allowPickup);
     const bool allowFire = controls && !pickedUp && !suppressFireUntilRelease_;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     const bool cancelBurst = !debugPaused_;
 #else
     const bool cancelBurst = true;
@@ -777,7 +777,7 @@ void GameScene::DrawRender(GameApp&) {
         if (delta.x*delta.x+delta.y*delta.y+delta.z*delta.z>.85f*.85f) startPlayerVisual_->Draw();
     }
     for (auto& shutter : shutterVisuals_) { shutter.model->Draw(); shutter.lamp->Draw(); }
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) {
         if (weaponPreview_ && weaponEditor_.Selected()) weaponPreview_->Draw();
         return;
@@ -793,7 +793,7 @@ void GameScene::DrawRender(GameApp&) {
 }
 
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
     player_.CurrentWeapon().Equip(definition);
     suppressFireUntilRelease_ = true;
@@ -801,7 +801,7 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 #endif
 
 void GameScene::DrawImGui(GameApp& app) {
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) { DrawWeaponWorkspace(app); return; }
     ImGui::BeginDisabled(sequenceOwnsCamera_);
     DrawDebugTools(app);
@@ -810,7 +810,7 @@ void GameScene::DrawImGui(GameApp& app) {
 #endif
 #ifdef USE_IMGUI
     ImGui::Begin("FPS Controls");
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (!showroom_ && ImGui::CollapsingHeader("Start Camera Sequence")) {
         ImGui::Checkbox("Enable start sequence",&startSequenceEnabled_);
         if (!level_.cameraWarning.empty()) ImGui::TextWrapped("%s",level_.cameraWarning.c_str());
@@ -828,7 +828,7 @@ void GameScene::DrawImGui(GameApp& app) {
         ImGui::TextUnformatted("Space: skip. Gameplay / HUD suspended during sequence.");
     }
 #endif
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (ImGui::Button(showroom_ ? "Return to Game" : "Open Showroom")) RequestChangeScene_(showroom_ ? "Game" : "Showroom");
     ImGui::SameLine();
     if (ImGui::Button(stageId_=="stage03" ? "Open Stage01" : "Open Hotel (Stage03)"))
@@ -878,7 +878,7 @@ void GameScene::DrawImGui(GameApp& app) {
         for (size_t i=0; i<enemies_.size(); ++i) enemies_[i]->DrawPartDebug(camera_.GetViewProjectionMatrix(),
         {static_cast<float>(sceneRect.left),static_cast<float>(sceneRect.top)},
         {static_cast<float>(sceneRect.right),static_cast<float>(sceneRect.bottom)}, false, false, i != static_cast<size_t>(selectedEnemy_));
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
     auto& weapon = player_.CurrentWeapon();
@@ -1089,7 +1089,7 @@ void GameScene::DrawImGui(GameApp& app) {
 
 void GameScene::DrawOverlay2D(GameApp&) {
     if (sequenceOwnsCamera_) return;
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) return;
 #endif
     const auto view = Matrix4x4::MakeIdentity4x4();
@@ -1134,7 +1134,7 @@ void GameScene::SyncProjectileVisuals(GameApp& app) {
     }
 }
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 GameScene::DebugFrame GameScene::CaptureDebug() const {
     DebugFrame state;
     state.freezeEnemies=freezeEnemies_;
@@ -1177,7 +1177,7 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
 }
 #endif
 
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
 namespace {
 bool DrawJsonNumbers(nlohmann::json& value,const std::string& label) {
     bool changed=false;
@@ -1258,7 +1258,7 @@ void GameScene::DrawDebugTools(GameApp& app) {
     ImGui::EndDisabled();
     ImGui::End();
 }
-#elif defined(_DEBUG)
+#elif defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 void GameScene::DrawDebugTools(GameApp&) {}
 #endif
 
@@ -1277,7 +1277,7 @@ void GameScene::RecycleEnemies() {
     selectedEnemy_=index(selected,0); lastHitEnemy_=index(last,-1);
 }
 void GameScene::DrawEnemyPoolStats() {
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     ImGui::Text("Enemy Pool | Active: %zu | Inactive: %zu | Capacity: %zu | Runtime Allocations: %zu",
         enemyPool_.Active(),enemyPool_.Inactive(),enemyPool_.Capacity(),enemyPool_.RuntimeAllocations());
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Runtime Allocations counts Enemy slots created after prewarm (including rewind overflow), not all CPU allocations.");
@@ -1299,7 +1299,7 @@ void GameScene::ResetShowroomEnemies(GameApp& app) {
     }
 }
 void GameScene::DrawShowroomTools(GameApp& app) {
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     ImGui::Begin("Showroom");
     ImGui::TextUnformatted("F1: pause + mouse | ESC: mouse only | E: reusable pickup | R: reload | RMB: ADS");
     ImGui::TextUnformatted("AI starts frozen. Damage / fragments still work. Fired projectiles continue while AI is frozen.");
@@ -1391,7 +1391,7 @@ void GameScene::DrawShowroomTools(GameApp& app) {
 #endif
 }
 
-#if defined(_DEBUG) && defined(USE_IMGUI)
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
 void GameScene::UpdateWeaponPreview() {
     const auto* draft=weaponEditor_.Selected();
     if (!draft || !weaponPreview_) return;

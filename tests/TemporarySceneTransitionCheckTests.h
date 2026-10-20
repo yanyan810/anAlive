@@ -36,7 +36,8 @@ inline void RunTemporarySceneTransitionCheckTests(GameApp& app, TemporarySceneTr
     Check(!checker.Execute(app,Action::Title), "Temporary check interrupted a transition");
     finish();
     auto* game = dynamic_cast<GameScene*>(scenes.Current());
-    Check(game && game->stage_.IsPlaying() && !game->player_.CurrentWeapon().InfiniteAmmo(), "Stage entry / finite gameplay ammo");
+    Check(game && game->stage_.IsPlaying() && game->level_.id=="stage03" && scenes.CurrentName()=="Stage03" &&
+        !game->player_.CurrentWeapon().InfiniteAmmo(), "Hotel entry / finite gameplay ammo");
     capture(L"generated/scene-transition-check/game.png");
     Check(checker.Execute(app,Action::Clear) && !checker.Execute(app,Action::Clear), "Clear / duplicate guard");
     const auto time = game->stage_.Time();

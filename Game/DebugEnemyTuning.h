@@ -1,5 +1,5 @@
 #pragma once
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugJsonEditor.h"
 #include "EnemyDefinition.h"
 // Save only the live dimension fields; retain all other types and tuning values.

@@ -535,10 +535,12 @@ void TitleScene::OnEnter(GameApp& app) {
     crosshairHorizontal_.SetScale({12.0f/static_cast<float>(white.width),2.0f/static_cast<float>(white.height),1});
     crosshairVertical_.SetScale({2.0f/static_cast<float>(white.width),12.0f/static_cast<float>(white.height),1});
     crosshairHorizontal_.Update(uiView_,uiProjection_); crosshairVertical_.Update(uiView_,uiProjection_);
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     enemyAITestEntry_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_ai_entry.png");
     enemyAITestEntry_.SetPosition({20,650}); enemyAITestEntry_.Update(uiView_,uiProjection_);
     enemyPlacementEntry_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_placement_entry.png");
     enemyPlacementEntry_.SetPosition({690,650}); enemyPlacementEntry_.Update(uiView_,uiProjection_);
+#endif
     ready_ = true;
     SetWindowTextW(app.Win()->GetHwnd(), L"アンアライブ");
 }
@@ -575,6 +577,7 @@ void TitleScene::Update(GameApp& app, float dt) {
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F7) && !start_.Starting() && !explosionPreview_) {
         app.Scenes().TransitionTo("EnemyPlacementEditor"); return;
     }
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (!input.IsCameraControlEnabled() && input.HasFocus() && input.IsLeftMouseTrigger() && !start_.Starting() && !explosionPreview_) {
         RECT entryRect{};
 #ifdef USE_IMGUI
@@ -590,6 +593,7 @@ void TitleScene::Update(GameApp& app, float dt) {
             if (x>=690 && x<=1260 && y>=650 && y<=690) { app.Scenes().TransitionTo("EnemyPlacementEditor"); return; }
         }
     }
+#endif
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F6) && !start_.Starting() && !explosionPreview_) {
         app.Scenes().TransitionTo("EnemyAITest"); return;
     }
@@ -631,9 +635,9 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     start_.Update(dt);
     UpdateStartExplosion(dt);
     if (start_.Finished() && !transitionRequested_)
-        transitionRequested_ = app.Scenes().TransitionTo("Game", .75f, .75f, {0,0,0}, FadeEasing::Linear);
+        transitionRequested_ = app.Scenes().TransitionTo("Stage03", .75f, .75f, {0,0,0}, FadeEasing::Linear);
         // Accepted once after the existing explosion hold; SceneManager keeps
-        // this overlay alive through Stage01 loading and the incoming frame.
+        // this overlay alive through Hotel (Stage03) loading and the incoming frame.
     for (auto* enemy : enemies_) enemy->UpdateVisuals(dt); // No AI/attacks/player damage.
     if (!start_.Starting() && !enemies_.empty() && enemies_[0]->CanReturnToPool()) {
         respawnTime_ += dt;
@@ -693,8 +697,10 @@ void TitleScene::DrawRender(GameApp&) {
 void TitleScene::DrawOverlay2D(GameApp&) {
     if (!ready_ || start_.Starting()) return;
     crosshairHorizontal_.Draw(); crosshairVertical_.Draw();
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     enemyAITestEntry_.Draw();
     enemyPlacementEntry_.Draw();
+#endif
 }
 
 void TitleScene::DrawImGui(GameApp& app) {
@@ -705,7 +711,7 @@ void TitleScene::DrawImGui(GameApp& app) {
         if (ImGui::Button("Enemy AI Test（敵AIテスト） F6")) app.Scenes().TransitionTo("EnemyAITest");
         if (ImGui::Button("Enemy Placement Editor（敵配置編集） F7")) app.Scenes().TransitionTo("EnemyPlacementEditor");
         ImGui::EndDisabled();
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
 #endif
         ImGui::TextUnformatted("Esc: release mouse to edit. Click Scene to resume shooting.");

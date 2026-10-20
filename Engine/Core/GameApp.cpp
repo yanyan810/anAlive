@@ -15,8 +15,10 @@
 #endif
 #include "GameApp.h"
 #include "scene/Debug/EnemyAITestScene.h"
+#include "scene/Debug/EnemyPlacementEditorScene.h"
 #include "../../tests/EnemyAITestSceneTests.h"
 #include "../../tests/EnemyAIStageSmokeTests.h"
+#include "../../tests/EnemyPlacementEditorTests.h"
 #include "SceneManager.h"
 
 #include "WinApp.h"
@@ -76,6 +78,14 @@ int GameApp::Run() {
         try { RunEnemyAITestSceneTests(*this); }
         catch (const std::exception& error) {
             std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
+    }
+    if (HasLaunchArgument(L"--enemy-placement-test")) {
+        int result=0; std::filesystem::create_directories("generated/placement-tests");
+        try { RunEnemyPlacementEditorTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/placement-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
         }
         Finalize_(); return result;
     }
@@ -283,6 +293,7 @@ bool GameApp::Initialize_() {
     sceneMgr_->Initialize(*this);
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
     sceneMgr_->Register("EnemyAITest", [] { return std::make_unique<EnemyAITestScene>(); });
+    sceneMgr_->Register("EnemyPlacementEditor", [] { return std::make_unique<EnemyPlacementEditorScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
     sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
@@ -292,6 +303,7 @@ bool GameApp::Initialize_() {
     #endif
     sceneMgr_->Change(*this, "Title");
     if (HasLaunchArgument(L"--enemy-ai-test")) sceneMgr_->Change(*this,"EnemyAITest");
+    if (HasLaunchArgument(L"--enemy-placement-editor")) sceneMgr_->Change(*this,"EnemyPlacementEditor");
     // Deliberately opt-in; this check is available without Debug/ImGui.
     if (HasLaunchArgument(L"--scene-transition-check") || HasLaunchArgument(L"--scene-transition-check-test")) {
         transitionCheck_ = std::make_unique<TemporarySceneTransitionCheck>();
@@ -452,6 +464,13 @@ void GameApp::Draw() {
 
 #ifdef USE_IMGUI
     if (imgui_) {
+#ifdef PLACEMENT_EDITOR_RELEASE
+        if (!imgui_->IsWeaponWorkspace() && sceneMgr_->CurrentName()!="EnemyAITest") {
+            render_->DrawOffscreenToBackBuffer(); sceneMgr_->DrawOverlay2D(*this);
+            if (transitionCheck_) transitionCheck_->Draw(*this);
+            imgui_->End(dx_->GetCommandList()); dx_->PostDraw(); return;
+        }
+#endif
         imgui_->SetSceneTexture(render_->RenderPostEffectsForSceneTexture());
         if (render_->BeginSceneTextureOverlay()) {
             sceneMgr_->DrawOverlay2D(*this);

@@ -43,7 +43,11 @@ public:
     void SetShutterEventHandler(std::function<void(const ShutterEvent&)> handler) { shutterEventHandler_=std::move(handler); }
     // Event-facing API, independent of any specific switch/shutter implementation.
     bool ActivateEnemySpawn(const std::string& id) { return spawnSystem_.ActivateSpawn(id); }
+    void ConfigurePlacementTest(const EnemyPlacements& placements) { placementTest_=placements; }
+    bool PlacementTestFinished() const { return player_.IsDead() || !stage_.IsPlaying(); }
 private:
+    friend void RunEnemyPlacementEditorTests(GameApp&);
+    std::optional<EnemyPlacements> placementTest_;
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
     friend void RunScreenTransitionTests(GameApp& app);

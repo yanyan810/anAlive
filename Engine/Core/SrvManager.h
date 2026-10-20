@@ -8,6 +8,13 @@ public:
     void Initialize(DirectXCommon* dxCommon);
 
     uint32_t Allocate();
+    // Retirement never overwrites a descriptor referenced by submitted GPU work.
+    // Collection runs once at the next frame boundary, before any draws are recorded.
+    void Retire(uint32_t index,Microsoft::WRL::ComPtr<ID3D12Resource> resource={},
+        Microsoft::WRL::ComPtr<ID3D12Resource> extra={});
+    void CollectRetired();
+    size_t ActiveCount() const { return activeCount_; }
+    uint32_t HighWaterMark() const { return useIndex; }
 
     D3D12_CPU_DESCRIPTOR_HANDLE GetCPUDescriptionHandle(uint32_t index);
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptionHandle(uint32_t index);
@@ -39,4 +46,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptorHeap;
 
     uint32_t useIndex = 1;
+    struct Retired { uint32_t index; Microsoft::WRL::ComPtr<ID3D12Resource> resource,extra; };
+    std::vector<Retired> retired_;
+    std::vector<uint32_t> freeIndices_;
+    std::vector<bool> allocated_;
+    size_t activeCount_=0;
 };

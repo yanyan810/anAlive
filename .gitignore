@@ -213,3 +213,5 @@ Engine/DebugAI/profiles/*/project_scan.json
 # Debug JSON editor transaction files
 *.debug-tmp
 *.debug-backup
+enemy_placements.json.tmp
+enemy_placements.json.bak

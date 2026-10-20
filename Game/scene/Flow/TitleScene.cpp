@@ -537,6 +537,8 @@ void TitleScene::OnEnter(GameApp& app) {
     crosshairHorizontal_.Update(uiView_,uiProjection_); crosshairVertical_.Update(uiView_,uiProjection_);
     enemyAITestEntry_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_ai_entry.png");
     enemyAITestEntry_.SetPosition({20,650}); enemyAITestEntry_.Update(uiView_,uiProjection_);
+    enemyPlacementEntry_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_placement_entry.png");
+    enemyPlacementEntry_.SetPosition({690,650}); enemyPlacementEntry_.Update(uiView_,uiProjection_);
     ready_ = true;
     SetWindowTextW(app.Win()->GetHwnd(), L"アンアライブ");
 }
@@ -570,6 +572,24 @@ void TitleScene::OnExit(GameApp& app) {
 void TitleScene::Update(GameApp& app, float dt) {
     if (!ready_ || !NextScene().empty()) return;
     auto& input = *app.GetInput();
+    if (input.HasFocus() && input.IsKeyTrigger(DIK_F7) && !start_.Starting() && !explosionPreview_) {
+        app.Scenes().TransitionTo("EnemyPlacementEditor"); return;
+    }
+    if (!input.IsCameraControlEnabled() && input.HasFocus() && input.IsLeftMouseTrigger() && !start_.Starting() && !explosionPreview_) {
+        RECT entryRect{};
+#ifdef USE_IMGUI
+        const bool entryReady=app.ImGui()->GetSceneImageRect(entryRect) && app.ImGui()->IsSceneImageHovered();
+#else
+        const bool entryReady=GetClientRect(app.Win()->GetHwnd(),&entryRect)!=FALSE;
+        POINT origin{}; ClientToScreen(app.Win()->GetHwnd(),&origin); OffsetRect(&entryRect,origin.x,origin.y);
+#endif
+        POINT cursor{}; GetCursorPos(&cursor);
+        if (entryReady && entryRect.right>entryRect.left && entryRect.bottom>entryRect.top) {
+            const float x=static_cast<float>(cursor.x-entryRect.left)*1280/(entryRect.right-entryRect.left);
+            const float y=static_cast<float>(cursor.y-entryRect.top)*720/(entryRect.bottom-entryRect.top);
+            if (x>=690 && x<=1260 && y>=650 && y<=690) { app.Scenes().TransitionTo("EnemyPlacementEditor"); return; }
+        }
+    }
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F6) && !start_.Starting() && !explosionPreview_) {
         app.Scenes().TransitionTo("EnemyAITest"); return;
     }
@@ -674,6 +694,7 @@ void TitleScene::DrawOverlay2D(GameApp&) {
     if (!ready_ || start_.Starting()) return;
     crosshairHorizontal_.Draw(); crosshairVertical_.Draw();
     enemyAITestEntry_.Draw();
+    enemyPlacementEntry_.Draw();
 }
 
 void TitleScene::DrawImGui(GameApp& app) {
@@ -682,6 +703,7 @@ void TitleScene::DrawImGui(GameApp& app) {
     if (ImGui::Begin("Title Lighting")) {
         ImGui::BeginDisabled(start_.Starting() || explosionPreview_ || app.Scenes().IsTransitioning());
         if (ImGui::Button("Enemy AI Test（敵AIテスト） F6")) app.Scenes().TransitionTo("EnemyAITest");
+        if (ImGui::Button("Enemy Placement Editor（敵配置編集） F7")) app.Scenes().TransitionTo("EnemyPlacementEditor");
         ImGui::EndDisabled();
 #ifdef _DEBUG
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");

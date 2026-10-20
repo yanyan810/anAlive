@@ -42,6 +42,16 @@ public:
     ~Enemy();
     void Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera, bool useSplitAssets = false);
     void PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition);
+    // Owns instance constants only; meshes are shared through the existing asset cache.
+    // This object is never registered in EnemyPool or advanced through Enemy::Update.
+    void PreparePlacementPreview(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition) {
+        placementPreview_=true; PrepareForPool(common,dx,camera,definition); SetAIPaused(true);
+    }
+    void HighlightPlacement(bool selected) {
+        const auto apply=[&](Object3d* object) { if (object) { object->SetEnableOutline(selected); object->SetOutlineColor({1,.8f,.05f,1}); object->SetOutlineThickness(.025f); } };
+        apply(&object_); apply(fallbackVisual_.get());
+        for (auto& visual:visuals_) apply(visual.object.get());
+    }
     // Definition-specific slots retain their prepared GPU resources for their lifetime.
     void ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vector3& position,const Vector3& rotation);
     void RetireFromPool();
@@ -129,6 +139,7 @@ public:
     void SetPartVisible(EnemyPartType type, bool visible);
     void SetPartVisible(size_t index,bool visible) { if (index<visuals_.size()) visuals_[index].visible=visible; }
 private:
+    bool placementPreview_=false;
     const Object3dLight* sceneLight_ = nullptr;
     void ApplySceneLight(Object3d& object);
     EnemyDefinition spawnDefinition_;

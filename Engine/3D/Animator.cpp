@@ -37,7 +37,18 @@ Quaternion MakeEulerQuaternion(const Vector3& rotate)
 }
 }
 
+Animator::~Animator() { ReleaseSkinCluster(); }
+void Animator::ReleaseSkinCluster() {
+    if (srvManager_) {
+        srvManager_->Retire(skinDescriptors_[0],skinCluster_.paletteResource,skinCluster_.skinningInformationResource);
+        srvManager_->Retire(skinDescriptors_[1],skinCluster_.influenceResource);
+        srvManager_->Retire(skinDescriptors_[2],sourceVertex_);
+        srvManager_->Retire(skinDescriptors_[3],skinCluster_.outputVertexResource);
+    }
+    skinDescriptors_={}; sourceVertex_.Reset(); skinCluster_=SkinCluster{};
+}
 void Animator::Initialize(Model* model) {
+    ReleaseSkinCluster();
 	model_ = model;
 	poseReady_ = false;
 	manualJointTransforms_.clear();
@@ -314,6 +325,7 @@ void Animator::CreateSkinCluster(
 {
 	if (!model_ || !model_->HasSkinning()) return;
     AssetLoading::Timer timer("object.skin-cluster");
+    ReleaseSkinCluster(); srvManager_=srvManager;
 
 	const auto& skeleton = model_->GetSkeleton();
 	const auto& skinData = model_->GetSkinClusterData();
@@ -329,6 +341,7 @@ void Animator::CreateSkinCluster(
 	skinCluster_.mappedPalette = { mappedPalette, skeleton.joints.size() };
 
 	uint32_t srvIndex = srvManager->Allocate();
+    skinDescriptors_[0]=srvIndex;
 	skinCluster_.paletteSrvHandle.first = dx->GetCPUDescriptorHandle(srvHeap, descriptorSize, srvIndex);
 	skinCluster_.paletteSrvHandle.second = dx->GetGPUDescriptorHandle(srvHeap, descriptorSize, srvIndex);
 
@@ -356,6 +369,7 @@ void Animator::CreateSkinCluster(
 
 	// --- influence用SRV作成 ---
 	uint32_t influenceSrvIndex = srvManager->Allocate();
+    skinDescriptors_[1]=influenceSrvIndex;
 	skinCluster_.influenceSrvHandle.first = dx->GetCPUDescriptorHandle(srvHeap, descriptorSize, influenceSrvIndex);
 	skinCluster_.influenceSrvHandle.second = dx->GetGPUDescriptorHandle(srvHeap, descriptorSize, influenceSrvIndex);
 
@@ -371,6 +385,7 @@ void Animator::CreateSkinCluster(
 
 	// --- 入力頂点(ModelのvertexResource)用SRV作成 ---
 	uint32_t inputVertexSrvIndex = srvManager->Allocate();
+    skinDescriptors_[2]=inputVertexSrvIndex; sourceVertex_=model_->GetVertexResource();
 	skinCluster_.inputVertexSrvHandle.first = dx->GetCPUDescriptorHandle(srvHeap, descriptorSize, inputVertexSrvIndex);
 	skinCluster_.inputVertexSrvHandle.second = dx->GetGPUDescriptorHandle(srvHeap, descriptorSize, inputVertexSrvIndex);
 
@@ -399,6 +414,7 @@ void Animator::CreateSkinCluster(
 	);
 
 	uint32_t uavIndex = srvManager->Allocate();
+    skinDescriptors_[3]=uavIndex;
 	skinCluster_.outputVertexUavHandle.first = dx->GetCPUDescriptorHandle(srvHeap, descriptorSize, uavIndex);
 	skinCluster_.outputVertexUavHandle.second = dx->GetGPUDescriptorHandle(srvHeap, descriptorSize, uavIndex);
 

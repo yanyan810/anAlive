@@ -123,7 +123,20 @@ void ImGuiManagaer::Begin()
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+#ifdef PLACEMENT_EDITOR_RELEASE
+    if (!weaponWorkspace_) {
+        // Release gameplay retains its full-window presentation and input rectangle.
+        RECT rect{}; GetClientRect(winApp_->GetHwnd(),&rect); POINT origin{};
+        ClientToScreen(winApp_->GetHwnd(),&origin);
+        gSceneImageMin={static_cast<float>(origin.x),static_cast<float>(origin.y)};
+        gSceneImageMax={static_cast<float>(origin.x+rect.right),static_cast<float>(origin.y+rect.bottom)};
+        gHasSceneImageRect=true;
+        POINT cursor{}; GetCursorPos(&cursor); ScreenToClient(winApp_->GetHwnd(),&cursor);
+        sceneImageHovered_=PtInRect(&rect,cursor)!=FALSE;
+    }
+#else
     if (!weaponWorkspace_) { BeginDockSpace_(); DrawEditorPanels_(); }
+#endif
 
 #endif // USE_IMGUI
 

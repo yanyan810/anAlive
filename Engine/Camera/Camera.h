@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Matrix4x4.h"
 #include "WinApp.h"
+#include <algorithm>
 class Camera
 {
 
@@ -17,6 +18,7 @@ public:
 	void SetAspect(float aspect) { aspect_ = aspect; }
 	void SetNearZ(float nearZ) { nearZ_ = nearZ; }
 	void SetFarClip(float farZ) { farZ_ = farZ; }
+    void SetOrthographic(bool enabled,float height=30) { orthographic_=enabled; orthographicHeight_=std::max(.1f,height); }
 	//getter
 	const Matrix4x4& GetWorldMatrix() const { return worldMatrix_; }
 	const Matrix4x4& GetViewMatrix() const { return viewMatrix_; }
@@ -39,6 +41,8 @@ private:
 	float farZ_;
 	Matrix4x4 projectionMatrix_;
 	Matrix4x4 viewProjectionMatrix_;
+    bool orthographic_=false;
+    float orthographicHeight_=30;
 
 };
 

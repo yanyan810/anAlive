@@ -52,7 +52,7 @@ inline void Draw(GameApp& app, [[maybe_unused]] bool expectDebugInput = true) {
     app.ImGui()->Begin();
 #endif
     app.Draw();
-#ifdef USE_IMGUI
+#if defined(USE_IMGUI) && !defined(PLACEMENT_EDITOR_RELEASE)
     const auto* window = ImGui::FindWindowByName("Screen Transition");
     Check(window && window->Active, "Transition debug panel disappeared during fade");
     if (expectDebugInput) Check((ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_NoMouse) == 0, "Fade disabled ImGui mouse input");

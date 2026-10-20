@@ -20,7 +20,9 @@ public:
         motion_={};
     }
     const Transform& GetTransform() const { return transform_; }
+    Vector3 EyePosition() const { return transform_.translate+Vector3{0,settings_.cameraHeight,0}; }
     FPSMotion::Settings& Settings() { return settings_; }
+    const FPSMotion::Settings& Settings() const { return settings_; }
     WeaponRuntime& CurrentWeapon() { return currentWeapon_; }
     const WeaponRuntime& CurrentWeapon() const { return currentWeapon_; }
     void ApplyDamage(float damage) { if (std::isfinite(damage) && damage > 0) hp_ = std::max(0.0f, hp_-damage); }

@@ -1,10 +1,11 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 12, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 13, 1),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Vector, Euler
+import time
 import json
 import math
 import os
@@ -407,6 +408,9 @@ def build_level(scene, depsgraph):
                          'startObject': dict(id=object_id(letters[0]), partAsset='resources/levels/title/game_start.enemy.json')}
     elif letters:
         raise ValueError('Game Start objects require Stage ID title')
+    sequences = camera_sequences(scene)
+    if sequences:
+        data['cameraSequences'] = sequences
     json.dumps(data, allow_nan=False)
     return data, geometry
 
@@ -481,6 +485,30 @@ def publish_level(scratch, target):
             os.chdir(previous_directory)
 
 
+def preserve_player_visual(data, target):
+    """F7 owns this stage-JSON section; Blender owns layout and camera points.
+
+    Keep the existing target's complete Player Visual block (including future
+    model settings). Never import enemy placements or arbitrary old stage fields.
+    Invalid files abort before publication so a re-export cannot erase tuning.
+    """
+    previous = target / f"{data['stage']['id']}.json"
+    if not previous.exists():
+        return
+    stored = json.loads(previous.read_text(encoding='utf-8-sig'))
+    if 'playerVisual' not in stored:
+        return
+    if stored.get('stage', {}).get('id') != data['stage']['id']:
+        raise ValueError('Player Visual: existing stage ID does not match Export target')
+    visual = stored['playerVisual']
+    if not isinstance(visual, dict):
+        raise ValueError('playerVisual must be an object; repair the existing JSON before Export')
+    yaw = visual.get('yawOffsetDegrees', 0)
+    if type(yaw) not in (int, float) or not math.isfinite(yaw) or not -180 <= yaw <= 180:
+        raise ValueError('playerVisual.yawOffsetDegrees must be between -180 and 180 degrees')
+    data['playerVisual'] = visual
+
+
 def export_level(context):
     if context.mode != 'OBJECT':
         raise ValueError("Switch to Object Mode before export")
@@ -488,13 +516,15 @@ def export_level(context):
     depsgraph = context.evaluated_depsgraph_get()
     data, geometry = build_level(context.scene, depsgraph)
     target = output_path(context.scene)
+    preserve_player_visual(data, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     scratch = target.with_name(f'.{target.name}-export-{uuid.uuid4().hex}')
     scratch.mkdir()
     temporary_scene = None
     source_scene = context.window.scene
     try:
-        # Preserve unrelated author files; only generated stage assets are replaced.
+        # Preserve unrelated author files, including F7's <stage>.camera_sequences.json
+        # and enemy_placements.json. Only generated stage assets are replaced.
         if target.exists():
             shutil.copytree(target, scratch, dirs_exist_ok=True)
         temporary_scene = bpy.data.scenes.new('__YanEngineExport')
@@ -584,7 +614,7 @@ def role_changed(self, context):
     if self.role == 'COLLIDER':
         obj.display_type = 'WIRE'
     colors = {'PLAYER': (.1, 1, .2, 1), 'ENEMY': (1, .2, .2, 1), 'WEAPON': (1, .8, .1, 1),
-              'TRIGGER': (.1, .7, 1, 1), 'GOAL': (1, .2, 1, 1)}
+              'TRIGGER': (.1, .7, 1, 1), 'GOAL': (1, .2, 1, 1), 'CAMERA_POINT': (0, 1, 1, 1)}
     obj.color = colors.get(self.role, (1, 1, 1, 1))
 
 
@@ -619,7 +649,21 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
         ('GOAL', 'ゴール', ''), ('IGNORE', '対象外', ''),
         ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh'),
         ('SPAWN_GROUP', '時刻指定の出現グループ', 'ステージ開始からの時刻で敵を出現させます'),
-        ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision')])
+        ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision'),
+        ('CAMERA_POINT', 'Camera Point', 'Engine camera forward is local -Y; up is local +Z')])
+    camera_sequence: StringProperty(name='Sequence ID', default='start')
+    camera_order: IntProperty(name='Order', default=0, min=0)
+    camera_duration: FloatProperty(name='Duration to next (s)', default=1, min=0, max=1200)
+    camera_interpolation: EnumProperty(name='Interpolation', default='CatmullRom', items=[
+        ('CatmullRom', 'Catmull-Rom', ''), ('Linear', 'Linear', ''),
+        ('SmoothStep', 'Smooth Step', ''), ('Hold', 'Hold', 'Next pose must be identical')])
+    camera_rotation_mode: EnumProperty(name='Rotation Mode', default='LookAtPlayer', items=[
+        ('Manual', 'Manual', 'Local -Y forward / +Z up'), ('LookAtPlayer', 'Look At Player', ''),
+        ('LookAtTarget', 'Look At Target', '')])
+    camera_target: PointerProperty(name='Look At Target', type=bpy.types.Object)
+    camera_fov: FloatProperty(name='Vertical Field of View (deg)', default=60, min=10, max=150)
+    camera_player_eye: BoolProperty(name='PlayerEye', default=False)
+    camera_look_height: FloatProperty(name='Look At Player height (m)', default=1, min=-100, max=100)
     identifier: StringProperty(name="ID", description="空欄ならオブジェクト名を使用します")
     group: StringProperty(name="出現グループID", default="A")
     spawn_activation: EnumProperty(name='起動方法', default='StageStart', items=[
@@ -671,6 +715,13 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
 
 
 class YAN_SceneSettings(bpy.types.PropertyGroup):
+    camera_start_enabled: BoolProperty(name='Enable Start Sequence', default=True)
+    camera_preview_sequence: StringProperty(name='Preview Sequence', default='start')
+    camera_eye_height: FloatProperty(name='Preview FPS eye height', default=1.6, min=.1, max=10)
+    camera_fps_fov: FloatProperty(name='Preview FPS FOV (deg)', default=60, min=10, max=150)
+    camera_show_path: BoolProperty(name='Show Camera Paths', default=True)
+    camera_preview_time: FloatProperty(name='Preview time (s)', default=0, min=0, max=3600,
+        update=lambda self, context: camera_seek(context))
     player_gravity: BoolProperty(name='プレイヤー重力', description='床の支持・落下・坂の歩行を使用します', default=False)
     stage_id: StringProperty(name="ステージID", default="stage01")
     project_root: StringProperty(name="プロジェクトの場所", description="エンジンのプロジェクトフォルダー。//はblendファイルからの相対パスです")
@@ -1669,15 +1720,353 @@ class YAN_PT_level(bpy.types.Panel):
         layout.operator('yanengine.export', icon='EXPORT')
 
 
+def camera_sequences(scene):
+    """Export/Validate/Preview share the same ordered data; no generated path objects."""
+    groups = {}
+    for obj in scene.objects:
+        c = obj.yan_level
+        if c.role != 'CAMERA_POINT':
+            continue
+        if obj.type != 'EMPTY':
+            raise ValueError(f'{obj.name}: Camera Point requires an Empty')
+        seq = c.camera_sequence.strip()
+        if not seq:
+            raise ValueError(f'{obj.name}: empty Sequence ID')
+        trs, _ = engine_transform(obj.matrix_world)
+        p = dict(id=object_id(obj), order=c.camera_order, position=trs['position'], rotation=trs['rotation'],
+                 duration=c.camera_duration, interpolation=c.camera_interpolation,
+                 rotationMode=c.camera_rotation_mode, fov=c.camera_fov, playerEye=c.camera_player_eye,
+                 lookAtOffset=[0, c.camera_look_height, 0])
+        finite([p['duration'], p['fov'], c.camera_look_height], obj.name)
+        if not 0 <= p['duration'] <= 1200 or not 10 <= p['fov'] <= 150:
+            raise ValueError(f'{obj.name}: invalid duration/FOV')
+        if p['rotationMode'] == 'LookAtTarget' and not p['playerEye']:
+            target = c.camera_target
+            if target is None or target.name not in scene.objects or target == obj:
+                raise ValueError(f'{obj.name}: choose a Look At Target in this scene')
+            p['lookAtTarget'] = engine_transform(target.matrix_world)[0]['position']
+        groups.setdefault(seq, []).append(p)
+    if len(groups) > 128:
+        raise ValueError('Camera: maximum 128 sequences')
+    result = []
+    for seq, points in sorted(groups.items()):
+        points.sort(key=lambda p: p['order'])
+        if not 2 <= len(points) <= 1024:
+            raise ValueError(f'{seq}: require 2..1024 Camera Points')
+        if len({p['order'] for p in points}) != len(points) or len({p['id'] for p in points}) != len(points):
+            raise ValueError(f'{seq}: duplicate Order / Point ID')
+        for i, p in enumerate(points):
+            last = i == len(points)-1
+            if (last and p['duration'] != 0) or (not last and (p['duration'] < .001 or p['playerEye'])):
+                raise ValueError(f"{p['id']}: last duration must be 0; other durations >= .001; PlayerEye must be last")
+            if p['interpolation'] == 'Hold' and not last:
+                n = points[i+1]
+                if n['playerEye'] or any(p[k] != n[k] for k in ('position', 'rotation', 'rotationMode', 'fov', 'lookAtOffset')) or p.get('lookAtTarget') != n.get('lookAtTarget'):
+                    raise ValueError(f"{p['id']}: Hold requires identical next pose")
+        if seq == 'start' and not points[-1]['playerEye']:
+            raise ValueError('start: last point must be PlayerEye')
+        if sum(p['duration'] for p in points) > 3600:
+            raise ValueError(f'{seq}: maximum duration 3600 seconds')
+        result.append(dict(id=seq, enabled=scene.yan_level.camera_start_enabled if seq == 'start' else True, points=points))
+    return result
+
+
+def camera_player(scene):
+    players = [o for o in scene.objects if o.yan_level.role == 'PLAYER']
+    if len(players) != 1:
+        raise ValueError('Camera preview requires exactly one Player Spawn')
+    trs, _ = engine_transform(players[0].matrix_world)
+    return Vector(trs['position']), Euler(trs['rotation'], 'XYZ').to_quaternion().normalized()
+
+
+def camera_sample(sequence, seconds, player, player_rotation, eye_height=1.6, fps_fov=60):
+    """Matches CameraSequence.h: engine space, outgoing duration, dynamic look + shortest slerp."""
+    points = sequence['points']
+    eye = player + Vector((0, eye_height, 0))
+    def position(p):
+        return eye if p['playerEye'] else Vector(p['position'])
+    def rotation(p, pos):
+        if p['playerEye']:
+            return player_rotation
+        if p['rotationMode'] == 'Manual':
+            return Euler(p['rotation'], 'XYZ').to_quaternion().normalized()
+        target = player+Vector(p.get('lookAtOffset', (0,1,0))) if p['rotationMode'] == 'LookAtPlayer' else Vector(p['lookAtTarget'])
+        delta = target-pos
+        if delta.length < 1e-6:
+            return Euler(p['rotation'], 'XYZ').to_quaternion().normalized()
+        return Euler((-math.atan2(delta.y, math.hypot(delta.x, delta.z)), math.atan2(delta.x, delta.z), 0), 'XYZ').to_quaternion().normalized()
+    total = sum(p['duration'] for p in points)
+    if seconds >= total:
+        p = points[-1]
+        return position(p), rotation(p, position(p)), fps_fov if p['playerEye'] else p['fov']
+    i, start = 0, 0
+    while i+2 < len(points) and seconds >= start+points[i]['duration']:
+        start += points[i]['duration']; i += 1
+    a, b = points[i:i+2]
+    t = min(1, max(0, (seconds-start)/a['duration']))
+    if a['interpolation'] == 'Hold': t = 0
+    if a['interpolation'] == 'SmoothStep': t = t*t*(3-2*t)
+    pa, pb = position(a), position(b)
+    pos = pa.lerp(pb, t)
+    if a['interpolation'] == 'CatmullRom':
+        p0 = pa if i == 0 or points[i-1]['interpolation'] == 'Hold' else position(points[i-1])
+        p3 = position(points[i+2]) if i+2 < len(points) else pb
+        pos = (pa*2+(pb-p0)*t+(p0*2-pa*5+pb*4-p3)*t*t+(-p0+pa*3-pb*3+p3)*t*t*t)*.5
+    qa, qb = rotation(a, pos), rotation(b, pos)
+    if qa.dot(qb) < 0: qb = -qb
+    fova = fps_fov if a['playerEye'] else a['fov']
+    fovb = fps_fov if b['playerEye'] else b['fov']
+    return pos, qa.slerp(qb, t).normalized(), fova+(fovb-fova)*t
+
+
+def camera_preview_matrix(position, quaternion):
+    # Engine forward +Z, Blender camera forward -Z. The reflection in ENGINE_BASIS
+    # plus this Z reflection produces a proper (non-mirrored) Blender camera pose.
+    matrix = ENGINE_BASIS.inverted() @ quaternion.to_matrix().to_4x4() @ Matrix.Diagonal((1,1,-1,1))
+    matrix.translation = (ENGINE_BASIS.inverted() @ position.to_4d()).to_3d()
+    return matrix
+
+
+_camera_preview = None
+_camera_path_handler = None
+_camera_label_handler = None
+
+
+def camera_seek(context):
+    state = _camera_preview
+    if not state or state['scene'] != context.scene:
+        return
+    cfg = context.scene.yan_level
+    seq = next((s for s in camera_sequences(context.scene) if s['id'] == cfg.camera_preview_sequence), None)
+    if seq is None: return
+    player, rotation = camera_player(context.scene)
+    pos, quat, fov = camera_sample(seq, cfg.camera_preview_time, player, rotation, cfg.camera_eye_height, cfg.camera_fps_fov)
+    state['camera'].matrix_world = camera_preview_matrix(pos, quat)
+    # Blender AUTO sensor fit is horizontal for landscape; use vertical sensor fit
+    # so this is the same vertical FOV as the engine at any viewport aspect ratio.
+    state['camera'].data.sensor_fit = 'VERTICAL'
+    state['camera'].data.lens = state['camera'].data.sensor_height/(2*math.tan(math.radians(fov)*.5))
+    state['base_time'] = cfg.camera_preview_time
+    state['started'] = time.perf_counter()
+    if context.area: context.area.tag_redraw()
+
+
+def camera_stop():
+    global _camera_preview
+    state, _camera_preview = _camera_preview, None
+    if not state: return
+    try:
+        space = state['space']
+        space.camera = state['old_space_camera']; space.use_local_camera = state['local_camera']
+        region = space.region_3d
+        region.view_perspective = state['perspective']; region.view_matrix = state['view_matrix']
+        region.view_distance = state['distance']
+        region.view_camera_offset = state['camera_offset']; region.view_camera_zoom = state['camera_zoom']
+    except ReferenceError:
+        pass
+    state['wm'].event_timer_remove(state['timer'])
+    camera, data = state['camera'], state['camera'].data
+    bpy.data.objects.remove(camera, do_unlink=True)
+    bpy.data.cameras.remove(data)
+
+
+@persistent
+def camera_cleanup(_=None):
+    camera_stop()
+
+
+class YAN_OT_camera_add(bpy.types.Operator):
+    bl_idname = 'yanengine.camera_add'
+    bl_label = 'Add Camera Point'
+    bl_options = {'REGISTER', 'UNDO'}
+    def execute(self, context):
+        obj = bpy.data.objects.new('CameraPoint', None); context.scene.collection.objects.link(obj)
+        obj.location = context.scene.cursor.location
+        obj.yan_level.role = 'CAMERA_POINT'
+        obj.yan_level.camera_sequence = context.scene.yan_level.camera_preview_sequence
+        orders = [o.yan_level.camera_order for o in context.scene.objects if o != obj and o.yan_level.role == 'CAMERA_POINT' and o.yan_level.camera_sequence == obj.yan_level.camera_sequence]
+        obj.yan_level.camera_order = max(orders, default=-1)+1
+        for selected in context.selected_objects: selected.select_set(False)
+        obj.select_set(True); context.view_layer.objects.active = obj
+        return {'FINISHED'}
+
+
+class YAN_OT_camera_default(bpy.types.Operator):
+    bl_idname = 'yanengine.camera_default'
+    bl_label = 'Create 4 Second Start Path'
+    bl_options = {'REGISTER', 'UNDO'}
+    def execute(self, context):
+        scene = context.scene
+        if any(o.yan_level.role == 'CAMERA_POINT' and o.yan_level.camera_sequence == 'start' for o in scene.objects):
+            self.report({'ERROR'}, 'Start path already exists; edit its points'); return {'CANCELLED'}
+        try:
+            player, quat = camera_player(scene)
+            yaw = quat.to_euler('XYZ').y
+            # Read yaw from forward to handle the +/- pi Euler representation.
+            forward = quat @ Vector((0,0,1)); yaw = math.atan2(forward.x, forward.z)
+            rotate = Matrix.Rotation(yaw, 3, 'Y')
+            h = scene.yan_level.camera_eye_height
+            rows = [((2.8,1.8,3.5),.5,'Hold',1), ((2.8,1.8,3.5),.65,'CatmullRom',1),
+                    ((3,1.9,1),.7,'CatmullRom',1.1), ((2.2,1.9,-1.8),.65,'CatmullRom',1.3),
+                    ((.4,h+.15,-2.2),1,'SmoothStep',h), ((0,h,-.95),.5,'SmoothStep',h),
+                    ((0,h,0),0,'Linear',h)]
+            for i, (offset, duration, mode, look_height) in enumerate(rows):
+                obj = bpy.data.objects.new(f'StartCamera_{i:02}', None); scene.collection.objects.link(obj)
+                c = obj.yan_level; c.role = 'CAMERA_POINT'; c.camera_order = i
+                c.camera_duration = duration; c.camera_interpolation = mode; c.camera_look_height = look_height
+                c.camera_player_eye = i == len(rows)-1
+                obj.location = (ENGINE_BASIS.inverted() @ (player+rotate@Vector(offset)).to_4d()).to_3d()
+                # Behind the player, settle into the exact FPS orientation before ingress.
+                if i >= 5:
+                    c.camera_rotation_mode = 'Manual'
+                    obj.rotation_euler = (ENGINE_BASIS.inverted() @ quat.to_matrix().to_4x4() @ ENGINE_BASIS).to_euler('XYZ')
+            context.view_layer.update()
+            return {'FINISHED'}
+        except ValueError as error:
+            self.report({'ERROR'}, str(error)); return {'CANCELLED'}
+
+
+class YAN_OT_camera_preview(bpy.types.Operator):
+    bl_idname = 'yanengine.camera_preview'
+    bl_label = 'Preview / Restart'
+    def execute(self, context):
+        global _camera_preview
+        camera_stop()
+        try:
+            seq = next((s for s in camera_sequences(context.scene) if s['id'] == context.scene.yan_level.camera_preview_sequence), None)
+            if seq is None: raise ValueError('Sequence not found')
+            camera_player(context.scene)
+        except ValueError as error:
+            self.report({'ERROR'}, str(error)); return {'CANCELLED'}
+        if context.area.type != 'VIEW_3D': return {'CANCELLED'}
+        space, region = context.space_data, context.space_data.region_3d
+        data = bpy.data.cameras.new('__YanCameraPreview'); data.clip_start = .1; data.clip_end = 1000
+        camera = bpy.data.objects.new('__YanCameraPreview', data); context.scene.collection.objects.link(camera)
+        timer = context.window_manager.event_timer_add(1/60, window=context.window)
+        _camera_preview = dict(scene=context.scene, camera=camera, space=space,
+            old_space_camera=space.camera, local_camera=space.use_local_camera,
+            perspective=region.view_perspective, view_matrix=region.view_matrix.copy(), distance=region.view_distance,
+            camera_offset=tuple(region.view_camera_offset), camera_zoom=region.view_camera_zoom,
+            timer=timer, wm=context.window_manager, duration=sum(p['duration'] for p in seq['points']))
+        self._state = _camera_preview
+        context.scene.yan_level.camera_preview_time = 0
+        space.use_local_camera = True; space.camera = camera; region.view_perspective = 'CAMERA'
+        camera_seek(context)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+    def modal(self, context, event):
+        state = _camera_preview
+        if not state or state is not self._state: return {'FINISHED'}
+        if event.type == 'ESC': camera_stop(); return {'FINISHED'}
+        if event.type == 'TIMER' and event.timer == state['timer']:
+            seconds = min(state['duration'], state['base_time']+time.perf_counter()-state['started'])
+            context.scene.yan_level.camera_preview_time = seconds
+            # Hold the final view for inspection. Stop always restores editing view.
+        return {'PASS_THROUGH'}
+    def cancel(self, context):
+        camera_stop()
+
+
+class YAN_OT_camera_stop(bpy.types.Operator):
+    bl_idname = 'yanengine.camera_stop'
+    bl_label = 'Stop'
+    def execute(self, context):
+        camera_stop(); return {'FINISHED'}
+
+
+def camera_draw_path():
+    context = bpy.context
+    if not context.scene.yan_level.camera_show_path: return
+    previous_depth = None
+    try:
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        player, quat = camera_player(context.scene)
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        previous_depth = gpu.state.depth_test_get()
+        gpu.state.depth_test_set('NONE')
+        for seq in camera_sequences(context.scene):
+            cfg = context.scene.yan_level; total = sum(p['duration'] for p in seq['points'])
+            vertices = [(ENGINE_BASIS.inverted() @ camera_sample(seq, total*i/160, player, quat, cfg.camera_eye_height, cfg.camera_fps_fov)[0].to_4d()).to_3d() for i in range(161)]
+            shader.bind(); shader.uniform_float('color', (0, .9, 1, 1))
+            batch_for_shader(shader, 'LINE_STRIP', {'pos': vertices}).draw(shader)
+            # Direction markers at every point use the actual evaluated orientation.
+            lines, seconds = [], 0
+            for p in seq['points']:
+                pos, q, _ = camera_sample(seq, seconds, player, quat, cfg.camera_eye_height, cfg.camera_fps_fov)
+                inv = ENGINE_BASIS.inverted()
+                lines.extend([(inv @ pos.to_4d()).to_3d(), (inv @ (pos+q@Vector((0,0,.5))).to_4d()).to_3d()])
+                seconds += p['duration']
+            shader.uniform_float('color', (1, .7, .1, 1))
+            batch_for_shader(shader, 'LINES', {'pos': lines}).draw(shader)
+    except (ValueError, KeyError, ReferenceError):
+        pass
+    finally:
+        if previous_depth is not None: gpu.state.depth_test_set(previous_depth)
+
+
+def camera_draw_labels():
+    context = bpy.context
+    if not context.scene.yan_level.camera_show_path: return
+    try:
+        import blf
+        from bpy_extras.view3d_utils import location_3d_to_region_2d
+        player, quat = camera_player(context.scene); cfg = context.scene.yan_level
+        for seq in camera_sequences(context.scene):
+            seconds = 0; total = sum(p['duration'] for p in seq['points'])
+            for p in seq['points']:
+                pos = camera_sample(seq, seconds, player, quat, cfg.camera_eye_height, cfg.camera_fps_fov)[0]
+                world = (ENGINE_BASIS.inverted() @ pos.to_4d()).to_3d()
+                screen = location_3d_to_region_2d(context.region, context.region_data, world)
+                if screen:
+                    blf.position(0, screen.x+6, screen.y+6, 0); blf.size(0, 12); blf.color(0, 0, 1, 1, 1)
+                    blf.draw(0, f"{seq['id']} #{p['order']} {p['id']} | {seconds:.2f}s +{p['duration']:.2f}s / {total:.2f}s")
+                seconds += p['duration']
+    except (ValueError, KeyError, ReferenceError):
+        pass
+
+
+class YAN_PT_camera(bpy.types.Panel):
+    bl_label = 'Camera Sequences'
+    bl_idname = 'YAN_PT_camera'
+    bl_space_type = 'VIEW_3D'; bl_region_type = 'UI'; bl_category = 'YanEngine Level'
+    def draw(self, context):
+        layout = self.layout; cfg = context.scene.yan_level
+        layout.prop(cfg, 'camera_start_enabled'); layout.prop(cfg, 'camera_show_path')
+        row = layout.row(align=True); row.operator('yanengine.camera_add'); row.operator('yanengine.camera_default', text='4s Start Path')
+        obj = context.object
+        if obj and obj.yan_level.role == 'CAMERA_POINT':
+            c = obj.yan_level
+            for field in ('identifier', 'camera_sequence', 'camera_order', 'camera_duration', 'camera_interpolation', 'camera_player_eye'):
+                layout.prop(c, field)
+            if not c.camera_player_eye:
+                layout.prop(c, 'camera_rotation_mode')
+                if c.camera_rotation_mode == 'LookAtTarget': layout.prop(c, 'camera_target')
+                if c.camera_rotation_mode == 'LookAtPlayer': layout.prop(c, 'camera_look_height')
+                layout.prop(c, 'camera_fov')
+            layout.label(text='Manual: local -Y forward / +Z up')
+        for field in ('camera_preview_sequence', 'camera_eye_height', 'camera_fps_fov', 'camera_preview_time'):
+            layout.prop(cfg, field)
+        row = layout.row(align=True)
+        row.operator('yanengine.camera_preview', text='Preview / Restart'); row.operator('yanengine.camera_stop')
+        try:
+            for seq in camera_sequences(context.scene):
+                layout.label(text=f"{seq['id']}: {len(seq['points'])} points / {sum(p['duration'] for p in seq['points']):.2f}s")
+        except ValueError as error:
+            layout.label(text=str(error), icon='ERROR')
+
+
 CLASSES = (YAN_PoolEntry, YAN_WeaponType, YAN_SpawnGroupEnemy, YAN_EnemySpawnCount, YAN_ObjectSettings, YAN_SceneSettings, YAN_OT_pool,
            YAN_CatalogEntry, YAN_CatalogState, YAN_OT_catalog_open, YAN_OT_catalog_action,
            YAN_OT_catalog_type, YAN_MT_catalog_types, YAN_OT_catalog_apply, YAN_UL_catalog, YAN_PT_weapon_catalog,
            YAN_OT_choose_pool, YAN_MT_pool_choices, YAN_OT_enemy_composition, YAN_OT_group_member, YAN_OT_weapon_type, YAN_OT_refresh_definitions,
            YAN_OT_generate_auto_colliders, YAN_OT_clear_auto_colliders,
-           YAN_OT_validate, YAN_OT_export, YAN_PT_level)
+           YAN_OT_validate, YAN_OT_export, YAN_PT_level,
+           YAN_OT_camera_add, YAN_OT_camera_default, YAN_OT_camera_preview, YAN_OT_camera_stop, YAN_PT_camera)
 
 
 def register():
+    global _camera_path_handler, _camera_label_handler
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Object.yan_level = PointerProperty(type=YAN_ObjectSettings)
@@ -1685,9 +2074,21 @@ def register():
     bpy.types.WindowManager.yan_catalog = PointerProperty(type=YAN_CatalogState, options={'SKIP_SAVE'})
     bpy.app.handlers.load_post.append(preserve_legacy_spawns)
     bpy.app.timers.register(initialize_legacy_spawns, first_interval=0.0)
+    bpy.app.handlers.load_pre.append(camera_cleanup)
+    bpy.app.handlers.save_pre.append(camera_cleanup)
+    if not bpy.app.background:
+        _camera_path_handler = bpy.types.SpaceView3D.draw_handler_add(camera_draw_path, (), 'WINDOW', 'POST_VIEW')
+        _camera_label_handler = bpy.types.SpaceView3D.draw_handler_add(camera_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
 
 def unregister():
+    global _camera_path_handler, _camera_label_handler
+    camera_stop()
+    for handler in (_camera_path_handler, _camera_label_handler):
+        if handler: bpy.types.SpaceView3D.draw_handler_remove(handler, 'WINDOW')
+    _camera_path_handler = _camera_label_handler = None
+    for handlers in (bpy.app.handlers.load_pre, bpy.app.handlers.save_pre):
+        if camera_cleanup in handlers: handlers.remove(camera_cleanup)
     _definition_cache.clear()
     if bpy.app.timers.is_registered(initialize_legacy_spawns):
         bpy.app.timers.unregister(initialize_legacy_spawns)

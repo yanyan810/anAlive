@@ -2,6 +2,8 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.cpp"><Filter>Game\Scene\Debug</Filter></ClCompile>
+    <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Camera.cpp"><Filter>Game\Scene\Debug</Filter></ClCompile>
+    <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Path.cpp"><Filter>Game\Scene\Debug</Filter></ClCompile>
     <ClInclude Include="Game\scene\Debug\EnemyPlacementEditorScene.h"><Filter>Game\Scene\Debug</Filter></ClInclude>
     <ClInclude Include="Game\scene\Debug\EnemyPlacementMetadata.h"><Filter>Game\Scene\Debug</Filter></ClInclude>
     <ClInclude Include="Game\enemy\EnemyPlacements.h" />
@@ -674,6 +676,11 @@
     <ClInclude Include="Game\enemy\DetachedEnemyPart.h" />
     <ClInclude Include="Game\enemy\EnemyAI.h" />
     <ClInclude Include="Game\StageLoader.h" />
+    <ClInclude Include="Game\CameraSequence.h" />
+    <ClInclude Include="Game\CameraSequenceOverrides.h" />
+    <ClInclude Include="Game\StartPlayerVisual.h" />
+    <ClInclude Include="Game\PlayerVisualSettings.h" />
+    <ClInclude Include="tests\CameraSequenceRuntimeTests.h" />
     <ClInclude Include="Game\DebugTimeline.h" />
     <ClInclude Include="Game\scene\Main\ShowroomScene.h" />
     <ClInclude Include="Game\DebugJsonEditor.h" />

@@ -215,3 +215,7 @@ Engine/DebugAI/profiles/*/project_scan.json
 *.debug-backup
 enemy_placements.json.tmp
 enemy_placements.json.bak
+*.player-visual-tmp
+*.player-visual-backup
+*.camera-tmp
+*.camera-backup

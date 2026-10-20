@@ -15,6 +15,7 @@
 #include "GameHUD.h"
 #include "BulletManager.h"
 #include "AudioSystem.h"
+#include "StartPlayerVisual.h"
 #include <array>
 #ifdef _DEBUG
 #include "DebugTimeline.h"
@@ -44,8 +45,19 @@ public:
     // Event-facing API, independent of any specific switch/shutter implementation.
     bool ActivateEnemySpawn(const std::string& id) { return spawnSystem_.ActivateSpawn(id); }
     void ConfigurePlacementTest(const EnemyPlacements& placements) { placementTest_=placements; }
+    void SetStartSequenceEnabled(bool enabled) { startSequenceEnabled_=enabled; }
     bool PlacementTestFinished() const { return player_.IsDead() || !stage_.IsPlaying(); }
 private:
+    friend void RunCameraSequenceRuntimeTests(GameApp& app);
+    void BeginStartSequence(GameApp& app,bool force=false);
+    void FinishStartSequence(GameApp& app);
+    void RefreshSequenceVisuals();
+    void ApplySequenceCamera();
+    CameraSequence startSequence_;
+    std::unique_ptr<StartPlayerVisual> startPlayerVisual_;
+    CameraPose sequenceEye_;
+    bool startSequenceEnabled_=true, sequenceOwnsCamera_=false, sequenceWaiting_=false, sequenceInputGuard_=false;
+    int sequenceDebugCommand_=0; // queued by ImGui, applied before the next simulation frame
     friend void RunEnemyPlacementEditorTests(GameApp&);
     std::optional<EnemyPlacements> placementTest_;
     friend class TemporarySceneTransitionCheck;

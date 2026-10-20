@@ -13,5 +13,10 @@ $result=Get-Content -LiteralPath $resultPath -Raw
 $result
 if ($process.ExitCode -ne 0 -or !$result.StartsWith('PASS:')) { throw "Placement runtime test failed (exit $($process.ExitCode))." }
 Copy-Item -LiteralPath $resultPath -Destination (Join-Path (Split-Path $resultPath) "result-$Configuration.txt")
+Copy-Item -LiteralPath (Join-Path (Split-Path $resultPath) 'camera-editor-result.txt') -Destination (Join-Path (Split-Path $resultPath) "camera-editor-result-$Configuration.txt")
+Copy-Item -LiteralPath (Join-Path (Split-Path $resultPath) 'camera-path-result.txt') -Destination (Join-Path (Split-Path $resultPath) "camera-path-result-$Configuration.txt")
 Copy-Item -LiteralPath (Join-Path (Split-Path $resultPath) 'descriptors.txt') -Destination (Join-Path (Split-Path $resultPath) "descriptors-$Configuration.txt")
+$captureDirectory=Join-Path (Split-Path $resultPath) $Configuration
+New-Item -ItemType Directory -Force $captureDirectory | Out-Null
+Get-ChildItem -LiteralPath (Split-Path $resultPath) -Filter '*.png' -File | Copy-Item -Destination $captureDirectory
 exit 0

@@ -21,6 +21,8 @@
     <ClInclude Include="Game\scene\Debug\EnemyAITestScene.h" />
     <ClCompile Include="Game\scene\Debug\EnemyAITestScene.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.cpp" />
+    <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Camera.cpp" />
+    <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Path.cpp" />
     <ClInclude Include="Game\scene\Debug\EnemyPlacementEditorScene.h" />
     <ClInclude Include="Game\scene\Debug\EnemyPlacementMetadata.h" />
     <ClInclude Include="Game\enemy\EnemyPlacements.h" />
@@ -633,6 +635,11 @@
     <ClInclude Include="Game\enemy\EnemyProjectile.h" />
     <ClInclude Include="Game\enemy\EnemyAI.h" />
     <ClInclude Include="Game\StageLoader.h" />
+    <ClInclude Include="Game\CameraSequence.h" />
+    <ClInclude Include="Game\CameraSequenceOverrides.h" />
+    <ClInclude Include="Game\StartPlayerVisual.h" />
+    <ClInclude Include="Game\PlayerVisualSettings.h" />
+    <ClInclude Include="tests\CameraSequenceRuntimeTests.h" />
     <ClInclude Include="Game\TitleLighting.h" />
     <ClInclude Include="Game\DebugTimeline.h" />
     <ClInclude Include="Game\scene\Main\ShowroomScene.h" />

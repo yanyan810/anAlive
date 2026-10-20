@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Force $testDir | Out-Null
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $env:ComSpec
-$info.Arguments = '/d /s /c ""' + $vcvars + '" >nul && cl /nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $projectRoot + '/Game" /I"' + $projectRoot + '/externals/assimp/include" /I"' + $projectRoot + '/Game/enemy" /I"' + $projectRoot + '/Engine/math" /I"' + $projectRoot + '/externals" "' + $projectRoot + '/tests/StageProgressTests.cpp" "' + $projectRoot + '/Game/enemy/EnemySpawnSystem.cpp" "' + $projectRoot + '/Game/StageProgress.cpp" /Fe:StageProgressTests.exe && StageProgressTests.exe"'
+$info.Arguments = '/d /s /c ""' + $vcvars + '" >nul && cl /nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $projectRoot + '/Game" /I"' + $projectRoot + '/externals/assimp/include" /I"' + $projectRoot + '/Game/enemy" /I"' + $projectRoot + '/Engine/math" /I"' + $projectRoot + '/externals" "' + $projectRoot + '/tests/StageProgressTests.cpp" "' + $projectRoot + '/Game/enemy/EnemySpawnSystem.cpp" "' + $projectRoot + '/Game/StageProgress.cpp" "' + $projectRoot + '/Engine/math/Matrix4x4.cpp" /Fe:StageProgressTests.exe && StageProgressTests.exe"'
 $info.WorkingDirectory = $testDir
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true

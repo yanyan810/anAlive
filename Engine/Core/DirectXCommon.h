@@ -158,6 +158,8 @@ public:
 
 private:
 
+    friend void RunEnemyPlacementEditorTests(class GameApp& app);
+
 	void DeviceInitialize();
 	void CommandInitialize();
 	void SwapChainSpawn();

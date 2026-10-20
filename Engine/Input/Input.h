@@ -58,6 +58,7 @@ public:
     bool IsKeyReleased(BYTE keyCode) const;*/
 
 private:
+    friend void RunCameraSequenceRuntimeTests(class GameApp& app);
     IDirectInput8* directInput_ = nullptr;
     IDirectInputDevice8* keyboardDevice_ = nullptr;
     BYTE keys_[256]{};

@@ -21,7 +21,7 @@ if not addon_utils.check('yanengine_level_exporter')[1]:
     assert bpy.ops.preferences.addon_enable(module='yanengine_level_exporter') == {'FINISHED'}
 e = sys.modules['yanengine_level_exporter']
 assert addon_utils.check(e.__name__) == (True, True)
-assert e.bl_info['version'] == (1, 12, 0)
+assert e.bl_info['version'] == (1, 13, 1)
 assert bpy.app.timers.is_registered(e.initialize_legacy_spawns)
 # Export/validation must be safe even before the deferred callback has run.
 data, _ = e.build_level(bpy.context.scene, bpy.context.evaluated_depsgraph_get())

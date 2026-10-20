@@ -18,6 +18,57 @@ namespace {
         std::numbers::pi_v<float> / 180.0f;
 }
 
+void GameScene::ApplySequenceCamera() {
+    const auto& pose=startSequence_.Pose();
+    camera_.SetTranslate(pose.position); camera_.SetRotate(pose.rotation); camera_.SetFovY(pose.fov); camera_.Update();
+}
+
+void GameScene::RefreshSequenceVisuals() {
+    ground_.Update(0); SyncShutterVisuals();
+    for (auto& visual:weaponVisuals_) visual->Update(0);
+    for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
+    for (auto& visual:projectileVisuals_) visual->Update(0);
+    if (startPlayerVisual_) startPlayerVisual_->Update(player_.GetTransform(),level_.playerVisual);
+}
+
+void GameScene::BeginStartSequence(GameApp& app,bool force) {
+    if (!startSequenceEnabled_ || showroom_ || placementTest_ || !stage_.IsPlaying()) return;
+    const auto it=std::find_if(level_.cameraSequences.begin(),level_.cameraSequences.end(),[force](const auto& d){return d.id=="start" && (force || d.enabled);});
+    if (it==level_.cameraSequences.end()) return;
+    sequenceEye_={player_.EyePosition(),player_.GetTransform().rotate,kNormalFovDegrees*kDegreesToRadians};
+    auto definition=*it; definition.enabled=true;
+    if (!startSequence_.Start(definition,sequenceEye_,player_.GetTransform().translate)) return;
+    if (!startPlayerVisual_) {
+        startPlayerVisual_=std::make_unique<StartPlayerVisual>();
+        startPlayerVisual_->Initialize(app.ObjCom(),app.Dx(),&camera_,enemyDefinitions_.Find("normal"),player_.Settings().cameraHeight);
+    }
+    sequenceOwnsCamera_=true; sequenceWaiting_=true;
+    player_.CurrentWeapon().CancelBurst();
+    adsBlend_=0; player_.SetLookSensitivityMultiplier(1);
+    app.GetInput()->SetCameraControlEnabled(false);
+#ifdef USE_IMGUI
+    ImGui::GetIO().ConfigFlags=(ImGui::GetIO().ConfigFlags & ~kCapturedMouseFlags) | savedMouseFlags_;
+#endif
+    initialCapturePending_=false;
+    ApplySequenceCamera(); RefreshSequenceVisuals(); UpdateShutterAudio(false);
+}
+
+void GameScene::FinishStartSequence(GameApp& app) {
+    if (!sequenceOwnsCamera_) return;
+    startSequence_.Skip(); startSequence_.Stop();
+    sequenceOwnsCamera_=false; sequenceWaiting_=false;
+    // Player has not moved while the sequence owned the camera. Its own refresh
+    // is the authoritative handoff, including the exact original Euler angles.
+    player_.RefreshVisuals(); camera_.SetFovY(sequenceEye_.fov); camera_.Update();
+    player_.CurrentWeapon().CancelBurst();
+    sequenceInputGuard_=true; suppressFireUntilRelease_=true; initialCapturePending_=true;
+    app.GetInput()->SetCameraControlEnabled(false);
+    RefreshSequenceVisuals();
+#ifdef _DEBUG
+    debugHistory_.Clear(); debugHistory_.Push(CaptureDebug());
+#endif
+}
+
 void GameScene::InitializeShutters(GameApp& app) {
     shutterVisuals_.clear(); shutterAudio_.reset();
     level_.shutters.Reset(level_.collision);
@@ -93,6 +144,8 @@ void GameScene::UpdateShutterAudio(bool running) {
 }
 
 void GameScene::OnEnter(GameApp& app) {
+    startSequence_=CameraSequence{}; sequenceOwnsCamera_=false; sequenceWaiting_=false; sequenceInputGuard_=false; sequenceDebugCommand_=0;
+    initialCapturePending_=true;
 #ifdef _DEBUG
     debugHistory_.Clear(); debugFrame_=0; debugStep_=0; debugJson_=DebugJsonEditor{};
     debugPaused_=debugPauseOnEnter_; debugPauseOnEnter_=false;
@@ -213,7 +266,18 @@ void GameScene::OnEnter(GameApp& app) {
         weaponPreview_->SetEnableLighting(0);
     }
 #endif
-    if (app.Scenes().IsTransitioning()) {
+    player_.RefreshVisuals();
+    if (!level_.cameraWarning.empty()) OutputDebugStringA(("Camera sequence disabled: "+level_.cameraWarning+"\n").c_str());
+    if (!level_.cameraOverrideWarning.empty()) OutputDebugStringA(("Camera override ignored: "+level_.cameraOverrideWarning+"\n").c_str());
+    if (!level_.playerVisualWarning.empty()) OutputDebugStringA(("Player Visual defaults used: "+level_.playerVisualWarning+"\n").c_str());
+    // Test launchers retain legacy timing; the dedicated camera test opts in.
+    const auto command=std::wstring(GetCommandLineW());
+    const bool legacyTest=command.find(L"-test")!=std::wstring::npos || command.find(L"-smoke")!=std::wstring::npos;
+    if (command.find(L"--no-start-camera")==std::wstring::npos &&
+        (!legacyTest || command.find(L"--camera-sequence-test")!=std::wstring::npos)) BeginStartSequence(app);
+    if (sequenceOwnsCamera_) {
+        ApplySequenceCamera(); RefreshSequenceVisuals();
+    } else if (app.Scenes().IsTransitioning()) {
         // Prepare a drawable first frame without processing the outgoing shot,
         // mouse delta, spawn triggers or goals while the incoming view is black.
         player_.RefreshVisuals(); ground_.Update(0);
@@ -232,6 +296,7 @@ void GameScene::OnEnter(GameApp& app) {
 #endif
 }
 void GameScene::OnExit(GameApp& app) {
+    startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
     if (shutterAudio_) shutterAudio_->StopAll();
     shutterAudio_.reset(); shutterVisuals_.clear();
 #if defined(_DEBUG) && defined(USE_IMGUI)
@@ -253,6 +318,39 @@ void GameScene::Update(GameApp& app, float dt) {
     // SceneManager consumes this request after Update, safely outside ImGui drawing.
     if (!NextScene().empty()) return;
     Input& input = *app.GetInput();
+    if (sequenceDebugCommand_!=0) {
+        const int command=sequenceDebugCommand_; sequenceDebugCommand_=0;
+        FinishStartSequence(app);
+        if (command==1) BeginStartSequence(app,true);
+    }
+    if (sequenceOwnsCamera_) {
+        input.SetCameraControlEnabled(false);
+        if (!startSequenceEnabled_) { FinishStartSequence(app); return; }
+        // SceneManager normally suppresses this Update during fades. This guard
+        // also protects direct debug/test callers and standalone fade previews.
+        if (!app.Scenes().IsTransitioning() && !app.Scenes().Fade().IsActive()) {
+            if (sequenceWaiting_) sequenceWaiting_=false; // discard the loading/fade delta
+            else {
+                bool typing=false;
+#ifdef USE_IMGUI
+                typing=ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive();
+#endif
+                if (input.HasFocus() && !typing && input.IsKeyTrigger(DIK_SPACE)) startSequence_.Skip();
+                else startSequence_.Update(dt);
+                if (!startSequence_.Active()) { FinishStartSequence(app); return; }
+            }
+        }
+        ApplySequenceCamera(); RefreshSequenceVisuals(); UpdateShutterAudio(false);
+        return; // Player, combat, triggers, pickups, weapon timers and game clock stay frozen.
+    }
+    bool sequenceControlsBlocked=false;
+    if (sequenceInputGuard_) {
+        // Do not carry the skip/held fire/reload/interaction into gameplay.
+        // Simulation resumes immediately; only input waits for a release frame.
+        sequenceControlsBlocked=true;
+        if (!input.IsKeyPressed(DIK_SPACE) && !input.IsKeyPressed(DIK_R) && !input.IsKeyPressed(DIK_E) &&
+            !input.IsLeftMousePressed() && !input.IsRightMousePressed()) sequenceInputGuard_=false;
+    }
     if (!stage_.IsPlaying()) {
         UpdateClearMenu(app);
         if (app.Scenes().IsTransitioning()) return;
@@ -349,7 +447,7 @@ void GameScene::Update(GameApp& app, float dt) {
         }
     }
 #endif
-    if (!stage_.IsPlaying() || !viewReady || input.IsKeyTrigger(DIK_ESCAPE)) {
+    if (sequenceControlsBlocked || !stage_.IsPlaying() || !viewReady || input.IsKeyTrigger(DIK_ESCAPE)) {
         input.SetCameraControlEnabled(false);
         if (input.IsKeyTrigger(DIK_ESCAPE)) initialCapturePending_ = false;
     }
@@ -673,6 +771,11 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
 }
 void GameScene::DrawRender(GameApp&) {
     ground_.Draw();
+    if (sequenceOwnsCamera_ && startPlayerVisual_) {
+        const auto delta=camera_.GetTranslate()-player_.EyePosition();
+        // Hide before the near plane enters the temporary head/body.
+        if (delta.x*delta.x+delta.y*delta.y+delta.z*delta.z>.85f*.85f) startPlayerVisual_->Draw();
+    }
     for (auto& shutter : shutterVisuals_) { shutter.model->Draw(); shutter.lamp->Draw(); }
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) {
@@ -700,11 +803,31 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 void GameScene::DrawImGui(GameApp& app) {
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_) { DrawWeaponWorkspace(app); return; }
+    ImGui::BeginDisabled(sequenceOwnsCamera_);
     DrawDebugTools(app);
+    ImGui::EndDisabled();
     if (showroom_) DrawShowroomTools(app);
 #endif
 #ifdef USE_IMGUI
     ImGui::Begin("FPS Controls");
+#ifdef _DEBUG
+    if (!showroom_ && ImGui::CollapsingHeader("Start Camera Sequence")) {
+        ImGui::Checkbox("Enable start sequence",&startSequenceEnabled_);
+        if (!level_.cameraWarning.empty()) ImGui::TextWrapped("%s",level_.cameraWarning.c_str());
+        ImGui::BeginDisabled(!startSequenceEnabled_);
+        if (ImGui::Button(sequenceOwnsCamera_ ? "Restart Sequence" : "Play Sequence")) sequenceDebugCommand_=1;
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Stop Sequence")) sequenceDebugCommand_=2;
+        ImGui::Text("%s | %.3f / %.3f s | point %zu",sequenceOwnsCamera_ ? (sequenceWaiting_ ? "Waiting for fade" : "Playing") : "Stopped",
+            startSequence_.Elapsed(),startSequence_.Duration(),startSequence_.PointIndex());
+        if (!startSequence_.Definition().points.empty())
+            ImGui::Text("Point ID: %s",startSequence_.Definition().points[startSequence_.PointIndex()].id.c_str());
+        const auto p=camera_.GetTranslate(),r=camera_.GetRotate();
+        ImGui::Text("Camera %.3f %.3f %.3f | rotation %.3f %.3f %.3f | FOV %.2f deg",p.x,p.y,p.z,r.x,r.y,r.z,camera_.GetFovY()/kDegreesToRadians);
+        ImGui::TextUnformatted("Space: skip. Gameplay / HUD suspended during sequence.");
+    }
+#endif
 #ifdef _DEBUG
     if (ImGui::Button(showroom_ ? "Return to Game" : "Open Showroom")) RequestChangeScene_(showroom_ ? "Game" : "Showroom");
     ImGui::SameLine();
@@ -727,7 +850,7 @@ void GameScene::DrawImGui(GameApp& app) {
     const auto& transform = player_.GetTransform();
     ImGui::Text("Position: %.2f, %.2f, %.2f", transform.translate.x, transform.translate.y, transform.translate.z);
     ImGui::Text("Yaw / Pitch: %.1f / %.1f deg", transform.rotate.y * 57.2957795f, transform.rotate.x * 57.2957795f);
-    ImGui::BeginDisabled(captured);
+    ImGui::BeginDisabled(captured || sequenceOwnsCamera_);
     if (ImGui::Button("Reset Player HP (Debug)")) player_.ResetHPForDebug();
     auto& settings = player_.Settings();
     ImGui::SliderFloat("Eye height", &settings.cameraHeight, 0.5f, 2.5f);
@@ -865,7 +988,7 @@ void GameScene::DrawImGui(GameApp& app) {
             std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z), goal.activated ? "true" : "false");
     }
     if (ImGui::Button("Restart Stage")) RequestChangeScene_(SceneName());
-    ImGui::BeginDisabled(!stage_.IsPlaying() || captured);
+    ImGui::BeginDisabled(!stage_.IsPlaying() || captured || sequenceOwnsCamera_);
     if (ImGui::TreeNode("Test positions (debug teleport)")) {
         const auto moveTo = [&](const std::string& id, const Vector3& position) {
             if (ImGui::Button(("Move to " + id).c_str()))
@@ -965,6 +1088,7 @@ void GameScene::DrawImGui(GameApp& app) {
 }
 
 void GameScene::DrawOverlay2D(GameApp&) {
+    if (sequenceOwnsCamera_) return;
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) return;
 #endif

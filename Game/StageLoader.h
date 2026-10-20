@@ -1,5 +1,8 @@
 #pragma once
 #include "StageShutter.h"
+#include "CameraSequence.h"
+#include "CameraSequenceOverrides.h"
+#include "PlayerVisualSettings.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <filesystem>
@@ -12,6 +15,13 @@ public:
     Vector3 playerPosition{3,0,-6}, playerRotation{};
     StageWorld collision;
     StageShutterSystem shutters;
+    std::vector<CameraSequenceDefinition> cameraSequences;
+    std::vector<CameraSequenceDefinition> blenderCameraSequences;
+    CameraSequenceOverrides cameraOverrides;
+    std::string cameraOverrideWarning;
+    std::string cameraWarning;
+    PlayerVisualSettings playerVisual;
+    std::string playerVisualWarning;
     const std::string& Error() const { return error_; }
     bool Load(const std::string& path) {
         try {
@@ -20,7 +30,18 @@ public:
             const auto data=nlohmann::json::parse(input);
             if (data.at("version")!=1) throw std::runtime_error("Unsupported stage version");
             StageLoader next;
+            try { next.playerVisual=PlayerVisualSettings::FromStage(data); }
+            catch (const std::exception& error) { next.playerVisualWarning=error.what(); }
+            // Optional presentation errors must not invalidate playable stage data.
+            try { next.cameraSequences=CameraSequence::Parse(data); }
+            catch (const std::exception& error) { next.cameraWarning=error.what(); }
             next.id=data.at("stage").at("id").get<std::string>();
+            next.blenderCameraSequences=next.cameraSequences;
+            if (next.cameraOverrides.Load(CameraSequenceOverrides::PathFor(path),next.id)) {
+                auto merged=CameraSequenceOverrides::Merge(next.cameraSequences,next.cameraOverrides.sequences);
+                if (merged.size()<=128) next.cameraSequences=std::move(merged);
+                else next.cameraOverrideWarning="Camera overrides exceed the 128 Sequence ID limit";
+            } else next.cameraOverrideWarning=next.cameraOverrides.error;
             next.model=data.at("stage").at("model").get<std::string>();
             next.collision.playerGravity=data.at("stage").value("playerGravity",false);
             const std::filesystem::path modelPath(next.model);

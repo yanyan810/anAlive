@@ -30,9 +30,12 @@ void EnemyPlacementEditorScene::OnEnter(GameApp& app) {
     player_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     camera_.SetFovY(pi/3); camera_.SetFarClip(600);
     if (!definitions_.Load("resources/Data/enemies.json")) { status_=definitions_.Error(); return; }
+    playerVisual_=std::make_unique<StartPlayerVisual>();
+    playerVisual_->Initialize(app.ObjCom(),app.Dx(),&camera_,definitions_.Find("normal"),player_.Settings().cameraHeight);
     LoadStage(app,stageId_);
 }
 void EnemyPlacementEditorScene::OnExit(GameApp& app) {
+    StopCameraPreview();
     app.Win()->SetCloseGuard({});
     if (test_) StopTest(app);
     app.GetInput()->SetCameraControlEnabled(false);
@@ -45,6 +48,7 @@ void EnemyPlacementEditorScene::OnExit(GameApp& app) {
 #endif
 }
 void EnemyPlacementEditorScene::LoadStage(GameApp& app,const std::string& id) {
+    StopCameraPreview();
     StageLoader level; EnemySpawnSystem spawns;
     const auto path="resources/levels/"+id+"/"+id+".json";
     if (!level.Load(path) || !level.ValidateAssets() || !spawns.Load(path,definitions_)) {
@@ -57,6 +61,8 @@ void EnemyPlacementEditorScene::LoadStage(GameApp& app,const std::string& id) {
     spawns.SetPlacements(EnemyPlacements{}); // Original Blender counts for initial drafts/regeneration.
     app.Dx()->WaitForGPU(); previews_.clear(); shutters_.clear();
     stageId_=id; level_=std::move(level); spawns_=std::move(spawns);
+    LoadPlayerVisual(path);
+    LoadCameraSequences(path);
     metadata_.Load(path,level_.model);
     for (const auto& warning:metadata_.warnings) warnings_.push_back(warning);
     placements_=std::move(placements); placements_.stage=id;
@@ -87,6 +93,49 @@ void EnemyPlacementEditorScene::LoadStage(GameApp& app,const std::string& id) {
     camera_.SetOrthographic(false); camera_.SetTranslate(level_.playerPosition+Vector3{0,3,-4}); camera_.SetRotate({.35f,0,0}); camera_.Update();
     ready_=true; SyncPreviews(app); ApplyVisibility(); environment_.Update(0);
     for (auto& shutter:shutters_) shutter->Update(0);
+    SyncPlayerVisual();
+}
+
+void EnemyPlacementEditorScene::LoadPlayerVisual(const std::string& path) {
+    try {
+        const auto bytes=PlayerVisualSettings::ReadBytes(path);
+        const auto data=nlohmann::json::parse(bytes);
+        if (data.at("stage").at("id")!=stageId_) throw std::runtime_error("Player Visual stage ID mismatch");
+        const auto settings=PlayerVisualSettings::FromStage(data);
+        originalStageBytes_=bytes; playerVisualSettings_=playerVisualBaseline_=settings;
+        playerVisualLoadError_=false; playerVisualStatus_="読み込み完了。見た目だけに適用します。";
+        SyncPlayerVisual();
+    } catch (const std::exception& error) {
+        playerVisualLoadError_=true; playerVisualStatus_=error.what();
+        // Show the same safe fallback as the game, never the previous stage's draft.
+        playerVisualSettings_=playerVisualBaseline_=PlayerVisualSettings{}; SyncPlayerVisual();
+    }
+}
+
+bool EnemyPlacementEditorScene::SavePlayerVisual(const std::string& path) {
+    if (playerVisualLoadError_ || !ready_) return false;
+    std::string error;
+    if (!playerVisualSettings_.SaveStage(path,stageId_,originalStageBytes_,error)) {
+        playerVisualStatus_="保存失敗: "+error; return false;
+    }
+    originalStageBytes_=PlayerVisualSettings::ReadBytes(path); playerVisualBaseline_=playerVisualSettings_;
+    playerVisualStatus_="Player Visualのみ保存しました。敵配置は変更していません。";
+    return true;
+}
+
+void EnemyPlacementEditorScene::SyncPlayerVisual() {
+    if (playerVisual_) playerVisual_->Update({{1,1,1},level_.playerRotation,level_.playerPosition},playerVisualSettings_);
+}
+
+void EnemyPlacementEditorScene::FocusPlayerVisual() {
+    // Only the editor viewing camera moves. Player/FPS spawn pose remains intact.
+    mode_=CameraMode::Free; camera_.SetOrthographic(false);
+    const float yaw=level_.playerRotation.y;
+    const Vector3 offset{2.1f*std::cos(yaw)+1.75f*std::sin(yaw),1.8f,-2.1f*std::sin(yaw)+1.75f*std::cos(yaw)};
+    const auto position=level_.playerPosition+offset,target=level_.playerPosition+Vector3{0,.9f,0};
+    const auto delta=target-position;
+    camera_.SetTranslate(position); camera_.SetRotate({-std::atan2(delta.y,std::hypot(delta.x,delta.z)),std::atan2(delta.x,delta.z),0});
+    camera_.Update(); floor_=metadata_.FloorAt(level_.playerPosition.y); ApplyVisibility();
 }
 
 void EnemyPlacementEditorScene::Generate(const EnemySpawnPoint& spawn,EnemyPlacementGroup& group,bool preserveIds,bool disableFailures) {
@@ -189,6 +238,10 @@ EnemyPlacement* EnemyPlacementEditorScene::SelectedEnemy() {
     return nullptr;
 }
 Vector3 EnemyPlacementEditorScene::SelectedPosition() const {
+    if (cameraSequenceMode_) {
+        for (const auto& d:cameraDrafts_) if (d.id==selectedCameraSequence_)
+            for (size_t i=0;i<d.points.size();++i) if (d.points[i].id==selectedCameraPoint_) return CameraPointPose(i).position;
+    }
     const auto* point=SelectedSpawn(); if (!point) return level_.playerPosition;
     const auto group=placements_.groups.find(point->id);
     if (group!=placements_.groups.end()) for (const auto& p:group->second.enemies) if (p.id==selectedId_)
@@ -196,6 +249,7 @@ Vector3 EnemyPlacementEditorScene::SelectedPosition() const {
     return point->position;
 }
 void EnemyPlacementEditorScene::FocusSelection() {
+    if (cameraSequenceMode_) { FocusCameraPoint(); return; }
     const auto target=SelectedPosition();
     if (mode_==CameraMode::Top) camera_.SetTranslate({target.x,target.y+topHeight_,target.z});
     else if (mode_==CameraMode::FPS) {
@@ -219,10 +273,15 @@ void EnemyPlacementEditorScene::SwitchCamera(CameraMode mode) {
         const float base=floor_>0 ? metadata_.floors[static_cast<size_t>(floor_-1)] : level_.playerPosition.y;
         camera_.SetTranslate({p.x,base+topHeight_,p.z}); camera_.SetRotate({pi*.5f,0,0});
         camera_.SetOrthographic(true,zoom_); showRoof_=showCeiling_=showUpper_=false;
+    } else if (mode==CameraMode::Front || mode==CameraMode::Side) {
+        const auto target=SelectedPosition();
+        camera_.SetTranslate(mode==CameraMode::Front ? target+Vector3{0,0,-topHeight_} : target+Vector3{-topHeight_,0,0});
+        camera_.SetRotate(mode==CameraMode::Front ? Vector3{} : Vector3{0,pi*.5f,0}); camera_.SetOrthographic(true,zoom_);
     } else { camera_.SetOrthographic(false); camera_.SetRotate({std::min(camera_.GetRotate().x,1.4f),camera_.GetRotate().y,0}); }
     mode_=mode; camera_.Update(); ApplyVisibility();
 }
 void EnemyPlacementEditorScene::StartTest(GameApp& app) {
+    StopCameraPreview();
     if (loadError_ || !ready_) return;
     savedCameraPosition_=camera_.GetTranslate(); savedCameraRotation_=camera_.GetRotate(); beforeTestMode_=mode_;
     test_=std::make_unique<GameScene>(false,stageId_); test_->ConfigurePlacementTest(placements_);
@@ -239,7 +298,7 @@ void EnemyPlacementEditorScene::StopTest(GameApp& app) {
     app.ImGui()->SetWeaponWorkspace(true); ImGui::GetIO().ConfigFlags &= ~mouseFlags;
 #endif
     mode_=beforeTestMode_; camera_.SetTranslate(savedCameraPosition_); camera_.SetRotate(savedCameraRotation_);
-    camera_.SetOrthographic(mode_==CameraMode::Top,zoom_); camera_.Update(); SyncPreviews(app);
+    camera_.SetOrthographic(OrthographicView(),zoom_); camera_.Update(); SyncPreviews(app);
     environment_.Update(0); for (auto& shutter:shutters_) shutter->Update(0);
     status_="編集へ戻りました。テスト中の敵の移動は配置データへ反映しません。";
 }
@@ -251,7 +310,11 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
     if (!pendingAction_.empty()) {
         const auto action=std::exchange(pendingAction_,{});
         if (action=="test") StartTest(app);
+        else if (HandleCameraAction(action)) {}
         else if (action=="stop") StopTest(app);
+        else if (action=="savePlayerVisual") SavePlayerVisual(StagePath());
+        else if (action=="reloadPlayerVisual") LoadPlayerVisual(StagePath());
+        else if (action=="focusPlayerVisual") FocusPlayerVisual();
         else if (action=="title") { app.Scenes().TransitionTo("Title"); return; }
         else if (action=="quit") { app.Win()->SetCloseGuard({}); PostMessageW(app.Win()->GetHwnd(),WM_CLOSE,0,0); return; }
         else LoadStage(app,action=="reload" ? stageId_ : action);
@@ -262,6 +325,16 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
         test_->Update(app,dt); test_->ClearNextScene_(); return;
     }
     if (!ready_) return;
+    if (cameraPreviewActive_) {
+        input.SetCameraControlEnabled(false);
+#ifdef USE_IMGUI
+        ImGui::GetIO().ConfigFlags &= ~mouseFlags;
+#endif
+        UpdateCameraPreview(dt);
+        environment_.Update(0); for (auto& shutter:shutters_) shutter->Update(0);
+        SyncPreviews(app); SyncPlayerVisual();
+        return;
+    }
     RECT rect{}; bool viewReady=true;
 #ifdef USE_IMGUI
     viewReady=app.ImGui()->GetSceneImageRect(rect);
@@ -274,6 +347,10 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
     else if (input.IsKeyTrigger(DIK_TAB)) input.SetCameraControlEnabled(!input.IsCameraControlEnabled());
     if (input.HasFocus() && !typing && input.IsKeyTrigger(DIK_F6)) RequestAction("title");
     if (input.HasFocus() && !typing && input.IsKeyTrigger(DIK_F)) FocusSelection();
+    if (cameraSequenceMode_ && input.HasFocus() && !typing && input.IsKeyPressed(DIK_LCONTROL)) {
+        if (input.IsKeyTrigger(DIK_Z)) { if (!drawPathPoints_.empty()) drawPathPoints_.pop_back(); else UndoCameraSequence(false); }
+        if (input.IsKeyTrigger(DIK_Y) && drawPathPoints_.empty()) UndoCameraSequence(true);
+    }
 #ifdef USE_IMGUI
     ImGui::GetIO().ConfigFlags=(ImGui::GetIO().ConfigFlags & ~mouseFlags)|(input.IsCameraControlEnabled() ? mouseFlags : 0);
 #endif
@@ -283,7 +360,7 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
         auto p=camera_.GetTranslate(),r=camera_.GetRotate(); const auto mouse=input.GetMouseDelta();
         if (mode_==CameraMode::Free) { r.x=std::clamp(r.x+static_cast<float>(mouse.y)*.003f,-1.55f,1.55f); r.y+=static_cast<float>(mouse.x)*.003f; }
         const float step=speed_*dt*(input.IsKeyPressed(DIK_LSHIFT) ? 3.f : 1.f);
-        const Vector3 right{std::cos(r.y),0,-std::sin(r.y)},forward{std::sin(r.y),0,std::cos(r.y)};
+        const Vector3 right{std::cos(r.y),0,-std::sin(r.y)},forward=(mode_==CameraMode::Front || mode_==CameraMode::Side) ? Vector3{0,1,0} : Vector3{std::sin(r.y),0,std::cos(r.y)};
         if (input.IsKeyPressed(DIK_W)) p+=forward*step;
         if (input.IsKeyPressed(DIK_S)) p-=forward*step;
         if (input.IsKeyPressed(DIK_D)) p+=right*step;
@@ -298,13 +375,18 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
     }
     camera_.Update(); environment_.Update(0); for (auto& shutter:shutters_) shutter->Update(0);
     SyncPreviews(app);
+    SyncPlayerVisual();
 }
 void EnemyPlacementEditorScene::DrawRender(GameApp& app) {
     if (test_) { test_->DrawRender(app); return; }
     if (!ready_) return;
     environment_.Draw(); for (auto& shutter:shutters_) shutter->Draw();
+    if (showPlayerVisual_ && playerVisual_ && (cameraPreviewActive_ || VisibleFloor(metadata_.FloorAt(level_.playerPosition.y)))) {
+        const auto distance=camera_.GetTranslate()-(level_.playerPosition+Vector3{0,player_.Settings().cameraHeight,0});
+        if (StageLength(distance)>(cameraPreviewActive_ ? .85f : .4f)) playerVisual_->Draw();
+    }
     if (showEnemies_) for (const auto& [spawn,g]:placements_.groups) if (const auto* point=spawns_.FindPoint(spawn))
-        for (const auto& p:g.enemies) if (VisibleFloor(metadata_.FloorAt(EnemyPlacements::WorldPosition(p,point->position,point->rotation).y)))
+        for (const auto& p:g.enemies) if (cameraPreviewActive_ || VisibleFloor(metadata_.FloorAt(EnemyPlacements::WorldPosition(p,point->position,point->rotation).y)))
             if (const auto it=previews_.find(p.id); it!=previews_.end()) it->second.enemy->Draw(false);
 }
 
@@ -346,7 +428,7 @@ void EnemyPlacementEditorScene::DrawImGui(GameApp& app) {
                 ImGui::TextWrapped("変更後: %s",row.dump().c_str());
                 if (old) ImGui::TextWrapped("変更前: %s",old->dump().c_str());
             }
-            if (!Dirty()) ImGui::TextUnformatted("読み込み時からの編集差分はありません。現在の自動配置を保存できます。");
+            if (!PlacementsDirty()) ImGui::TextUnformatted("読み込み時からの敵配置の差分はありません。現在の自動配置を保存できます。");
         } ImGui::EndChild();
         if (ImGui::Button("確認して保存")) {
             if (placements_.Save(PlacementPath(),definitions_,originalBytes_)) {
@@ -359,7 +441,7 @@ void EnemyPlacementEditorScene::DrawImGui(GameApp& app) {
     }
     if (discardModal_) { ImGui::OpenPopup("未保存の変更があります"); discardModal_=false; }
     if (ImGui::BeginPopupModal("未保存の変更があります",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("現在の変更を破棄して移動・再読み込みしますか？");
+        ImGui::TextUnformatted(confirmAction_=="cameraReload" ? "カメラ経路の未保存変更を破棄して再読み込みしますか？ 敵配置・Player Visualの編集は保持します。" : "現在の変更を破棄して移動・再読み込みしますか？");
         if (ImGui::Button("変更を破棄して続ける")) { pendingAction_=confirmAction_; ImGui::CloseCurrentPopup(); }
         ImGui::SameLine(); if (ImGui::Button("編集を続ける")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
@@ -374,6 +456,7 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
 #ifdef USE_IMGUI
     ImGui::TextUnformatted("Enemy Placement Editor");
     ImGui::TextUnformatted(Dirty() ? "● 未保存の変更あり" : "読み込み・保存時の状態");
+    ImGui::BeginDisabled(cameraPreviewActive_);
     if (ImGui::BeginCombo("ステージ",stageId_.c_str())) {
         for (const auto& entry:std::filesystem::directory_iterator("resources/levels")) if (entry.is_directory()) {
             const auto id=entry.path().filename().string();
@@ -382,6 +465,33 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
         }
         ImGui::EndCombo();
     }
+    if (ImGui::RadioButton("Enemy Placement",!cameraSequenceMode_)) pendingAction_="enemyMode";
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Camera Sequence",cameraSequenceMode_)) pendingAction_="cameraMode";
+    ImGui::EndDisabled();
+    if (!cameraSequenceMode_ && ImGui::CollapsingHeader("Player Visual",ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("仮プレイヤーモデルを表示",&showPlayerVisual_);
+        ImGui::Checkbox("プレイヤーとモデルの正面矢印",&showPlayerDirections_);
+        ImGui::BeginDisabled(!ready_ || playerVisualLoadError_ || cameraPreviewActive_);
+        ImGui::SliderFloat("Yaw offset##PlayerVisualSlider",&playerVisualSettings_.yawOffsetDegrees,-180,180,"%.1f deg",ImGuiSliderFlags_AlwaysClamp);
+        if (ImGui::InputFloat("Yaw (degrees)##PlayerVisualInput",&playerVisualSettings_.yawOffsetDegrees,1,15,"%.2f")) {
+            auto& yaw=playerVisualSettings_.yawOffsetDegrees;
+            yaw=std::isfinite(yaw) ? std::clamp(yaw,-180.f,180.f) : playerVisualBaseline_.yawOffsetDegrees;
+        }
+        if (ImGui::Button("Player Visualのみ保存")) pendingAction_="savePlayerVisual";
+        ImGui::SameLine(); if (ImGui::Button("読込値へ戻す##PlayerVisualReset")) playerVisualSettings_=playerVisualBaseline_;
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(cameraPreviewActive_);
+        if (ImGui::Button("Player Visualを再読込（編集破棄）")) pendingAction_="reloadPlayerVisual";
+        if (ImGui::Button("Player Visualへカメラ移動")) pendingAction_="focusPlayerVisual";
+        ImGui::EndDisabled();
+        ImGui::TextUnformatted(PlayerVisualDirty() ? "Player Visual: 未保存" : "Player Visual: 読込・保存時の状態");
+        ImGui::TextColored({.2f,1,.5f,1},"Green: FPS forward (spawn)");
+        ImGui::TextColored({1,.65f,.15f,1},"Orange: model forward");
+        ImGui::TextWrapped("Normalの補正は +90度。FPS・Playerの向きや敵配置は変更しません。表示切替はプレビュー専用です。");
+        ImGui::TextWrapped("%s",playerVisualStatus_.c_str());
+    }
+    if (cameraSequenceMode_) { DrawCameraSequenceControls(app); return; }
     ImGui::TextWrapped("Tab: UI／カメラ操作　Esc: カーソル解放\nWASD: 移動　Q/E: 上下　Shift: 高速\nF: 選択へ移動　Alt＋視点操作: 選択を中心に回転\n俯瞰: ホイールでズーム・中ドラッグで平行移動\nCtrl＋クリック: 複数選択　Shift＋ドラッグ: 範囲選択\nF6: タイトル　F8: テスト終了");
     ImGui::Text("操作: %s",app.GetInput()->IsCameraControlEnabled() ? "カメラ" : "UI・配置選択");
     ImGui::SeparatorText("カメラ");
@@ -575,6 +685,7 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
 }
 
 void EnemyPlacementEditorScene::DrawViewportTools(GameApp& app) {
+    if (cameraSequenceMode_) { DrawCameraSequenceViewport(app); return; }
 #ifdef USE_IMGUI
     RECT rect{};
     if (!ready_ || !app.ImGui()->GetSceneImageRect(rect)) return;
@@ -600,6 +711,20 @@ void EnemyPlacementEditorScene::DrawViewportTools(GameApp& app) {
         }
     }
     draw->PushClipRect(lo,hi,true);
+    if (showPlayerDirections_ && VisibleFloor(metadata_.FloorAt(level_.playerPosition.y))) {
+        const auto arrow=[&](const Vector3& origin,const Vector3& direction,ImU32 color,const char* label) {
+            const auto tip=origin+direction*1.8f;
+            const Vector3 side{-direction.z,0,direction.x};
+            line(origin,tip,color,3);
+            line(tip,tip-direction*.3f+side*.18f,color,3);
+            line(tip,tip-direction*.3f-side*.18f,color,3);
+            ImVec2 text; if (project(tip+Vector3{0,.06f,0},text)) draw->AddText(text,color,label);
+        };
+        const float yaw=level_.playerRotation.y;
+        // Different heights keep the two arrows readable when they align.
+        arrow(level_.playerPosition+Vector3{0,.06f,0},{std::sin(yaw),0,std::cos(yaw)},IM_COL32(50,255,130,255),"FPS forward");
+        arrow(level_.playerPosition+Vector3{0,.18f,0},StartPlayerVisual::Forward(yaw,playerVisualSettings_),IM_COL32(255,170,40,255),"Model forward");
+    }
     if (showGrid_) {
         const float y=floor_>0 ? metadata_.floors[static_cast<size_t>(floor_-1)]+.025f : .025f;
         const auto center=SelectedPosition(); const float size=std::max(grid_,.5f);

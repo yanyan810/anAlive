@@ -1,6 +1,7 @@
 #include "../Utility/AssetPreparation.h"
 #include "../../tests/AssetLoadingTests.h"
 #include "../../tests/ScreenTransitionTests.h"
+#include "../../tests/CameraSequenceRuntimeTests.h"
 #include "../../tests/HotelStageRuntimeTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
@@ -72,6 +73,15 @@ int GameApp::Run() {
     if (!Initialize_()) {
         Finalize_();
         return -1;
+    }
+    if (HasLaunchArgument(L"--camera-sequence-test")) {
+        int result=0;
+        try { RunCameraSequenceRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::filesystem::create_directories("generated/camera-tests");
+            std::ofstream("generated/camera-tests/runtime-failure.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
     }
     if (HasLaunchArgument(L"--enemy-ai-scene-test")) {
         int result=0; std::filesystem::create_directories("generated/enemy-ai-tests");

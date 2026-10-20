@@ -76,7 +76,9 @@ static json CompositionConfiguration(const char* mode, const char* activation) {
         data["spawnTriggers"]=json::array({{{"id","T"},{"groupId","A"},{"position",{0,0,0}},{"size",{2,2,2}}}});
     return data;
 }
+#include "EnemyPlacementTests.h"
 int main() {
+    RunEnemyPlacementTests();
     for (const char* mode : {"Sequential", "Simultaneous"}) for (const char* activation : {"StageStart", "OnTrigger", "Manual"}) {
         Harness h; h.Load(CompositionConfiguration(mode,activation));
         if (std::string(activation)=="Manual") assert(h.system.ActivateSpawn("A"));

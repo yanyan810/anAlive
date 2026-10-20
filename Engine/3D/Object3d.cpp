@@ -517,6 +517,7 @@ void Object3d::Draw()
 			model_->ComputeNodeGlobalMatrices(anim, animTime, nodeGlobals);
 
 			for (const auto& inst : model_->GetNodeInstances()) {
+				if (!IsMeshVisible(inst.meshIndex)) continue;
 				if (model_->IsMeshSkinned(inst.meshIndex)) {
 					continue;
 				}
@@ -625,6 +626,7 @@ void Object3d::Draw()
 			const Matrix4x4 baseWorld = CalculateWorldMatrix();
 
 			for (const auto& inst : model_->GetNodeInstances()) {
+				if (!IsMeshVisible(inst.meshIndex)) continue;
 				const Matrix4x4 nodeWorld = nodeGlobals[inst.nodeIndex];
 
 				Matrix4x4 world = Matrix4x4::Multiply(nodeWorld, baseWorld);
@@ -655,6 +657,14 @@ void Object3d::Draw()
 		} else {
 			cmd->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceModel->GetGPUVirtualAddress());
 
+            const auto drawVisible=[&](const D3D12_GPU_DESCRIPTOR_HANDLE* texture) {
+                if (hiddenMeshes_.empty()) {
+                    if (texture) model_->Draw(cmd,1,texture); else model_->Draw(cmd);
+                    return;
+                }
+                for (uint32_t mesh=0;mesh<model_->GetMeshCount();++mesh)
+                    if (IsMeshVisible(mesh)) model_->DrawOneMesh(cmd,mesh,2,texture);
+            };
 			if (video_ && video_->IsReady()) {
 				video_->ReadNextFrame();
 				video_->UploadToGpu(cmd);
@@ -671,20 +681,20 @@ void Object3d::Draw()
 					if (enableOutline_ && object3dCommon) {
 						object3dCommon->SetGraphicsPipelineStateOutline();
 						cmd->SetGraphicsRootConstantBufferView(8, effectParamResource_->GetGPUVirtualAddress());
-						model_->Draw(cmd, 1, &handle);
+						drawVisible(&handle);
 						SetNormalPipelineState();
 					}
 					
-					model_->Draw(cmd, 1, &handle);
+					drawVisible(&handle);
 				} else {
 					if (enableOutline_ && object3dCommon) {
 						object3dCommon->SetGraphicsPipelineStateOutline();
 						cmd->SetGraphicsRootConstantBufferView(8, effectParamResource_->GetGPUVirtualAddress());
-						model_->Draw(cmd);
+						drawVisible(nullptr);
 						SetNormalPipelineState();
 					}
 
-					model_->Draw(cmd);
+					drawVisible(nullptr);
 				}
 			}
 		}

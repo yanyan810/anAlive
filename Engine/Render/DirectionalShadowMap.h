@@ -7,8 +7,14 @@
 // One depth-only directional pass. The owning scene determines its casters and coverage.
 class DirectionalShadowMap {
 public:
+    DirectionalShadowMap()=default;
+    DirectionalShadowMap(const DirectionalShadowMap&)=delete;
+    DirectionalShadowMap& operator=(const DirectionalShadowMap&)=delete;
+    ~DirectionalShadowMap() { if (srvManager_) srvManager_->Retire(srvIndex_,depth_); }
     static constexpr UINT kResolution=2048;
     void Initialize(DirectXCommon* dx, SrvManager* srv) {
+        if (srvManager_) srvManager_->Retire(srvIndex_,depth_);
+        srvManager_=srv; srvIndex_=0;
         dx_=dx;
         const auto check=[](HRESULT hr) { if (FAILED(hr)) throw std::runtime_error("Cannot initialize directional shadow map"); };
         D3D12_HEAP_PROPERTIES heap{};
@@ -30,6 +36,7 @@ public:
         dsv.Format=DXGI_FORMAT_D32_FLOAT; dsv.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2D;
         dx_->GetDevice()->CreateDepthStencilView(depth_.Get(),&dsv,dsvHeap_->GetCPUDescriptorHandleForHeapStart());
         const auto index=srv->Allocate();
+        srvIndex_=index;
         srv->CreateSRVTexture2D(index,depth_.Get(),DXGI_FORMAT_R32_FLOAT,1);
         srv_=srv->GetGPUDescriptionHandle(index);
 
@@ -98,6 +105,8 @@ public:
     ID3D12Resource* Resource() const { return depth_.Get(); }
     size_t DrawCount() const { return drawCount_; }
 private:
+    SrvManager* srvManager_=nullptr;
+    uint32_t srvIndex_=0;
     DirectXCommon* dx_=nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> depth_;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvHeap_;

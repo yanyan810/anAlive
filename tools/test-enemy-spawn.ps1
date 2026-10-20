@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Force $testDir | Out-Null
 $vcvars = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $env:ComSpec
-$info.Arguments = '/d /s /c ""' + $vcvars + '" >nul && cl /nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $projectRoot + '/Game/enemy" /I"' + $projectRoot + '/Engine/math" /I"' + $projectRoot + '/externals" /I"' + $projectRoot + '/externals/assimp/include" "' + $projectRoot + '/tests/EnemySpawnTests.cpp" "' + $projectRoot + '/Game/enemy/EnemySpawnSystem.cpp" /Fe:EnemySpawnTests.exe && EnemySpawnTests.exe"'
+$info.Arguments = '/d /s /c ""' + $vcvars + '" >nul && cl /nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $projectRoot + '/Game/enemy" /I"' + $projectRoot + '/Engine/math" /I"' + $projectRoot + '/externals" /I"' + $projectRoot + '/externals/assimp/include" "' + $projectRoot + '/tests/EnemySpawnTests.cpp" "' + $projectRoot + '/Game/enemy/EnemySpawnSystem.cpp" "' + $projectRoot + '/Engine/math/Matrix4x4.cpp" /Fe:EnemySpawnTests.exe && EnemySpawnTests.exe"'
 $info.WorkingDirectory = $testDir
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true

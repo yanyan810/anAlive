@@ -1,5 +1,6 @@
 ﻿#include "SrvManager.h"
 #include <cassert>
+#include <stdexcept>
 
 const uint32_t SrvManager::kMaxSRVCount = 512;
 
@@ -19,14 +20,31 @@ void SrvManager::Initialize(DirectXCommon* dxCommon)
 
     // ★ 0番は ImGui 用に予約（授業スライドの前提に合わせる）
     useIndex = 1;
+    retired_.clear(); freeIndices_.clear(); allocated_.assign(kMaxSRVCount,false); activeCount_=0;
 }
 
 uint32_t SrvManager::Allocate()
 {
-    if (useIndex >= kMaxSRVCount) {
-        assert(!"SRV index overflow");
+    uint32_t index=0;
+    if (!freeIndices_.empty()) { index=freeIndices_.back(); freeIndices_.pop_back(); }
+    else {
+        if (useIndex>=kMaxSRVCount) throw std::runtime_error("SRV descriptor capacity exhausted (512 live or awaiting GPU retirement)");
+        index=useIndex++;
     }
-    return useIndex++;
+    allocated_[index]=true; ++activeCount_; return index;
+}
+
+void SrvManager::Retire(uint32_t index,Microsoft::WRL::ComPtr<ID3D12Resource> resource,
+    Microsoft::WRL::ComPtr<ID3D12Resource> extra) {
+    if (!index || index>=allocated_.size() || !allocated_[index]) return;
+    allocated_[index]=false; --activeCount_;
+    retired_.push_back({index,std::move(resource),std::move(extra)});
+}
+void SrvManager::CollectRetired() {
+    if (retired_.empty()) return;
+    dxCommon_->WaitForGPU();
+    for (const auto& entry:retired_) freeIndices_.push_back(entry.index);
+    retired_.clear();
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SrvManager::GetCPUDescriptionHandle(uint32_t index)
@@ -66,6 +84,7 @@ void SrvManager::CreateSRVTexture2D(uint32_t srvIndex, ID3D12Resource* pResource
 
 void SrvManager::PreDraw()
 {
+    CollectRetired();
     ID3D12DescriptorHeap* heaps[] = { descriptorHeap.Get() };
     dxCommon_->GetCommandList()->SetDescriptorHeaps(1, heaps);
 }

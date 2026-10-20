@@ -127,7 +127,9 @@ void Enemy::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera
     common_ = common; dx_ = dx; camera_ = camera;
     object_.Initialize(common, dx);
     object_.SetCamera(camera);
-    object_.SetModel(kBossModelPath);
+    if (placementPreview_ && splitAssetsAvailable_)
+        object_.SetModel(ModelManager::GetInstance()->FindModel(kBossModelPath)); // Transform/bounds only; static parts render the preview.
+    else object_.SetModel(kBossModelPath);
     object_.StopAnimation();
     object_.SetRotate(rotation_);
     object_.SetScale(definition_.VisualScale(scale_));
@@ -162,7 +164,7 @@ void Enemy::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera
         obj.SetPointLightIntensity(0.0f);
         obj.SetSpotLightIntensity(0.0f);
     }
-    if (splitVisuals_) PrepareFaceBatch();
+    if (splitVisuals_ && !placementPreview_) PrepareFaceBatch();
     explosionTime_ = 0;
     blastHitTime_ = lastBlastDamage_ = 0;
     ApplyDefinition(definition_);
@@ -230,7 +232,7 @@ void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
             visual.object->SetDirection({.3f,-1,.5f}); visual.object->SetIntensity(1);
             visual.object->SetPointLightIntensity(0); visual.object->SetSpotLightIntensity(0);
         }
-        PrepareFaceBatch();
+        if (!placementPreview_) PrepareFaceBatch();
     } else {
         if (asset_) {
             asset_.reset();
@@ -262,6 +264,7 @@ void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
     if (common_ && dx_) UpdateVisuals(0);
 }
 void Enemy::PrepareExplosionVisual() {
+    if (placementPreview_) return;
     // 起爆フレームにGPUリソースを生成しないよう、範囲表示用の球を先に用意する。
     if (common_ && dx_ && definition_.type == EnemyType::Bomber && !explosionVisual_) {
         Model::ModelData geometry;

@@ -16,6 +16,7 @@
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
 #include <cstdint>
+#include <functional>
 #include"DirectXTex.h"
 #include "d3dx12.h"
 
@@ -36,6 +37,7 @@ public:
 	void Update();
 
 	HWND GetHwnd() const { return hwnd; }
+    void SetCloseGuard(std::function<bool()> guard) { closeGuard_=std::move(guard); }
 
 	//getter
 	HINSTANCE GetHInstance() const { return wc.hInstance; }
@@ -47,6 +49,7 @@ public:
 	void Finalize();
 
 private:
+    inline static std::function<bool()> closeGuard_;
 	HWND hwnd = nullptr; //ウィンドウハンドル
 	//ウィンドウクラスの設定
 	WNDCLASS wc{};

@@ -29,6 +29,7 @@ public:
     void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
     Sprite enemyAITestEntry_;
+    Sprite enemyPlacementEntry_;
 private:
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);

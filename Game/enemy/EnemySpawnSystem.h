@@ -1,6 +1,7 @@
 #pragma once
 #include "Vector3.h"
 #include "EnemyDefinition.h"
+#include "EnemyPlacements.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -80,9 +81,25 @@ public:
     using IsAlive = std::function<bool(uint64_t)>;
     // Transactional validation: bad data never leaves a partially configured map.
     bool Load(const std::string& path, const EnemyDefinitions& definitions = EnemyDefinitions{});
+    // Replaces placement policy, never activation, timing, maximum-alive or triggers.
+    void SetPlacements(const EnemyPlacements& placements) {
+        placements_=placements; points_=basePoints_; placementWarnings_.clear();
+        for (const auto& [id,group]:placements_.groups) {
+            auto found=std::find_if(points_.begin(),points_.end(),[&](const auto& p){return p.id==id;});
+            if (found==points_.end()) { placementWarnings_.push_back("参照先EnemySpawnが変更・削除されています: "+id); continue; }
+            if (!group.overrideEnabled) continue;
+            if (found->activation==SpawnActivation::Legacy) {
+                placementWarnings_.push_back("旧共有トリガーの総数は維持され、配置を順番に繰り返します: "+id); continue;
+            }
+            found->spawnCount=static_cast<int>(std::count_if(group.enemies.begin(),group.enemies.end(),[](const auto& p){return p.enabled;}));
+        }
+        Reset();
+    }
+    const std::vector<std::string>& PlacementWarnings() const { return placementWarnings_; }
     void SetSeed(uint32_t seed) { random_.seed(seed); initialRandom_ = random_; }
     void Reset() {
         elapsedTime_ = 0;
+        placementCursor_.clear();
         random_ = initialRandom_;
         for (auto& group : groups_) group.spawned = 0;
         for (auto& point : points_) {
@@ -132,6 +149,19 @@ public:
     // processTriggers=false prepares Stage Start enemies during scene initialization,
     // including FadeIn, without detecting player entry or advancing gameplay time.
     void Update(float dt, const Vector3& player, const SpawnEnemy& spawn, const IsAlive& isAlive, bool processTriggers = true) {
+        const auto spawnResolved=[&](const EnemySpawnPoint& point,const std::string& source,const std::string& enemyId) {
+            const auto found=placements_.groups.find(point.id);
+            if (found==placements_.groups.end() || !found->second.overrideEnabled) return spawn(point,source,enemyId);
+            std::vector<const EnemyPlacement*> enabled;
+            for (const auto& p:found->second.enemies) if (p.enabled) enabled.push_back(&p);
+            if (enabled.empty()) return uint64_t{UINT64_MAX};
+            const size_t index=point.activation!=SpawnActivation::Legacy && source==point.id ? static_cast<size_t>(point.spawned) : placementCursor_[point.id]++;
+            const auto& p=*enabled[index%enabled.size()];
+            auto resolved=point;
+            resolved.position=EnemyPlacements::WorldPosition(p,point.position,point.rotation);
+            resolved.rotation={0,point.rotation.y+p.yaw,0};
+            return spawn(resolved,source,p.enemy);
+        };
         const double elapsed = std::isfinite(dt) ? std::max(0.0, static_cast<double>(dt)) : 0.0;
         elapsedTime_ += elapsed;
         for (auto& group : groups_) {
@@ -142,7 +172,7 @@ public:
                 const double due = group.startTime + (group.mode == SpawnMode::Sequential ? group.interval * group.spawned : 0);
                 if (elapsedTime_ + 1e-7 < due) break;
                 const auto& entry = group.enemies[group.spawned];
-                spawn(*FindPoint(entry.spawnPointId), group.id, entry.enemyId);
+                spawnResolved(*FindPoint(entry.spawnPointId), group.id, entry.enemyId);
                 ++group.spawned;
             }
         }
@@ -182,7 +212,8 @@ public:
                 if (trigger.selection == SpawnPointSelection::Random)
                     index = std::uniform_int_distribution<size_t>(0, trigger.spawnPointIds.size() - 1)(random_);
                 const auto* point = FindPoint(trigger.spawnPointIds[index]);
-                living.push_back(spawn(*point, trigger.id, {}));
+                const auto spawnedId=spawnResolved(*point, trigger.id, {});
+                if (spawnedId!=UINT64_MAX) living.push_back(spawnedId);
                 ++trigger.nextPoint;
                 ++trigger.spawned;
                 trigger.nextSpawn += trigger.spawnInterval;
@@ -203,7 +234,8 @@ public:
                     point.nextSpawn = elapsedTime_; // no burst debt while full
                     break;
                 }
-                living.push_back(spawn(point, point.id, point.NextEnemyId()));
+                const auto spawnedId=spawnResolved(point, point.id, point.NextEnemyId());
+                if (spawnedId!=UINT64_MAX) living.push_back(spawnedId);
                 ++point.spawned;
                 point.nextSpawn += interval;
             }
@@ -225,6 +257,10 @@ private:
         return true;
     }
     std::vector<EnemySpawnPoint> points_;
+    std::vector<EnemySpawnPoint> basePoints_;
+    EnemyPlacements placements_;
+    std::map<std::string,size_t> placementCursor_;
+    std::vector<std::string> placementWarnings_;
     std::vector<EnemySpawnTrigger> triggers_;
     std::vector<SpawnGroup> groups_;
     double elapsedTime_ = 0;

@@ -31,6 +31,9 @@ LRESULT CALLBACK WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
 
 	//メッセージに応じてゲーム固有の処理を行う
 	switch (msg) {
+    case WM_CLOSE:
+        if (closeGuard_ && !closeGuard_()) return 0;
+        break;
 		//ウィンドウが破棄された
 	case WM_DESTROY:
 		//OSに対して、アプリの終了を伝える
@@ -98,6 +101,7 @@ void WinApp::Update() {
 }
 
 void WinApp::Finalize() {
+    closeGuard_={};
 
 	CloseWindow(hwnd);
 	CoUninitialize();

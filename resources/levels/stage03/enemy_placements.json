@@ -1,0 +1,435 @@
+{
+  "coordinates": "engine-spawn-local-radians",
+  "nextId": 28,
+  "spawns": [
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-1",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Lower_01"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-2",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Lower_02"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-3",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Lower_03"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-4",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Upper_01"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-5",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Upper_02"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-6",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_F1_Upper_03"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-7",
+          "offset": [
+            1.9153213500976563,
+            0.0,
+            0.0
+          ],
+          "yaw": 1.2217302322387695
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-8",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214504241943359
+          ],
+          "yaw": 1.1693702936172485
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-9",
+          "offset": [
+            -1.239084243774414,
+            0.0,
+            -0.1835918426513672
+          ],
+          "yaw": 1.919861912727356
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Individual",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-10",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-11",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214504241943359
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-12",
+          "offset": [
+            -0.11374855041503906,
+            0.0,
+            1.2960948944091797
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.001"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-13",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-14",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214504241943359
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-15",
+          "offset": [
+            -0.11374759674072266,
+            0.0,
+            1.2960948944091797
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.002"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-16",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-17",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214513778686523
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-18",
+          "offset": [
+            -0.11374759674072266,
+            0.0,
+            1.2960948944091797
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.003"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-19",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-20",
+          "offset": [
+            0.678380012512207,
+            0.0,
+            -0.6214513778686523
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-21",
+          "offset": [
+            -0.11374664306640625,
+            0.0,
+            1.2960948944091797
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.004"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-22",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-23",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214513778686523
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-24",
+          "offset": [
+            -0.11374664306640625,
+            0.0,
+            1.2960946559906006
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.005"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-25",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-26",
+          "offset": [
+            0.6783790588378906,
+            0.0,
+            -0.6214513778686523
+          ],
+          "yaw": 0.0
+        },
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-27",
+          "offset": [
+            -0.11374664306640625,
+            0.0,
+            1.2960946559906006
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "enemySpawn.006"
+    }
+  ],
+  "stage": "stage03",
+  "version": 1
+}

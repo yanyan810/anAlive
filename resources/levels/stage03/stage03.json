@@ -7465,7 +7465,7 @@
     {
       "id": "enemySpawn",
       "position": [
-        27.801408767700195,
+        28.096866607666016,
         12.0,
         19.0
       ],
@@ -7475,7 +7475,7 @@
         -0.0
       ],
       "activation": "StageStart",
-      "spawnCount": 5,
+      "spawnCount": 3,
       "maxAlive": 5,
       "mode": "Simultaneous",
       "spawnInterval": 0.5,
@@ -7483,37 +7483,199 @@
       "enemyComposition": [
         {
           "enemy": "normal",
-          "count": 2
-        },
-        {
-          "enemy": "fast",
-          "count": 1
-        },
-        {
-          "enemy": "tank",
-          "count": 1
-        },
-        {
-          "enemy": "bomber",
-          "count": 1
+          "count": 3
         }
       ],
       "enemyPool": [
         {
           "id": "normal",
-          "weight": 2
-        },
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.001",
+      "position": [
+        19.984594345092773,
+        12.0,
+        19.0
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
         {
-          "id": "fast",
-          "weight": 1
-        },
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
         {
-          "id": "tank",
-          "weight": 1
-        },
+          "id": "normal",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.002",
+      "position": [
+        13.179086685180664,
+        12.0,
+        19.0
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
         {
-          "id": "bomber",
-          "weight": 1
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.003",
+      "position": [
+        9.50265121459961,
+        12.0,
+        4.790093421936035
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.004",
+      "position": [
+        16.17721939086914,
+        12.0,
+        4.790093421936035
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.005",
+      "position": [
+        22.96554183959961,
+        12.0,
+        4.790093421936035
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "id": "enemySpawn.006",
+      "position": [
+        29.74382209777832,
+        12.0,
+        4.790093421936035
+      ],
+      "rotation": [
+        -0.0,
+        -3.141592502593994,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 3,
+      "maxAlive": 5,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.5,
+      "initialDelay": 0.0,
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 3
+        }
+      ],
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 3
         }
       ]
     }

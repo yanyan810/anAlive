@@ -179,7 +179,13 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
         points_ = std::move(points);
         triggers_ = std::move(triggers);
         groups_ = std::move(groups);
-        Reset();
+        basePoints_=points_;
+        EnemyPlacements placements;
+        const auto stageId=data.contains("stage") ? data.at("stage").value("id",std::string{}) : std::string{};
+        if (!stageId.empty() && !placements.Load(EnemyPlacements::PathFor(path),definitions,stageId)) {
+            SetPlacements(EnemyPlacements{});
+            placementWarnings_.push_back("配置データを読み込めないため元のEnemySpawnを使用します: "+placements.error);
+        } else SetPlacements(placements);
         error_.clear();
         return true;
     } catch (const std::exception& exception) {

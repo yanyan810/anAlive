@@ -134,6 +134,7 @@ void GameScene::OnEnter(GameApp& app) {
         if (!showroom_ && !stage_.LoadGoals(fallback)) OutputDebugStringA(stage_.Error().c_str());
     }
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
+    if (placementTest_) spawnSystem_.SetPlacements(*placementTest_);
     InitializeShutters(app);
     weaponVisuals_.clear();
     if (const auto* initial = weapons_.InitialWeapon()) player_.CurrentWeapon().Equip(*initial);
@@ -222,8 +223,10 @@ void GameScene::OnEnter(GameApp& app) {
         for (auto& visual : weaponVisuals_) visual->Update(0);
         suppressFireUntilRelease_ = true;
     } else {
+        if (placementTest_) initialCapturePending_=false;
         Update(app, 0.0f);
     }
+    if (placementTest_) suppressFireUntilRelease_=true;
 #ifdef _DEBUG
     if (debugHistory_.Size()==0) debugHistory_.Push(CaptureDebug());
 #endif
@@ -270,7 +273,7 @@ void GameScene::Update(GameApp& app, float dt) {
         debugHistory_.Clear(); debugHistory_.Push(CaptureDebug());
 #endif
     }
-    if (player_.GetHP() <= 0) { RequestChangeScene_("GameOver"); return; }
+    if (player_.GetHP() <= 0 && !placementTest_) { RequestChangeScene_("GameOver"); return; }
     dt = std::isfinite(dt) ? std::max(dt, 0.0f) : 0.0f;
 #if defined(_DEBUG) && defined(USE_IMGUI)
     if (showroom_) {
@@ -416,6 +419,7 @@ void GameScene::Update(GameApp& app, float dt) {
 }
 
 bool GameScene::ReturnToTitle(GameApp& app) {
+    if (placementTest_) return false;
     return !stage_.IsPlaying() && app.Scenes().TransitionTo("Title", .5f, .5f);
 }
 

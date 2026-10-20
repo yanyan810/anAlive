@@ -9,6 +9,10 @@
 
 class Animator {
 public:
+    Animator()=default;
+    Animator(const Animator&)=delete;
+    Animator& operator=(const Animator&)=delete;
+    ~Animator();
 	struct ManualJointTransform {
 		Vector3 translate{ 0.0f, 0.0f, 0.0f };
 		Vector3 rotate{ 0.0f, 0.0f, 0.0f };
@@ -54,6 +58,9 @@ public:
 	void SetSrvManager(SrvManager* srv) { srvManager_ = srv; }
 
 private:
+    void ReleaseSkinCluster();
+    std::array<uint32_t,4> skinDescriptors_{};
+    Microsoft::WRL::ComPtr<ID3D12Resource> sourceVertex_;
 	void ApplyAnimation(Model::Skeleton& skeleton, const Animation& animation, float time);
 	void ApplyManualJointTransforms(Model::Skeleton& skeleton);
 	static void BlendSkeletons(Model::Skeleton& dst, const Model::Skeleton& a, const Model::Skeleton& b, float t); // ★追加

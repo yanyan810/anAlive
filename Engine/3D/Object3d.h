@@ -161,6 +161,14 @@ public:
 	void SetIsVisible(bool visible) { isVisible_ = visible; }
 	bool GetIsVisible() const { return isVisible_; }
 
+    // Per-instance editor render mask. Empty means the existing full model draw.
+    // ModelManager's shared mesh resources and all collision data remain untouched.
+    void SetHiddenMeshes(std::vector<uint32_t> meshes) { hiddenMeshes_=std::move(meshes); }
+    const std::vector<uint32_t>& GetHiddenMeshes() const { return hiddenMeshes_; }
+    bool IsMeshVisible(uint32_t mesh) const {
+        return std::find(hiddenMeshes_.begin(),hiddenMeshes_.end(),mesh)==hiddenMeshes_.end();
+    }
+
 	void SetEnableOutline(bool enable) { enableOutline_ = enable; }
 	bool GetEnableOutline() const { return enableOutline_; }
 	void SetOutlineColor(const Vector4& color) { outlineColor_ = color; }
@@ -221,6 +229,7 @@ private:
 	std::string environmentTexturePath_;
 
 	bool isVisible_=true;
+    std::vector<uint32_t> hiddenMeshes_;
 
 private:
 

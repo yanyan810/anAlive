@@ -28,12 +28,14 @@ public:
     void DrawOverlay2D(GameApp& app) override;
     void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     Sprite enemyAITestEntry_;
     Sprite enemyPlacementEntry_;
+#endif
 private:
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     bool LoadLayout();

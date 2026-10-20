@@ -17,7 +17,7 @@
 #include "AudioSystem.h"
 #include "StartPlayerVisual.h"
 #include <array>
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugTimeline.h"
 #include "DebugJsonEditor.h"
 #ifdef USE_IMGUI
@@ -65,7 +65,7 @@ private:
     friend void RunScreenTransitionTests(GameApp& app);
     friend void RunHotelStageRuntimeTests(GameApp& app);
     friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunEnemyPoolTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);
 #endif
@@ -90,7 +90,7 @@ private:
     std::string stageId_;
     bool showEnemyLabels_=true, showWeaponLabels_=true, showEnemyMarkers_=true;
     bool showEnemyCollision_=false, showEnemyParts_=false, resetEnemiesPending_=false;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     struct DebugFrame {
         Player::DebugState player;
         std::vector<Enemy::DebugState> enemies;

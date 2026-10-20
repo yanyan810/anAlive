@@ -1,5 +1,5 @@
 #pragma once
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "IScene.h"
 #include "Object3d.h"
 #include "Physics/ClothComponent.h"

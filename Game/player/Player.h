@@ -27,7 +27,7 @@ public:
     const WeaponRuntime& CurrentWeapon() const { return currentWeapon_; }
     void ApplyDamage(float damage) { if (std::isfinite(damage) && damage > 0) hp_ = std::max(0.0f, hp_-damage); }
     void ResetHPForDebug() { hp_ = 100.0f; }
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     struct DebugState {
         Transform transform;
         FPSMotion::Settings settings;

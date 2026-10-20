@@ -71,7 +71,7 @@ public:
     void DrawImGui();
     const EnemyDefinition& Definition() const { return definition_; }
     void ApplyDefinition(const EnemyDefinition& definition);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     Vector3 HeadCenterForDebug() const {
         for (size_t i=0;i<parts_.size();++i) if (parts_[i].role==EnemyPartRole::Head && !parts_[i].Destroyed())
             return EnemyPartTransformPoint((parts_[i].bounds.min+parts_[i].bounds.max)*.5f,PartWorldMatrix(i));
@@ -147,7 +147,7 @@ private:
     EnemyAI spawnAI_;
     std::vector<Model*> spawnModels_;
     void DetachPart(size_t index,const Vector3& direction,bool forceFaces=false);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     std::string dimensionFileStatus_;
 #endif
     void PrepareExplosionVisual();

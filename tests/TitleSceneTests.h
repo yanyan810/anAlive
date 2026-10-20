@@ -600,7 +600,8 @@ inline void RunTitleSceneTests(GameApp& app) {
     capture(L"generated/title-tests/title-black.png",true);
     app.Scenes().Update(app,0);
     auto* game=dynamic_cast<GameScene*>(app.Scenes().Current());
-    check(game && game->stageLoaded_ && app.Scenes().CurrentName()=="Game" && app.Scenes().Fade().Alpha()==1,"Stage01 did not enter fully black");
+    check(game && game->stageLoaded_ && game->level_.id=="stage03" &&
+        app.Scenes().CurrentName()=="Stage03" && app.Scenes().Fade().Alpha()==1,"Hotel (Stage03) did not enter fully black");
     check(!game->player_.CurrentWeapon().InfiniteAmmo(), "Title unlimited ammunition leaked into gameplay");
     check(app.Render()->GetOffscreen()->GetClearColor().x==title->savedClearColor_.x &&
         app.Render()->GetOffscreen()->GetClearColor().y==title->savedClearColor_.y &&
@@ -611,16 +612,30 @@ inline void RunTitleSceneTests(GameApp& app) {
     app.Scenes().Update(app,1); // Simulate the host delta containing the stage load.
     check(app.Scenes().Fade().Alpha()==1,"Stage loading time advanced FadeIn");
     const auto initial=game->player_.GetTransform();
+    std::vector<Vector3> initialEnemyPositions;
+    for (auto* enemy : game->enemies_) initialEnemyPositions.push_back(enemy->GetPosition());
     check(game->stage_.Time()==0 && game->bullets_.Count()==0,"Gameplay ran during black initialization");
     app.Scenes().Update(app,.375f);
     check(app.Scenes().Fade().Alpha()==.5f && game->stage_.Time()==0 && game->debugFrame_==0 &&
-        StageLength(game->player_.GetTransform().translate-initial.translate)==0 && game->enemies_.empty(),"FadeIn did not freeze gameplay");
+        StageLength(game->player_.GetTransform().translate-initial.translate)==0 &&
+        game->enemies_.size()==initialEnemyPositions.size(),"FadeIn did not freeze gameplay");
+    for (size_t i=0;i<initialEnemyPositions.size();++i)
+        check(StageLength(game->enemies_[i]->GetPosition()-initialEnemyPositions[i])==0,"Hotel enemy moved during FadeIn");
     capture(L"generated/title-tests/fadein-half.png");
     app.Scenes().Update(app,.375f);
     check(!app.Scenes().IsTransitioning() && app.Scenes().Fade().Alpha()==0 && game->stage_.Time()==0,"FadeIn did not finish transparently");
     capture(L"generated/title-tests/game.png");
     app.Scenes().Update(app,.016f);
     check(game->stage_.Time()>0,"Gameplay did not resume after FadeIn");
+    const auto advancedTime=game->stage_.Time();
+    game->debugPaused_=true;
+    game->debugStep_=-1;
+    app.Scenes().Update(app,.016f);
+    check(game->stage_.Time()==0 && game->debugFrame_==0,"Debug rewind did not restore the initial Hotel frame");
+    game->debugStep_=1;
+    app.Scenes().Update(app,.016f);
+    check(game->stage_.Time()==advancedTime && game->debugFrame_==1,"Debug forward did not restore Hotel gameplay");
+    game->debugPaused_=false;
     check(!app.Scenes().TransitionTo("Missing") && !app.Scenes().TransitionTo("Title",-1,1),"Invalid transition accepted");
     check(app.Scenes().TransitionTo("Title",0,0),"Common transition cannot target another scene");
     app.Scenes().Change(app,"Title");
@@ -641,6 +656,6 @@ inline void RunTitleSceneTests(GameApp& app) {
         "GAME START failed after both decorative words were destroyed");
     title->UpdateWorld(app,.45f,false);
     check(app.Scenes().IsTransitioning(),"Both decorative words' destruction blocked the GAME START fade");
-    std::ofstream("generated/title-tests/result.txt") << "PASS: destruction spotlight impact-frame shutoff / GPU render difference, flicker cannot relight destroyed text, shared instruction/start lamp, saved tuning preservation, enemy respawn and text preview/restore relight; independent lamp off/relight GPU renders, finite bursts / frame-rate consistency, base intensity preservation, disable restores light, separate gameplay randomness, flicker JSON validation / legacy steady lighting; SHOOT TO START twelve original glyphs / 30 fragments, actual stage/plinth bullet impact, gap and wall occlusion, launch/spin/flash, no game start or allocations, independent destruction and preview/restore of both decorative words, GAME START transitions after both are destroyed; UNALIVE seven glyphs / 30 fragments, actual bullet impact / gap and wall occlusion, no game start or fade, duplicate impact guard, destruction persists after lifetime, preview restores mesh/raycast, fresh title restores UNALIVE, GAME START still transitions after UNALIVE destruction; nine whole glyphs with original geometry and impact positions preserved, 30 title fragments / 40 preallocated slots, preview without damage/transition and automatic restore, maximum count / zero flash and shake durations, radial letter launch / XYZ spin / deferred impact-frame time, short flash and lit-material restoration, camera shake and no residual offset, small fragments near camera, shadow size filtering, no impact/preview renderer allocations, foreground floor ambient visibility under full shadows, room shadow exclusion with object shadows retained, legacy lighting defaults, directional shadow depth readback/range/geometry, shadow ON/OFF render comparison, shadow frustum validation, lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Stage01 load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
+    std::ofstream("generated/title-tests/result.txt") << "PASS: destruction spotlight impact-frame shutoff / GPU render difference, flicker cannot relight destroyed text, shared instruction/start lamp, saved tuning preservation, enemy respawn and text preview/restore relight; independent lamp off/relight GPU renders, finite bursts / frame-rate consistency, base intensity preservation, disable restores light, separate gameplay randomness, flicker JSON validation / legacy steady lighting; SHOOT TO START twelve original glyphs / 30 fragments, actual stage/plinth bullet impact, gap and wall occlusion, launch/spin/flash, no game start or allocations, independent destruction and preview/restore of both decorative words, GAME START transitions after both are destroyed; UNALIVE seven glyphs / 30 fragments, actual bullet impact / gap and wall occlusion, no game start or fade, duplicate impact guard, destruction persists after lifetime, preview restores mesh/raycast, fresh title restores UNALIVE, GAME START still transitions after UNALIVE destruction; nine whole glyphs with original geometry and impact positions preserved, 30 title fragments / 40 preallocated slots, preview without damage/transition and automatic restore, maximum count / zero flash and shake durations, radial letter launch / XYZ spin / deferred impact-frame time, short flash and lit-material restoration, camera shake and no residual offset, small fragments near camera, shadow size filtering, no impact/preview renderer allocations, foreground floor ambient visibility under full shadows, room shadow exclusion with object shadows retained, legacy lighting defaults, directional shadow depth readback/range/geometry, shadow ON/OFF render comparison, shadow frustum validation, lighting JSON round trip, validation/save/backup/external-edit protection, all three spot GPU slots, scene background restoration, title assets and Enemy destruction, one Head model/all letters/wall occlusion, reusable FadeOut/FadeIn duration/completion/clamp, .45s explosion hold, .75s out/in, duplicate request protection, actual all-black frames after HUD/post effects, black-frame presentation before Hotel (Stage03) load, frozen gameplay during FadeIn, resume and immediate-change cancellation.\n";
 }
 

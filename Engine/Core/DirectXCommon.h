@@ -182,7 +182,7 @@ private:
 
 private:
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 	friend void RunClothRuntimeTests(class GameApp& app);
 #endif
 

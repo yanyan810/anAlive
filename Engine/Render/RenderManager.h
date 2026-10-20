@@ -80,7 +80,7 @@ public:
     OffscreenPass* GetOffscreen() const { return offscreen_.get(); }
 
 private:
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void CreateCopyImageRootSignature();

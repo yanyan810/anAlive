@@ -90,7 +90,7 @@ private:
         bucket.slots.push_back({std::move(enemy),false});
         if (runtime) {
             ++runtimeAllocations_;
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
             OutputDebugStringA(("Enemy Pool exhausted: "+bucket.definition.id+"; Runtime Allocations: "+std::to_string(runtimeAllocations_)+"\n").c_str());
 #endif
         }

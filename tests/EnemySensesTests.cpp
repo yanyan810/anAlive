@@ -1,5 +1,6 @@
 #include "EnemyAI.h"
 #include "EnemyDefinition.h"
+#include "StageLoader.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -103,6 +104,42 @@ int main() try {
     }
     {
         EnemyDefinitions definitions; Check(definitions.Load("../../resources/Data/enemies.json"),"definitions failed");
+        // The hotel doorway must admit the normal enemy's actual movement body.
+        // A stale 3.22 m cylinder saw the player but could not follow the 2.11 m model outside.
+        {
+            StageLoader hotel;
+            Check(hotel.Load("../../resources/levels/stage03/stage03.json"),"hotel stage failed");
+            const auto& normal=*definitions.Find("normal");
+            const Vector3 corridor{28,12,11};
+            Vector3 p{28,12,19},r{0,-1.57079632679f,0};
+            EnemyNavigation route;
+            Check(route.Plan(&hotel.collision,p,corridor,normal.collisionRadius,normal.collisionHeight),
+                "normal movement body cannot pass hotel room doorway");
+            EnemyAI ai; ai.settings.senses=normal.senses; ai.settings.moveSpeed=normal.moveSpeed;
+            for (int frame=0;frame<300;++frame)
+                ai.Update(p,r,corridor,1.0f/60,false,&hotel.collision,normal.collisionRadius,normal.collisionHeight,1.6f);
+            Check(ai.hasLastSeen && ai.visible && p.z<12.8f,
+                "normal enemy did not spot and follow player into corridor");
+            // Replanning from arbitrary positions must still find the narrow opening.
+            for (float x:{27.4185f,29.336f}) {
+                ai={}; ai.settings.senses=normal.senses;
+                p={x,12,18.5f}; r={0,-1.57079632679f,0};
+                ai.Update(p,r,{28,12,12},.4f,false,&hotel.collision,normal.collisionRadius,normal.collisionHeight,1.6f);
+                for (int frame=0;frame<600;++frame) {
+                    const auto before=p;
+                    ai.Update(p,r,{29,12,11.5f},1.0f/60,false,&hotel.collision,normal.collisionRadius,normal.collisionHeight,1.6f);
+                    p=hotel.collision.Move(before,p,normal.collisionRadius,normal.collisionHeight);
+                }
+                Check(p.z<12.8f && ai.visible,"doorway edge caused chase to stall during replanning");
+            }
+            // A physical wall slide must leave a valid starting point for navigation.
+            p=hotel.collision.Move({28,12,13.5f},{27.5f,12,13},normal.collisionRadius,normal.collisionHeight);
+            Check(route.Plan(&hotel.collision,p,{29,12,11.5f},normal.collisionRadius,normal.collisionHeight),
+                "wall contact stranded enemy with occupied navigation start");
+            p=hotel.collision.Move({28.45f,12,12.48f},{28.55f,12,12.5f},normal.collisionRadius,normal.collisionHeight);
+            Check(route.Plan(&hotel.collision,p,{29,12,11.5f},normal.collisionRadius,normal.collisionHeight),
+                "shallow wall slide stranded enemy with occupied navigation start");
+        }
         nlohmann::json data; std::ifstream("../../resources/Data/enemies.json")>>data;
         for (auto& d:data["enemies"]) d.erase("senses");
         data["enemies"][0]["detectionRange"]=17;

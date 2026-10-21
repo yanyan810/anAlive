@@ -7700,19 +7700,6 @@
         3.0,
         4.0
       ]
-    },
-    {
-      "id": "Goal_Outdoor_CityConnection.001",
-      "position": [
-        35.19488525390625,
-        13.32666301727295,
-        12.808305740356445
-      ],
-      "size": [
-        3.0,
-        3.0,
-        4.0
-      ]
     }
   ],
   "shutters": [
@@ -7778,7 +7765,7 @@
   "cameraSequences": [
     {
       "id": "start",
-      "enabled": true,
+      "enabled": false,
       "points": [
         {
           "id": "StartCamera_00",

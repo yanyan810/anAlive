@@ -29,7 +29,10 @@ struct EnemyNavigation {
             const auto bounds=TransformAABB(c.local,c.world);
             if (bounds.max.y<=a.y+.01f || bounds.min.y>=a.y+height-.01f) continue;
             float extent[3];
-            for (int i=0;i<3;++i) extent[i]=(radius+.015f)*std::hypot(c.inverse.m[0][i],c.inverse.m[2][i])+
+            // Use the same body as StageWorld::Move. Its stand-off is along the
+            // travel direction, so a shallow wall slide can leave less than 1 mm
+            // of perpendicular clearance; extra padding would strand that body.
+            for (int i=0;i<3;++i) extent[i]=radius*std::hypot(c.inverse.m[0][i],c.inverse.m[2][i])+
                 height*.5f*std::abs(c.inverse.m[1][i]);
             StageHit hit;
             if (StageWorld::CastBox(c,a+Vector3{0,height*.5f,0},direction,length,{extent[0],extent[1],extent[2]},hit)) return false;
@@ -55,8 +58,19 @@ struct EnemyNavigation {
         if (!Clear(world,target,target,radius,height)) {
             state=EnemyPathState::NoPath; failure=EnemyPathFailure::GoalOccupied; return false;
         }
-        constexpr int side=65, center=side/2, total=side*side, budget=1800;
         const float cell=std::max(.75f,radius*2+.1f);
+        if (PlanGrid(world,start,target,radius,height,cell)) return true;
+        // A doorway can be wider than the body but narrower than a coarse grid
+        // cell. Retry nearby disconnected routes at half spacing, with the same
+        // bounded node count/budget; retain the coarse range for distant targets.
+        const float fineCell=cell*.5f;
+        if (failure==EnemyPathFailure::Disconnected &&
+            std::abs(target.x-start.x)<=fineCell*31 && std::abs(target.z-start.z)<=fineCell*31)
+            return PlanGrid(world,start,target,radius,height,fineCell);
+        return false;
+    }
+    bool PlanGrid(const StageWorld* world,const Vector3& start,const Vector3& target,float radius,float height,float cell) {
+        constexpr int side=65, center=side/2, total=side*side, budget=1800;
         const int gx=static_cast<int>(std::round((target.x-start.x)/cell))+center;
         const int gz=static_cast<int>(std::round((target.z-start.z)/cell))+center;
         if (gx<1 || gz<1 || gx>=side-1 || gz>=side-1) { state=EnemyPathState::Limited; failure=EnemyPathFailure::OutsideGrid; return false; }
@@ -92,7 +106,7 @@ struct EnemyNavigation {
         }
         path.push_back(target);
         for (int id=found;id!=source;id=nodes[id].parent) path.push_back(point(id));
-        std::reverse(path.begin(),path.end()); state=EnemyPathState::Following; return true;
+        std::reverse(path.begin(),path.end()); state=EnemyPathState::Following; failure=EnemyPathFailure::None; return true;
     }
     bool Move(Vector3& position,Vector3& rotation,const Vector3& target,float speed,float dt,
         const StageWorld* world,float radius,float height) {

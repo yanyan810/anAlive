@@ -1,6 +1,6 @@
 {
 	"asset":{
-		"generator":"Khronos glTF Blender I/O v5.0.21",
+		"generator":"Khronos glTF Blender I/O v5.2.40",
 		"version":"2.0"
 	},
 	"scene":0,
@@ -36,7 +36,7 @@
 	],
 	"meshes":[
 		{
-			"name":"Cube.703",
+			"name":"Cube.702",
 			"primitives":[
 				{
 					"attributes":{

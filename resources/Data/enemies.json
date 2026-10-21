@@ -20,7 +20,7 @@
       "attackDamage": 10,
       "attackInterval": 1,
       "attackRange": 1.5,
-      "collisionHeight": 3.2200000286102295,
+      "collisionHeight": 2.11,
       "collisionRadius": 0.36000001430511475,
       "detectionRange": 20,
       "senses": { "viewDistance": 20, "fieldOfView": 110, "detectionTime": 0.35, "loseSightTime": 2.0, "arrivalDistance": 0.6, "wanderRadius": 6, "wanderSpeedMultiplier": 0.45, "wanderWaitTime": 1.5, "investigateSpeedMultiplier": 1.0, "searchDuration": 4.0, "searchRadius": 5.0, "searchSpeedMultiplier": 0.85, "investigateUnreachableTime": 6.0, "memoryRetentionTime": 6.0, "memoryRecordInterval": 0.25, "memoryRecordDistance": 0.5, "searchDirectionPriority": 0.85 },

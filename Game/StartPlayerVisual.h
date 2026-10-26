@@ -3,6 +3,7 @@
 #include "ModelManager.h"
 #include "EnemyDefinition.h"
 #include "PlayerVisualSettings.h"
+#include "Raycast.h"
 
 // Presentation only. Replace this binding with the final player asset later.
 class StartPlayerVisual {
@@ -49,6 +50,30 @@ public:
         object_.SetRotate({0,settings.WorldYaw(player.rotate.y),0}); object_.Update(0);
     }
     const Vector3& Rotation() const { return object_.GetRotate(); }
+    // Rotate the same model around its center and lift the rotated bounds onto
+    // the floor. Shared by collapse/reanimation; no model replacement occurs.
+    void UpdatePose(const Vector3& foot,const Vector3& rotation,const Vector4& color) {
+        AABB bounds{};
+        object_.GetModel()->GetLocalAABB(bounds);
+        const auto center=(bounds.min+bounds.max)*.5f;
+        // Lean in model space, then turn to the player's heading. Engine XYZ
+        // Euler order alone would tilt around a world axis for some headings.
+        const auto rigid=Matrix4x4::Multiply(Matrix4x4::RotateXYZ(rotation.x,0,rotation.z),Matrix4x4::RotateXYZ(0,rotation.y,0));
+        const float yaw=std::asin(std::clamp(-rigid.m[0][2],-1.0f,1.0f));
+        Vector3 angles{0,yaw,0};
+        if (std::abs(std::cos(yaw))>1e-5f) {
+            angles.x=std::atan2(rigid.m[1][2],rigid.m[2][2]);
+            angles.z=std::atan2(rigid.m[0][1],rigid.m[0][0]);
+        } else angles.z=std::atan2(-rigid.m[1][0],rigid.m[1][1]);
+        const auto matrix=Matrix4x4::MakeAffineMatrix({scale_,scale_,scale_},angles,{});
+        const auto rotated=TransformAABB(bounds,matrix);
+        const Vector3 rotatedCenter{
+            center.x*matrix.m[0][0]+center.y*matrix.m[1][0]+center.z*matrix.m[2][0],
+            center.x*matrix.m[0][1]+center.y*matrix.m[1][1]+center.z*matrix.m[2][1],
+            center.x*matrix.m[0][2]+center.y*matrix.m[1][2]+center.z*matrix.m[2][2]};
+        object_.SetTranslate(foot+Vector3{-rotatedCenter.x,-rotated.min.y,-rotatedCenter.z});
+        object_.SetRotate(angles); object_.SetMaterialColor(color); object_.Update(0);
+    }
     void Draw() { object_.Draw(); }
 private:
     Object3d object_;

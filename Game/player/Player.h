@@ -25,7 +25,12 @@ public:
     const FPSMotion::Settings& Settings() const { return settings_; }
     WeaponRuntime& CurrentWeapon() { return currentWeapon_; }
     const WeaponRuntime& CurrentWeapon() const { return currentWeapon_; }
-    void ApplyDamage(float damage) { if (std::isfinite(damage) && damage > 0) hp_ = std::max(0.0f, hp_-damage); }
+    void ApplyDamage(float damage,const Vector3& direction={}) {
+        if (hp_>0 && std::isfinite(damage) && damage>0) {
+            hp_=std::max(0.0f,hp_-damage); lastImpactDirection_=direction;
+        }
+    }
+    const Vector3& LastImpactDirection() const { return lastImpactDirection_; }
     void ResetHPForDebug() { hp_ = 100.0f; }
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     struct DebugState {
@@ -34,13 +39,15 @@ public:
         WeaponRuntime weapon;
         float hp=100, sensitivity=1;
         StageWorld::PlayerMotion motion;
+        Vector3 impactDirection{};
     };
     void RefreshDebug() { RefreshVisuals(); }
-    DebugState CaptureDebug() const { return {transform_,settings_,currentWeapon_,hp_,lookSensitivityMultiplier_,motion_}; }
+    DebugState CaptureDebug() const { return {transform_,settings_,currentWeapon_,hp_,lookSensitivityMultiplier_,motion_,lastImpactDirection_}; }
     void RestoreDebug(const DebugState& state) {
         transform_=state.transform; settings_=state.settings; currentWeapon_=state.weapon;
         hp_=state.hp; lookSensitivityMultiplier_=state.sensitivity; SyncVisuals(0);
         motion_=state.motion;
+        lastImpactDirection_=state.impactDirection;
     }
     void SetPositionForDebug(const Vector3& position) { transform_.translate = position; motion_={}; }
 #endif
@@ -58,6 +65,7 @@ private:
     const StageWorld* stageWorld_ = nullptr;
     StageWorld::PlayerMotion motion_;
     float hp_ = 100.0f;
+    Vector3 lastImpactDirection_{};
     Transform transform_{{1.0f, 1.0f, 1.0f}, {}, {3.0f, 0.0f, -6.0f}};
     FPSMotion::Settings settings_;
     Camera* camera_ = nullptr;

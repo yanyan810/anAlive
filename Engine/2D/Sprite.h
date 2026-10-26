@@ -4,6 +4,7 @@
 #include "Vector3.h"
 #include "Matrix4x4.h"
 #include "TextureManager.h"
+#include <array>
 
 class SpriteCommon;
 class DirectXCommon;
@@ -53,6 +54,9 @@ public:
 
 	// === Updateは position_ を反映（座標-反映処理） ===
 	void Update(const Matrix4x4& view, const Matrix4x4& proj);
+	// Unit-space quad in bottom-left, top-left, bottom-right, top-right order.
+	// Default rectangle is unchanged; UI can also tessellate curved masks.
+	void SetQuad(const std::array<Vector2,4>& corners) { quad_=corners; }
 
 	// === 引数なし Draw（内部でPSOとSRVをセット） ===
 	void Draw();
@@ -120,6 +124,7 @@ private:
 	Vector3 scale_{ 1.0f, 1.0f, 1.0f };  // 必要ならsetter追加してOK
 	Vector3 rotate_{ 0.0f, 0.0f, 0.0f }; // 必要ならsetter追加してOK
 	Vector4 color_{ 1,1,1,1 };
+	std::array<Vector2,4> quad_{{{0,1},{0,0},{1,1},{1,0}}};
 
 	DirectXCommon* dx_ = nullptr;
 

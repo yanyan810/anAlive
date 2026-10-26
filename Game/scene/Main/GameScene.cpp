@@ -144,6 +144,9 @@ void GameScene::UpdateShutterAudio(bool running) {
 }
 
 void GameScene::OnEnter(GameApp& app) {
+    app.Render()->ResetDeathPostEffect();
+    SetWindowTextW(app.Win()->GetHwnd(),L"アンアライブ");
+    gameOver_.Reset(); gameOverMenuTime_=0;
     startSequence_=CameraSequence{}; sequenceOwnsCamera_=false; sequenceWaiting_=false; sequenceInputGuard_=false; sequenceDebugCommand_=0;
     initialCapturePending_=true;
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
@@ -220,6 +223,8 @@ void GameScene::OnEnter(GameApp& app) {
     for (auto* enemy : enemies_) enemy->UpdateVisuals(0);
     enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
     clearOverlay_.Initialize(app.SpriteCom(), app.Dx());
+    gameOverOverlay_.Initialize(app.SpriteCom(),app.Dx());
+    gameOverVision_.Initialize(app.SpriteCom(),app.Dx());
     selectedEnemy_ = 0; lastHitEnemy_ = -1;
     enemyAttackCount_ = 0; playerDamagedFlash_ = 0; lastEnemyDamage_ = 0;
     ground_.Initialize(app.ObjCom(), app.Dx());
@@ -296,6 +301,10 @@ void GameScene::OnEnter(GameApp& app) {
 #endif
 }
 void GameScene::OnExit(GameApp& app) {
+    app.Render()->ResetDeathPostEffect();
+    gameOver_.Reset(); gameOverMenuTime_=0;
+    player_.SetMovementEnabled(true); player_.CurrentWeapon().CancelBurst();
+    camera_.SetNearZ(.1f); camera_.SetFovY(kNormalFovDegrees*kDegreesToRadians);
     startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
     if (shutterAudio_) shutterAudio_->StopAll();
     shutterAudio_.reset(); shutterVisuals_.clear();
@@ -318,6 +327,10 @@ void GameScene::Update(GameApp& app, float dt) {
     // SceneManager consumes this request after Update, safely outside ImGui drawing.
     if (!NextScene().empty()) return;
     Input& input = *app.GetInput();
+    if (gameOver_.Active()) { UpdateGameOver(app,dt); return; }
+    if (player_.IsDead() && stage_.IsPlaying() && !placementTest_) {
+        BeginGameOver(app); UpdateGameOver(app,0); return;
+    }
     if (sequenceDebugCommand_!=0) {
         const int command=sequenceDebugCommand_; sequenceDebugCommand_=0;
         FinishStartSequence(app);
@@ -371,7 +384,6 @@ void GameScene::Update(GameApp& app, float dt) {
         debugHistory_.Clear(); debugHistory_.Push(CaptureDebug());
 #endif
     }
-    if (player_.GetHP() <= 0 && !placementTest_) { RequestChangeScene_("GameOver"); return; }
     dt = std::isfinite(dt) ? std::max(dt, 0.0f) : 0.0f;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
@@ -501,8 +513,8 @@ void GameScene::Update(GameApp& app, float dt) {
     if (stage_.IsPlaying()) UpdateCombat(app, dt, wasCaptured);
     else for (auto& enemy : enemies_) enemy->UpdateVisuals(dt);
     RecycleEnemies();
-    // Combat applies all damage before SceneManager consumes the transition.
-    if (player_.GetHP() <= 0) { RequestChangeScene_("GameOver"); return; }
+    // Enter once after combat; subsequent frames bypass combat and goal updates.
+    if (player_.IsDead() && !placementTest_) { BeginGameOver(app); UpdateGameOver(app,0); return; }
     ground_.Update(dt);
     SyncShutterVisuals();
     ProcessShutterEvents();
@@ -519,6 +531,76 @@ void GameScene::Update(GameApp& app, float dt) {
 bool GameScene::ReturnToTitle(GameApp& app) {
     if (placementTest_) return false;
     return !stage_.IsPlaying() && app.Scenes().TransitionTo("Title", .5f, .5f);
+}
+
+void GameScene::BeginGameOver(GameApp& app) {
+    if (gameOver_.Active() || !stage_.IsPlaying() || placementTest_) return;
+    const GameOverSequence::DeathContext death{player_.GetTransform(),
+        {camera_.GetTranslate(),camera_.GetRotate(),camera_.GetFovY()},player_.LastImpactDirection(),player_.Settings().cameraHeight};
+    startSequence_.Stop(); sequenceOwnsCamera_=false; sequenceDebugCommand_=0;
+    player_.SetMovementEnabled(false); player_.CurrentWeapon().CancelBurst();
+    initialCapturePending_=false; suppressFireUntilRelease_=true; adsBlend_=0;
+    app.GetInput()->SetCameraControlEnabled(false); app.GetInput()->SetMouseCaptureRect(nullptr);
+#ifdef USE_IMGUI
+    ImGui::GetIO().ConfigFlags=(ImGui::GetIO().ConfigFlags & ~kCapturedMouseFlags) | savedMouseFlags_;
+#endif
+    gameOver_.Begin(app.ObjCom(),app.Dx(),&camera_,enemyDefinitions_.Find("normal"),level_.playerVisual,death);
+    // No more damage, shots, spawn triggers, pickups, stage clock or goal evaluation.
+    enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
+    UpdateShutterAudio(false);
+}
+
+bool GameScene::LeaveGameOver(GameApp& app,bool retry) {
+    if (!gameOver_.MenuReady() || placementTest_ || app.Scenes().IsTransitioning()) return false;
+    if (retry) {
+        // Capture the actual stage ID, including editor/test-launched stage02.
+        // A fresh scene reloads the saved start position, HP, pool and stage data.
+        app.Scenes().Register("GameOverRetry",[id=stageId_,showroom=showroom_] { return std::make_unique<GameScene>(showroom,id); });
+    }
+    return app.Scenes().TransitionTo(retry ? "GameOverRetry" : "Title",.5f,.5f);
+}
+
+void GameScene::UpdateGameOver(GameApp& app,float dt) {
+    auto& input=*app.GetInput(); input.SetCameraControlEnabled(false);
+    if (app.Scenes().IsTransitioning() || app.Scenes().Fade().IsActive()) return;
+    dt=std::isfinite(dt) ? std::max(0.0f,dt) : 0;
+    const float worldDt=gameOver_.WorldDelta(dt);
+    if (worldDt>0) for (auto* enemy:enemies_) {
+        const auto before=enemy->GetPosition();
+        enemy->Update(worldDt,player_.GetTransform().translate,&level_.collision,player_.Settings().cameraHeight);
+        const auto& d=enemy->Definition();
+        enemy->SetPosition(level_.collision.Move(before,enemy->GetPosition(),d.collisionRadius,d.collisionHeight));
+    }
+    gameOver_.Update(dt,level_.collision,camera_);
+    ground_.Update(0); SyncShutterVisuals();
+    for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
+    for (auto& visual:weaponVisuals_) visual->Update(0);
+    if (!gameOver_.MenuReady()) return;
+    gameOverMenuTime_=gameOver_.MenuElapsed();
+    // Require a release after the camera handoff; held fire/Enter cannot Retry.
+    if (!gameOverOverlay_.Armed()) {
+        if (!input.IsLeftMousePressed() && !input.IsKeyPressed(DIK_RETURN) && !input.IsKeyPressed(DIK_NUMPADENTER) && !input.IsKeyPressed(DIK_SPACE)) gameOverOverlay_.Arm();
+        return;
+    }
+    if (!input.HasFocus()) return;
+    RECT rect{}; bool hovered=true;
+#ifdef USE_IMGUI
+    hovered=app.ImGui()->IsSceneImageHovered();
+    app.ImGui()->GetSceneImageRect(rect);
+    if (ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive()) return;
+#else
+    GetClientRect(app.Win()->GetHwnd(),&rect);
+    POINT origin{}; ClientToScreen(app.Win()->GetHwnd(),&origin); OffsetRect(&rect,origin.x,origin.y);
+#endif
+    POINT cursor{}; int hit=-1;
+    if (hovered && rect.right>rect.left && rect.bottom>rect.top && GetCursorPos(&cursor) && PtInRect(&rect,cursor)) {
+        hit=gameOverOverlay_.Hit({static_cast<float>(cursor.x-rect.left)*WinApp::kClientWidth/(rect.right-rect.left),
+            static_cast<float>(cursor.y-rect.top)*WinApp::kClientHeight/(rect.bottom-rect.top)});
+    }
+    // Mouse selection only on a click: a stationary cursor must not undo keys.
+    if (input.IsKeyTrigger(DIK_UP) || input.IsKeyTrigger(DIK_DOWN) || input.IsKeyTrigger(DIK_W) || input.IsKeyTrigger(DIK_S)) gameOverOverlay_.Toggle();
+    if (hit>=0 && input.IsLeftMouseTrigger()) { gameOverOverlay_.Select(hit); LeaveGameOver(app,hit==0); }
+    else if (input.IsKeyTrigger(DIK_RETURN) || input.IsKeyTrigger(DIK_NUMPADENTER) || input.IsKeyTrigger(DIK_SPACE)) LeaveGameOver(app,gameOverOverlay_.Selected()==0);
 }
 
 void GameScene::UpdateClearMenu(GameApp& app) {
@@ -553,6 +635,7 @@ void GameScene::UpdateClearMenu(GameApp& app) {
 }
 
 void GameScene::OnStageClear(GameApp& app) {
+    if (gameOver_.Active() || player_.IsDead()) return;
     enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
     initialCapturePending_ = false;
     app.GetInput()->SetCameraControlEnabled(false);
@@ -571,10 +654,6 @@ void GameScene::OnStageClear(GameApp& app) {
     camera_.Update();
 
     clearOverlay_.SetResult(stage_, static_cast<float>(WinApp::kClientWidth), static_cast<float>(WinApp::kClientHeight));
-    const auto time = StageProgress::FormatTime(stage_.Time());
-    const std::wstring title = L"STAGE CLEAR | Time: " + std::wstring(time.begin(),time.end()) +
-        L" | Enemies Defeated: " + std::to_wstring(stage_.DefeatedCount());
-    SetWindowTextW(app.Win()->GetHwnd(), title.c_str());
 }
 
 
@@ -688,10 +767,11 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     if (showroom_ && pickedUp) weapons_.ResetPickups();
     UpdateEnemySpawns(dt);
     playerDamagedFlash_ = std::max(0.0f, playerDamagedFlash_-dt);
-    const float projectileDamage=stageLoaded_ ? UpdateStageProjectiles(enemyProjectiles_,dt,player_.GetTransform().translate,level_.collision) :
+    Vector3 projectileDirection{};
+    const float projectileDamage=stageLoaded_ ? UpdateStageProjectiles(enemyProjectiles_,dt,player_.GetTransform().translate,level_.collision,&projectileDirection) :
         enemyProjectiles_.Update(dt,player_.GetTransform().translate);
     if (projectileDamage>0) {
-        const float before=player_.GetHP(); player_.ApplyDamage(projectileDamage);
+        const float before=player_.GetHP(); player_.ApplyDamage(projectileDamage,projectileDirection);
         lastEnemyDamage_=before-player_.GetHP(); playerDamagedFlash_=.35f;
     }
     // Symmetric XZ separation from a snapshot; dead bodies do not push living enemies.
@@ -733,7 +813,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         }
         if (enemyDamage[i]<=0) continue;
         const float before=player_.GetHP();
-        player_.ApplyDamage(enemyDamage[i]);
+        player_.ApplyDamage(enemyDamage[i],player_.GetTransform().translate-enemies_[i]->GetPosition());
         lastEnemyDamage_=before-player_.GetHP();
         enemies_[i]->ConfirmAttack(lastEnemyDamage_);
         enemyAttackCount_+=enemies_[i]->PendingAttackCount();
@@ -741,16 +821,6 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     }
     for (const auto& enemy : enemies_) stage_.ObserveEnemy(enemy->GetSpawnId(), enemy->IsDead());
     SyncProjectileVisuals(app);
-    const std::string selectedState = enemies_.empty() ? "No Enemy" : EnemyStateName(enemies_[static_cast<size_t>(selectedEnemy_)]->GetState());
-    const auto status = std::wstring(L"FPS Foundation | Player HP: ") + std::to_wstring(static_cast<int>(player_.GetHP())) +
-        (player_.IsDead() ? L" (Player Dead)" : L"") + L" | Enemy: " +
-        std::wstring(selectedState.begin(), selectedState.end()) +
-        L" | Shots: " + std::to_wstring(shotCount_) + L" | Hits: " + std::to_wstring(hitCount_);
-    const std::string& partName = lastHitPartName_;
-    const auto fullStatus = status + L" | Last Hit Part: " + std::wstring(partName.begin(), partName.end()) +
-        L" | Last Damage: " + std::to_wstring(static_cast<int>(lastDamage_)) +
-        L" | Enemy Attacks: " + std::to_wstring(enemyAttackCount_);
-    SetWindowTextW(app.Win()->GetHwnd(), fullStatus.c_str());
 }
 
 void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
@@ -763,15 +833,17 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
     const float blastDamage=EnemyExplosionDamage(blast,player_.GetTransform().translate,.4f,1.8f);
     if (blastDamage>0) {
         const float before=player_.GetHP();
-        player_.ApplyDamage(blastDamage);
+        player_.ApplyDamage(blastDamage,player_.GetTransform().translate-blast.center);
         lastEnemyDamage_=before-player_.GetHP();
         playerDamagedFlash_=.35f;
     }
     for (size_t i=0;i<enemies_.size();++i)
         if (i!=impact.enemyIndex) enemies_[i]->ApplyExplosionDamage(blast);
 }
-void GameScene::DrawRender(GameApp&) {
+void GameScene::DrawRender(GameApp& app) {
+    app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     ground_.Draw();
+    gameOver_.Draw();
     if (sequenceOwnsCamera_ && startPlayerVisual_) {
         const auto delta=camera_.GetTranslate()-player_.EyePosition();
         // Hide before the near plane enters the temporary head/body.
@@ -786,7 +858,7 @@ void GameScene::DrawRender(GameApp&) {
 #endif
     for (size_t i=0; i<weaponVisuals_.size(); ++i)
         if (weapons_.Pickups()[i].visible) weaponVisuals_[i]->Draw();
-    for(auto& enemy : enemies_) enemy->Draw(!showroom_ || showEnemyMarkers_);
+    for(auto& enemy : enemies_) enemy->Draw(!showroom_ || showEnemyMarkers_,gameOver_.Active() ? .16f : 0);
     for(auto& visual : projectileVisuals_) visual->Draw();
     bullets_.Draw();
     // 半透明の爆発球は不透明な敵・弾の後に描き、Releaseでも範囲を見せる。
@@ -802,6 +874,7 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 #endif
 
 void GameScene::DrawImGui(GameApp& app) {
+    if (gameOver_.Active()) return;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) { DrawWeaponWorkspace(app); return; }
     ImGui::BeginDisabled(sequenceOwnsCamera_);
@@ -1096,6 +1169,11 @@ void GameScene::DrawOverlay2D(GameApp&) {
     const auto view = Matrix4x4::MakeIdentity4x4();
     const auto projection = Matrix4x4::MakeOrthographicMatrix(0.0f, 0.0f,
         static_cast<float>(WinApp::kClientWidth), static_cast<float>(WinApp::kClientHeight), 0.0f, 100.0f);
+    if (gameOver_.Active()) {
+        gameOverOverlay_.Draw(view,projection,gameOver_.MenuReady(),gameOverMenuTime_);
+        gameOverVision_.Draw(gameOver_.Vision(),gameOver_.settings.eyelidCurve);
+        return;
+    }
     if (!stage_.IsPlaying()) {
         clearOverlay_.Draw(view, projection);
         return;
@@ -1174,7 +1252,6 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
     SyncProjectileVisuals(app);
     if (!stage_.IsPlaying()) clearOverlay_.SetResult(stage_,static_cast<float>(WinApp::kClientWidth),static_cast<float>(WinApp::kClientHeight));
     suppressFireUntilRelease_=true;
-    SetWindowTextW(app.Win()->GetHwnd(),L"FPS Debug | Paused / Rewound");
 }
 #endif
 

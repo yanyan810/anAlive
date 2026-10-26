@@ -239,6 +239,27 @@ void RenderManager::Initialize(DirectXCommon* dx, SrvManager* srv)
         CreatePipelineState(kEffectPSPaths[i], pipelineStates_[i]);
     }
     CreatePipelineState(L"resources/shaders/AdditiveComposite.PS.hlsl", additiveCompositePSO_);
+    CreatePipelineState(L"resources/shaders/DeathPostEffect.PS.hlsl", deathPostPSO_);
+    deathPostCB_=dx_->CreateBufferResource(256);
+    deathPostCB_->Map(0,nullptr,reinterpret_cast<void**>(&deathPostData_));
+    *deathPostData_={};
+}
+
+void RenderManager::SetDeathPostEffect(const DeathPostEffectParameters& parameters) {
+    deathPost_=parameters;
+    const auto limit=[](float value,float high) { return std::isfinite(value) ? std::clamp(value,0.0f,high) : 0.0f; };
+    deathPost_.vignette=limit(parameters.vignette,.85f);
+    deathPost_.desaturation=limit(parameters.desaturation,1);
+    deathPost_.blurPixels=limit(parameters.blurPixels,3);
+    deathPost_.chromaticPixels=limit(parameters.chromaticPixels,2);
+    deathPost_.mosaicStrength=limit(parameters.mosaicStrength,1);
+    deathPost_.mosaicCellSize=std::clamp(limit(parameters.mosaicCellSize,.05f),.001f,.05f);
+    deathPost_.mosaicColorStrength=limit(parameters.mosaicColorStrength,1);
+    deathPost_.mosaicTime=limit(parameters.mosaicTime,3600);
+    deathPost_.mosaicChangeRate=limit(parameters.mosaicChangeRate,2);
+    deathPost_.vignetteColor={limit(parameters.vignetteColor.x,1),limit(parameters.vignetteColor.y,1),limit(parameters.vignetteColor.z,1),1};
+    deathPost_.edgeInner=limit(parameters.edgeInner,.95f);
+    deathPost_.edgeOuter=std::clamp(limit(parameters.edgeOuter,1.5f),deathPost_.edgeInner+.05f,1.5f);
 }
 
 void RenderManager::SetMode(PostEffectMode mode)
@@ -326,6 +347,7 @@ void RenderManager::SetDissolveTransition(float threshold, const Vector4& color,
 void RenderManager::BeginOffscreen()
 {
     assert(offscreen_);
+    ResetDeathPostEffect(); // Frame-local: only the drawing scene can opt in.
     offscreen_->Begin();
 }
 
@@ -436,7 +458,7 @@ void RenderManager::CreateCopyImageRootSignature()
     range1.BaseShaderRegister = 1; // t1
     range1.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    D3D12_ROOT_PARAMETER rootParams[8]{};
+    D3D12_ROOT_PARAMETER rootParams[9]{};
     // [0]: SRV (t0) Color
     rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -484,6 +506,9 @@ void RenderManager::CreateCopyImageRootSignature()
     rootParams[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     rootParams[7].Descriptor.ShaderRegister = 5;
     rootParams[7].Descriptor.RegisterSpace = 0;
+    rootParams[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    rootParams[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    rootParams[8].Descriptor.ShaderRegister = 6;
 
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -550,7 +575,7 @@ void RenderManager::CreatePipelineState(
     assert(SUCCEEDED(hr));
 }
 
-void RenderManager::DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* bloomCBOverride)
+void RenderManager::DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* bloomCBOverride, bool presentation)
 {
     auto* cmd = dx_->GetCommandList();
 
@@ -558,12 +583,18 @@ void RenderManager::DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex
     assert(modeIndex >= 0 && modeIndex < kEffectCount);
 
     cmd->SetGraphicsRootSignature(copyImageRootSignature_.Get());
-    cmd->SetPipelineState(pipelineStates_[modeIndex].Get());
+    const bool death=presentation && mode==PostEffectMode::FullScreen && deathPost_.Active();
+    cmd->SetPipelineState(death ? deathPostPSO_.Get() : pipelineStates_[modeIndex].Get());
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmd->SetGraphicsRootDescriptorTable(0, srv_->GetGPUDescriptionHandle(srcSrvIndex));
     // Depth or Mask (t1)
     uint32_t t1SrvIndex = (mode == PostEffectMode::Dissolve) ? noiseSrvIndex_ : depthSrvIndex_;
     cmd->SetGraphicsRootDescriptorTable(2, srv_->GetGPUDescriptionHandle(t1SrvIndex));
+    if (death) {
+        *deathPostData_=deathPost_;
+        cmd->SetGraphicsRootConstantBufferView(8,deathPostCB_->GetGPUVirtualAddress());
+        ++deathPostDraws_;
+    }
 
     if (mode == PostEffectMode::GaussianBlurX || mode == PostEffectMode::GaussianBlurY) {
         cmd->SetGraphicsRootConstantBufferView(1, gaussianFilterCB_->GetGPUVirtualAddress());
@@ -587,7 +618,7 @@ void RenderManager::DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex
         cmd->SetGraphicsRootConstantBufferView(6, randomCB_->GetGPUVirtualAddress());
     }
 
-    cmd->DrawInstanced(3, 1, 0, 0);
+    cmd->DrawInstanced(3, 1, 0, 0); ++fullscreenDraws_;
 }
 
 void RenderManager::DrawAdditiveCompositePass(uint32_t baseSrvIndex, uint32_t addSrvIndex)
@@ -599,28 +630,30 @@ void RenderManager::DrawAdditiveCompositePass(uint32_t baseSrvIndex, uint32_t ad
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmd->SetGraphicsRootDescriptorTable(0, srv_->GetGPUDescriptionHandle(baseSrvIndex));
     cmd->SetGraphicsRootDescriptorTable(2, srv_->GetGPUDescriptionHandle(addSrvIndex));
-    cmd->DrawInstanced(3, 1, 0, 0);
+    cmd->DrawInstanced(3, 1, 0, 0); ++fullscreenDraws_;
+}
+
+OffscreenPass* RenderManager::FindPostBuffer_(uint32_t srvIndex) const {
+    OffscreenPass* buffers[]={offscreen_.get(),postBuffers_[0].get(),postBuffers_[1].get(),particlePostLayer_.get(),
+        particlePostBuffer_.get(),objectPostLayer_.get(),objectPostBuffer_.get(),compositeBuffer_.get(),compositeBuffer2_.get(),previewBuffer_.get()};
+    for (auto* pass:buffers) if (pass && pass->GetSrvIndex()==srvIndex) return pass;
+    return nullptr;
 }
 
 void RenderManager::DrawFullscreenPassToBackBuffer(
     PostEffectMode mode,
     uint32_t srcSrvIndex,
-    ID3D12Resource* srcResource)
+    ID3D12Resource* srcResource, bool presentation)
 {
-    dx_->TransitionResource(
-        srcResource,
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-    );
+    auto* source=FindPostBuffer_(srcSrvIndex);
+    assert(source && source->GetResource()==srcResource);
+    const bool restore=source->GetState()==D3D12_RESOURCE_STATE_RENDER_TARGET;
+    source->TransitionToShaderResource();
 
     dx_->SetBackBufferRenderTargetForPostEffect();
-    DrawFullscreenPass(mode, srcSrvIndex);
+    DrawFullscreenPass(mode, srcSrvIndex, nullptr, presentation);
 
-    dx_->TransitionResource(
-        srcResource,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        D3D12_RESOURCE_STATE_RENDER_TARGET
-    );
+    if (restore) source->TransitionToRenderTarget();
 }
 
 void RenderManager::DrawFullscreenPassToBuffer(
@@ -628,22 +661,17 @@ void RenderManager::DrawFullscreenPassToBuffer(
     uint32_t srcSrvIndex,
     ID3D12Resource* srcResource,
     OffscreenPass& dst,
-    ID3D12Resource* bloomCBOverride)
+    ID3D12Resource* bloomCBOverride, bool presentation)
 {
-    dx_->TransitionResource(
-        srcResource,
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-    );
+    auto* source=FindPostBuffer_(srcSrvIndex);
+    assert(source && source->GetResource()==srcResource && source!=&dst);
+    const bool restore=source->GetState()==D3D12_RESOURCE_STATE_RENDER_TARGET;
+    source->TransitionToShaderResource();
 
     dst.BeginForPostEffect();
-    DrawFullscreenPass(mode, srcSrvIndex, bloomCBOverride);
+    DrawFullscreenPass(mode, srcSrvIndex, bloomCBOverride, presentation);
 
-    dx_->TransitionResource(
-        srcResource,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        D3D12_RESOURCE_STATE_RENDER_TARGET
-    );
+    if (restore) source->TransitionToRenderTarget();
 }
 
 int RenderManager::FindLastEnabledPostEffect_() const
@@ -721,7 +749,7 @@ void RenderManager::RenderPostEffectsToBackBuffer_(ID3D12Resource* srcResource, 
     int bufferIndex = 0;
 
     if (lastEffect < 0) {
-        DrawFullscreenPassToBackBuffer(PostEffectMode::FullScreen, srcSrvIndex, srcResource);
+        DrawFullscreenPassToBackBuffer(PostEffectMode::FullScreen, srcSrvIndex, srcResource, true);
         return;
     }
 
@@ -1015,7 +1043,7 @@ void RenderManager::DrawOffscreenToBackBuffer()
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
     );
 
-    if (hasObjectPostLayer_ || hasParticlePostLayer_) {
+    if (hasObjectPostLayer_ || hasParticlePostLayer_ || (deathPost_.Active() && FindLastEnabledPostEffect_()>=0)) {
         uint32_t baseSrvIndex = RenderPostEffectsToBuffer_(offscreen_->GetResource(), offscreen_->GetSrvIndex());
         if (hasObjectPostLayer_) {
             baseSrvIndex = CompositeObjectPostToBuffer_(baseSrvIndex);
@@ -1024,11 +1052,8 @@ void RenderManager::DrawOffscreenToBackBuffer()
             baseSrvIndex = CompositeParticlePostToBuffer_(baseSrvIndex);
         }
 
-        ID3D12Resource* finalResource =
-            hasParticlePostLayer_ ? compositeBuffer2_->GetResource() :
-            hasObjectPostLayer_ ? compositeBuffer_->GetResource() :
-            offscreen_->GetResource();
-        DrawFullscreenPassToBackBuffer(PostEffectMode::FullScreen, baseSrvIndex, finalResource);
+        auto* final=FindPostBuffer_(baseSrvIndex); assert(final);
+        DrawFullscreenPassToBackBuffer(PostEffectMode::FullScreen, baseSrvIndex, final->GetResource(), true);
     } else {
         RenderPostEffectsToBackBuffer_(offscreen_->GetResource(), offscreen_->GetSrvIndex());
     }
@@ -1059,9 +1084,22 @@ uint32_t RenderManager::RenderPostEffectsForSceneTexture()
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
     );
 
-    previewSrvIndex_ = RenderPostEffectsToBuffer_(offscreen_->GetResource(), offscreen_->GetSrvIndex());
-    previewSrvIndex_ = CompositeObjectPostToBuffer_(previewSrvIndex_);
-    previewSrvIndex_ = CompositeParticlePostToBuffer_(previewSrvIndex_);
+    if (deathPost_.Active() && !hasObjectPostLayer_ && !hasParticlePostLayer_ && FindLastEnabledPostEffect_()<0) {
+        // Fuse into the ordinary copy, rather than four full-resolution passes.
+        auto& target=*postBuffers_[0];
+        DrawFullscreenPassToBuffer(PostEffectMode::FullScreen,offscreen_->GetSrvIndex(),offscreen_->GetResource(),target,nullptr,true);
+        target.TransitionToShaderResource(); previewSrvIndex_=target.GetSrvIndex();
+    } else {
+        previewSrvIndex_ = RenderPostEffectsToBuffer_(offscreen_->GetResource(), offscreen_->GetSrvIndex());
+        previewSrvIndex_ = CompositeObjectPostToBuffer_(previewSrvIndex_);
+        previewSrvIndex_ = CompositeParticlePostToBuffer_(previewSrvIndex_);
+        if (deathPost_.Active()) {
+            auto* source=FindPostBuffer_(previewSrvIndex_); assert(source);
+            auto& target=*postBuffers_[source==postBuffers_[0].get() ? 1 : 0];
+            DrawFullscreenPassToBuffer(PostEffectMode::FullScreen,previewSrvIndex_,source->GetResource(),target,nullptr,true);
+            target.TransitionToShaderResource(); previewSrvIndex_=target.GetSrvIndex();
+        }
+    }
 
     dx_->TransitionResource(
         dx_->GetDepthStencilResource(),

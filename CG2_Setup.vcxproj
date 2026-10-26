@@ -495,6 +495,7 @@
     <ClInclude Include="Engine\math\Quaternion.h" />
     <ClInclude Include="Engine\Render\OffscreenPass.h" />
     <ClInclude Include="Engine\Render\RenderManager.h" />
+    <ClInclude Include="Engine\Render\DeathPostEffect.h" />
     <ClInclude Include="externals\imgui\imconfig.h" />
     <ClInclude Include="externals\imgui\imgui.h" />
     <ClInclude Include="externals\imgui\backends\imgui_impl_dx12.h" />
@@ -566,6 +567,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\CopyImage.hlsli" />
+    <None Include="resources\shaders\DeathPostEffect.PS.hlsl" />
     <None Include="resources\shaders\Object3d.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">false</ExcludedFromBuild>
@@ -638,8 +640,15 @@
     <ClInclude Include="Game\CameraSequence.h" />
     <ClInclude Include="Game\CameraSequenceOverrides.h" />
     <ClInclude Include="Game\StartPlayerVisual.h" />
+    <ClCompile Include="Game\GameOverSequence.cpp" />
+    <ClInclude Include="Game\GameOverSequence.h" />
+    <ClInclude Include="Game\FirstPersonCamera.h" />
+    <ClInclude Include="Game\GameOverVisionOverlay.h" />
+    <ClInclude Include="Game\GameOverOverlay.h" />
     <ClInclude Include="Game\PlayerVisualSettings.h" />
     <ClInclude Include="tests\CameraSequenceRuntimeTests.h" />
+    <ClInclude Include="tests\GameOverSequenceRuntimeTests.h" />
+    <ClInclude Include="tests\GameOverPostEffectRuntimeTests.h" />
     <ClInclude Include="Game\TitleLighting.h" />
     <ClInclude Include="Game\DebugTimeline.h" />
     <ClInclude Include="Game\scene\Main\ShowroomScene.h" />

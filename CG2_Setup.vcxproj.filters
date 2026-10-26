@@ -679,8 +679,17 @@
     <ClInclude Include="Game\CameraSequence.h" />
     <ClInclude Include="Game\CameraSequenceOverrides.h" />
     <ClInclude Include="Game\StartPlayerVisual.h" />
+    <ClCompile Include="Game\GameOverSequence.cpp" />
+    <ClInclude Include="Game\GameOverSequence.h" />
+    <ClInclude Include="Engine\Render\DeathPostEffect.h" />
+    <None Include="resources\shaders\DeathPostEffect.PS.hlsl" />
+    <ClInclude Include="Game\FirstPersonCamera.h" />
+    <ClInclude Include="Game\GameOverVisionOverlay.h" />
+    <ClInclude Include="Game\GameOverOverlay.h" />
     <ClInclude Include="Game\PlayerVisualSettings.h" />
     <ClInclude Include="tests\CameraSequenceRuntimeTests.h" />
+    <ClInclude Include="tests\GameOverSequenceRuntimeTests.h" />
+    <ClInclude Include="tests\GameOverPostEffectRuntimeTests.h" />
     <ClInclude Include="Game\DebugTimeline.h" />
     <ClInclude Include="Game\scene\Main\ShowroomScene.h" />
     <ClInclude Include="Game\DebugJsonEditor.h" />

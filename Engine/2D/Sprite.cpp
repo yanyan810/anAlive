@@ -69,35 +69,17 @@ void Sprite::Update(const Matrix4x4& view, const Matrix4x4& proj) {
         TextureManager::GetInstance()->GetMetaData(textureFilePath_);
 
     // (0,0)〜(1,1) の単位矩形を、anchor だけ平行移動
-    float left = 0.0f - anchorPoint.x;
-    float right = 1.0f - anchorPoint.x;
-    float top = 0.0f - anchorPoint.y;
-    float bottom = 1.0f - anchorPoint.y;
-
-
     float texL = textureTopLeft_.x / metadata.width;
     float texT = textureTopLeft_.y / metadata.height;
     float texR = (textureTopLeft_.x + textureCutSize_.x) / metadata.width;
     float texB = (textureTopLeft_.y + textureCutSize_.y) / metadata.height;
 
-    //左右反転
-	if (isFlipX_) {
-	
-        left = -left;
-        right = -right;
-	}
-
-	if (isFlipY_) {
-		top = -top;
-		bottom = -bottom;
-		
-	}
-
-    // 0: 左下 / 1: 左上 / 2: 右下 / 3: 右上（UVはそのまま）
-    v[0] = { {left,  bottom, 0, 1}, {texL, texB}, {0,0,-1} };
-    v[1] = { {left,  top,    0, 1}, {texL, texT}, {0,0,-1} };
-    v[2] = { {right, bottom, 0, 1}, {texR, texB}, {0,0,-1} };
-    v[3] = { {right, top,    0, 1}, {texR, texT}, {0,0,-1} };
+    const Vector2 uv[]={{texL,texB},{texL,texT},{texR,texB},{texR,texT}};
+    for (size_t i=0;i<quad_.size();++i) {
+        const float x=(quad_[i].x-anchorPoint.x)*(isFlipX_ ? -1.0f : 1.0f);
+        const float y=(quad_[i].y-anchorPoint.y)*(isFlipY_ ? -1.0f : 1.0f);
+        v[i]={{x,y,0,1},uv[i],{0,0,-1}};
+    }
 
     // --- 2) 変換：サイズ→ユーザースケール→回転→配置 ---
     // 頂点は単位矩形なので、サイズは行列のスケールで与える

@@ -2,6 +2,7 @@
 #include "DebugEnemyTuning.h"
 #endif
 #include "Enemy.h"
+#include "FirstPersonCamera.h"
 #include "GeometryGenerator.h"
 #include "Raycast.h"
 #include <nlohmann/json.hpp>
@@ -571,18 +572,25 @@ void Enemy::ApplySceneLight(Object3d& object) {
     if (sceneLight_) object.SetEnableLighting(2); // Soft fill while retaining the spot's directional shading.
 }
 
-void Enemy::Draw(bool showMarker) {
-    if (showMarker && typeMarker_ && !IsDead()) typeMarker_->Draw();
-    DrawFaces();
+void Enemy::Draw(bool showMarker,float cameraClearance) {
+    // In the death FPS view, suppress only meshes touching the eye/near plane.
+    // Use animated render bounds, not the smaller gameplay movement cylinder.
+    const auto visible=[&](Object3d& object) {
+        AABB bounds{};
+        return cameraClearance<=0 || !camera_ || !object.GetModel() || !object.GetModel()->GetLocalAABB(bounds) ||
+            !FirstPersonCamera::NearBounds(camera_->GetTranslate(),TransformAABB(bounds,object.GetWorldMatrix()),cameraClearance);
+    };
+    if (showMarker && typeMarker_ && !IsDead() && visible(*typeMarker_)) typeMarker_->Draw();
+    DrawFaces(cameraClearance);
     for (auto& detached : detachedParts_) {
         ApplySceneLight(*detached.object);
-        detached.object->Draw();
+        if (visible(*detached.object)) detached.object->Draw();
     }
     if (!splitVisuals_) {
         if (!IsDead()) {
             auto& visual = fallbackVisual_ ? *fallbackVisual_ : object_;
             ApplySceneLight(visual);
-            visual.Draw();
+            if (visible(visual)) visual.Draw();
         }
         return;
     }
@@ -590,7 +598,7 @@ void Enemy::Draw(bool showMarker) {
         const auto& visual = visuals_[i];
         if (visual.object && visual.visible && parts_[i].DamageState() != EnemyPartDamageState::Destroyed) {
             ApplySceneLight(*visual.object);
-            visual.object->Draw();
+            if (visible(*visual.object)) visual.object->Draw();
         }
     }
 }
@@ -901,11 +909,13 @@ bool Enemy::SpawnFaces(size_t part, const Vector3& direction,bool deathBurst) {
     }
     return true;
 }
-void Enemy::DrawFaces() {
+void Enemy::DrawFaces(float cameraClearance) {
     if (faceShards_.empty() || !faceBatch_) return;
     uint32_t index=0;
     for (const auto& shard : faceShards_) {
         const auto matrix=Matrix4x4::MakeAffineMatrix({1,1,1},shard.motion.rotation,shard.motion.position);
+        if (cameraClearance>0 && camera_ && FirstPersonCamera::NearBounds(camera_->GetTranslate(),
+            TransformAABB(shard.motion.bounds,matrix),cameraClearance)) continue;
         for (const int v : {0,1,2,2,1,0}) faceModel_->UpdateVertexPosition(index++,EnemyPartTransformPoint(shard.vertices[v],matrix));
     }
     for (;index<kFaceCapacity*6;++index) faceModel_->UpdateVertexPosition(index,{});

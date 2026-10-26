@@ -132,7 +132,7 @@ public:
     void ConfirmAttack(float actualDamage) { attackCount_ += ai_.attacksThisUpdate; lastAttackDamage_ = actualDamage; attackFlash_ = .35f; }
     bool IsDead() const { return exploded_ || EnemyPartsDead(parts_); }
     EnemyState GetState() const { return IsDead() ? EnemyState::Dead : ai_.state; }
-    void Draw(bool showMarker=true);
+    void Draw(bool showMarker=true,float cameraClearance=0);
     void DrawDirectionalShadow(DirectionalShadowMap& shadow);
     void SetSceneLight(const Object3dLight* light) { sceneLight_ = light; }
     void DrawExplosion();
@@ -200,7 +200,7 @@ private:
     static constexpr size_t kFaceCapacity = 1024;
     void TrimFacePool(size_t reserve);
     bool SpawnFaces(size_t part, const Vector3& direction,bool deathBurst=false);
-    void DrawFaces();
+    void DrawFaces(float cameraClearance=0);
     Object3dCommon* common_ = nullptr;
     DirectXCommon* dx_ = nullptr;
     Camera* camera_ = nullptr;

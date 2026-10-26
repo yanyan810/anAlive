@@ -47,6 +47,7 @@ inline void RunCameraSequenceRuntimeTests(GameApp& app) {
     check(game->startPlayerVisual_ && std::abs(game->startPlayerVisual_->Rotation().y-
         game->level_.playerVisual.WorldYaw(game->player_.GetTransform().rotate.y))<.0001f,"intro model ignored saved Player Visual yaw");
     const auto first=game->camera_.GetTranslate();
+    const double duration=game->startSequence_.Duration();
     trace<<"Before incoming draw"<<std::endl; render(); trace<<"Before FadeIn"<<std::endl; scenes.Update(app,100); // begin FadeIn, discard loading delta
     scenes.Update(app,.25f); render();
     check(game->startSequence_.Elapsed()==0 && StageLength(game->camera_.GetTranslate()-first)<.0001f,"Fade advanced sequence or moved camera");
@@ -62,14 +63,16 @@ inline void RunCameraSequenceRuntimeTests(GameApp& app) {
     std::vector<Vector3> enemies; for (auto* enemy:game->enemies_) enemies.push_back(enemy->GetPosition());
     float previous=0;
     for (const auto& checkpoint:std::vector<std::pair<float,const char*>>{{.5f,"05-hold"},{1.5f,"15-orbit"},{2.5f,"25-behind"},{3.5f,"35-ingress"},{3.9f,"39-eye"}}) {
-        game->Update(app,checkpoint.first-previous); previous=checkpoint.first;
+        // Saved camera overrides can change the original four-second timing.
+        const float seconds=static_cast<float>(checkpoint.first*duration/4);
+        game->Update(app,seconds-previous); previous=seconds;
         check(game->sequenceOwnsCamera_ && game->stage_.Time()==0 && game->spawnSystem_.ElapsedTime()==spawnTime,"Intro advanced gameplay/spawns");
         check(StageLength(game->player_.GetTransform().translate-player.translate)==0 && game->player_.GetHP()==hp,"Intro moved/damaged player");
         check(game->shotCount_==0 && game->player_.CurrentWeapon().Magazine()==ammo && game->enemyPool_.Active()==count,"Intro fired/reloaded/changed pool");
         for (size_t i=0;i<enemies.size();++i) check(StageLength(game->enemies_[i]->GetPosition()-enemies[i])==0,"Intro advanced enemy AI");
         capture(checkpoint.second);
     }
-    game->Update(app,.2f);
+    game->Update(app,static_cast<float>(duration-game->startSequence_.Elapsed())+.01f);
     check(!game->sequenceOwnsCamera_ && game->sequenceInputGuard_,"Natural finish failed");
     check(StageLength(game->camera_.GetTranslate()-game->player_.EyePosition())<1e-6f,"FPS position mismatch");
     check(StageLength(game->camera_.GetRotate()-player.rotate)<1e-6f && game->camera_.GetFovY()==game->sequenceEye_.fov,"FPS rotation/FOV mismatch");
@@ -97,6 +100,6 @@ inline void RunCameraSequenceRuntimeTests(GameApp& app) {
     check(game && game->sequenceOwnsCamera_ && game->startSequence_.Elapsed()==0,"Restart did not prepare a fresh sequence");
     game->SetStartSequenceEnabled(false); game->Update(app,0);
     check(!game->sequenceOwnsCamera_,"Debug disabling did not restore FPS camera");
-    std::ofstream(dir+"/result.txt")<<"PASS: "<<stage<<" D3D12 frames 0/.5/1.5/2.5/3.5/3.9/4s, title fade hold, frozen player/weapons/AI/pool/spawn/clock, exact FPS handoff, held input guard, skip, restart and disable. Space input branch "<<(focused?"tested":"unverified (unfocused hidden window; evaluator skip tested)")<<".\n";
+    std::ofstream(dir+"/result.txt")<<"PASS: "<<stage<<" D3D12 frames at 0/12.5/37.5/62.5/87.5/97.5/100 percent of "<<duration<<"s, title fade hold, frozen player/weapons/AI/pool/spawn/clock, exact FPS handoff, held input guard, skip, restart and disable. Space input branch "<<(focused?"tested":"unverified (unfocused hidden window; evaluator skip tested)")<<".\n";
 }
 

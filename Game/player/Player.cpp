@@ -3,6 +3,7 @@
 
 void Player::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera) {
     hp_ = 100.0f;
+    lastImpactDirection_={};
     movementEnabled_ = true;
     motion_ = {};
     camera_ = camera;

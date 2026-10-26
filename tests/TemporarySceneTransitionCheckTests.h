@@ -56,10 +56,14 @@ inline void RunTemporarySceneTransitionCheckTests(GameApp& app, TemporarySceneTr
     title->UpdateWorld(app,title->start_.delay,false); finish();
     Check(checker.Execute(app,Action::Defeat), "Temporary defeat rejected");
     scenes.Update(app,0);
-    Check(scenes.CurrentName()=="GameOver", "Temporary defeat did not use real death route");
+    game=dynamic_cast<GameScene*>(scenes.Current());
+    Check(game && game->gameOver_.Active(), "Temporary defeat did not use real death route");
+    scenes.Update(app,game->gameOver_.MenuDelay()+.2f);
+    Check(game->gameOver_.MenuReady(), "Death sequence did not reach GameOver menu");
     capture(L"generated/scene-transition-check/game-over.png");
     Check(checker.Execute(app,Action::Start), "GameOver retry rejected"); finish();
-    Check(scenes.CurrentName()=="Game", "GameOver retry did not enter Game");
+    game=dynamic_cast<GameScene*>(scenes.Current());
+    Check(game && scenes.CurrentName()=="GameOverRetry" && game->level_.id=="stage03" && !game->gameOver_.Active(), "GameOver retry did not reload the current stage");
     Check(checker.Execute(app,Action::Title), "Gameplay title return rejected"); finish();
     Check(scenes.CurrentName()=="Title", "Gameplay title return failed");
     std::ofstream("generated/scene-transition-check/result.txt") <<

@@ -3,10 +3,12 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <filesystem>
 #include <wrl.h>
 #include <d3d12.h>
 
 #include "OffscreenPass.h"
+#include "DeathPostEffect.h"
 
 class DirectXCommon;
 class SrvManager;
@@ -68,6 +70,11 @@ public:
     void SetEffectEnabled(PostEffectMode mode, bool enabled);
     bool IsEffectEnabled(PostEffectMode mode) const;
     void ClearEffects();
+    void SetDeathPostEffect(const DeathPostEffectParameters& parameters);
+    void ResetDeathPostEffect() { deathPost_={}; }
+    const DeathPostEffectParameters& DeathPostEffect() const { return deathPost_; }
+    uint64_t FullscreenDrawCount() const { return fullscreenDraws_; }
+    uint64_t DeathPostDrawCount() const { return deathPostDraws_; }
     void SetRadialBlurParameters(const Vector2& center, int32_t numSamples, float blurWidth);
     void SetDissolveTransition(float threshold, const Vector4& color, float edgeWidth = 0.0f);
     void SetObjectLayerBloomColor(const Vector4& color) { objectLayerBloomColor_ = color; }
@@ -77,9 +84,13 @@ public:
 
     uint32_t GetOffscreenSrvIndex() const;
     uint32_t GetPreviewSrvIndex() const;
+    ID3D12Resource* GetSceneTextureResource() const {
+        const auto* pass=FindPostBuffer_(previewSrvIndex_); return pass ? pass->GetResource() : nullptr;
+    }
     OffscreenPass* GetOffscreen() const { return offscreen_.get(); }
 
 private:
+    friend void RunGameOverPostEffectRuntimeTests(GameApp& app, const std::filesystem::path& directory);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunTitleSceneTests(GameApp& app);
 #endif
@@ -87,9 +98,10 @@ private:
     void CreatePipelineState(
         const wchar_t* psPath,
         Microsoft::WRL::ComPtr<ID3D12PipelineState>& outPSO);
-    void DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* bloomCBOverride = nullptr);
-    void DrawFullscreenPassToBackBuffer(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* srcResource);
-    void DrawFullscreenPassToBuffer(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* srcResource, OffscreenPass& dst, ID3D12Resource* bloomCBOverride = nullptr);
+    void DrawFullscreenPass(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* bloomCBOverride = nullptr, bool presentation = false);
+    void DrawFullscreenPassToBackBuffer(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* srcResource, bool presentation = false);
+    void DrawFullscreenPassToBuffer(PostEffectMode mode, uint32_t srcSrvIndex, ID3D12Resource* srcResource, OffscreenPass& dst, ID3D12Resource* bloomCBOverride = nullptr, bool presentation = false);
+    OffscreenPass* FindPostBuffer_(uint32_t srvIndex) const;
     void DrawAdditiveCompositePass(uint32_t baseSrvIndex, uint32_t addSrvIndex);
     int FindLastEnabledPostEffect_() const;
     uint32_t RenderPostEffectsToBuffer_(ID3D12Resource* srcResource, uint32_t srcSrvIndex);
@@ -126,6 +138,11 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> copyImageRootSignature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> additiveCompositePSO_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> deathPostPSO_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> deathPostCB_;
+    DeathPostEffectParameters* deathPostData_=nullptr;
+    DeathPostEffectParameters deathPost_;
+    uint64_t fullscreenDraws_=0, deathPostDraws_=0;
 
     static constexpr int kEffectCount = static_cast<int>(PostEffectMode::Count);
     std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, kEffectCount> pipelineStates_;

@@ -42,9 +42,13 @@ inline float StepStageProjectile(EnemyProjectile& p,float dt,const Vector3& play
     if (p.lifetime<=1e-6f) p.active=false;
     return 0;
 }
-inline float UpdateStageProjectiles(EnemyProjectileSystem& system,float dt,const Vector3& player,const StageWorld& world) {
+inline float UpdateStageProjectiles(EnemyProjectileSystem& system,float dt,const Vector3& player,const StageWorld& world,Vector3* impactDirection=nullptr) {
     float damage=0;
-    for (auto& p : system.projectiles) damage+=StepStageProjectile(p,dt,player,world);
+    for (auto& p : system.projectiles) {
+        const float hit=StepStageProjectile(p,dt,player,world);
+        damage+=hit;
+        if (hit>0 && impactDirection) *impactDirection=p.type==EnemyProjectileType::Bullet ? p.velocity : player-p.position;
+    }
     std::erase_if(system.projectiles,[](const auto& p) { return !p.active; });
     return damage;
 }

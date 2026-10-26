@@ -89,7 +89,7 @@ bool SceneManager::ChangeScene_(GameApp& app, const std::string& name, bool awai
     previousName_ = currentName_;
     try {
         if (previousScene_) previousScene_->OnExit(app);
-        if (app.Render()) app.Render()->SetMode(PostEffectMode::FullScreen);
+        if (app.Render()) { app.Render()->SetMode(PostEffectMode::FullScreen); app.Render()->ResetDeathPostEffect(); }
         current_ = std::move(next);
         currentName_ = name;
         current_->OnEnter(app);

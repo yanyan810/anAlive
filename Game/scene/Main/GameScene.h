@@ -16,6 +16,9 @@
 #include "BulletManager.h"
 #include "AudioSystem.h"
 #include "StartPlayerVisual.h"
+#include "GameOverSequence.h"
+#include "GameOverOverlay.h"
+#include "GameOverVisionOverlay.h"
 #include <array>
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugTimeline.h"
@@ -48,6 +51,14 @@ public:
     void SetStartSequenceEnabled(bool enabled) { startSequenceEnabled_=enabled; }
     bool PlacementTestFinished() const { return player_.IsDead() || !stage_.IsPlaying(); }
 private:
+    friend void RunGameOverSequenceRuntimeTests(GameApp& app);
+    void BeginGameOver(GameApp& app);
+    void UpdateGameOver(GameApp& app,float dt);
+    bool LeaveGameOver(GameApp& app,bool retry);
+    GameOverSequence gameOver_;
+    GameOverOverlay gameOverOverlay_;
+    GameOverVisionOverlay gameOverVision_;
+    float gameOverMenuTime_=0;
     friend void RunCameraSequenceRuntimeTests(GameApp& app);
     void BeginStartSequence(GameApp& app,bool force=false);
     void FinishStartSequence(GameApp& app);

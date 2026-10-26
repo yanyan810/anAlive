@@ -52,8 +52,10 @@ public:
             (title && title->StartExplosionActive())) return false;
         switch (action) {
         case Action::Title:
+            if (game && game->gameOver_.Active()) return game->LeaveGameOver(app,false);
             return game && !game->stage_.IsPlaying() ? game->ReturnToTitle(app) : scenes.TransitionTo("Title");
         case Action::Start:
+            if (game && game->gameOver_.Active()) return game->LeaveGameOver(app,true);
             if (title) {
                 if (!title->ready_ || !title->start_.Begin()) return false;
                 title->BeginStartExplosion(); // Same explosion, hold and fade as shooting GAME START.
@@ -61,7 +63,7 @@ public:
             }
             return scenes.TransitionTo("Game");
         case Action::Clear:
-            if (!game || !game->stageLoaded_ || !game->stage_.IsPlaying() || game->stage_.Goals().empty()) return false;
+            if (!game || game->gameOver_.Active() || !game->stageLoaded_ || !game->stage_.IsPlaying() || game->stage_.Goals().empty()) return false;
             if (!game->stage_.Update(0,game->stage_.Goals().front().position)) return false;
             game->OnStageClear(app); // Real result overlay and frozen gameplay.
             return true;
@@ -94,7 +96,7 @@ public:
         }
         auto* game = dynamic_cast<GameScene*>(scenes.Current());
         auto* title = dynamic_cast<TitleScene*>(scenes.Current());
-        const std::string scene = game && !game->stage_.IsPlaying() ? "STAGE CLEAR" : scenes.CurrentName();
+        const std::string scene = game && game->gameOver_.Active() ? "GAME OVER" : game && !game->stage_.IsPlaying() ? "STAGE CLEAR" : scenes.CurrentName();
         std::ostringstream status;
         status << "SCENE: " << scene << " - " << state << " - ALPHA: " << std::fixed << std::setprecision(2) << fade.Alpha();
         if (scenes.IsWaitingForScene()) status << " - LOADING";

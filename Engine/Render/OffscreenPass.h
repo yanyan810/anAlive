@@ -29,6 +29,7 @@ public:
     ID3D12Resource* GetResource() const { return resource_.Get(); }
     uint32_t GetSrvIndex() const { return srvIndex_; }
     uint32_t GetRtvIndex() const { return rtvIndex_; }
+    D3D12_RESOURCE_STATES GetState() const { return currentState_; }
     const Vector4& GetClearColor() const { return clearColor_; }
     void SetClearColor(const Vector4& color) { clearColor_ = color; }
 

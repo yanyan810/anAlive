@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <filesystem>
 #include "GameApp.h"
 #include "CrashHandler.h"

@@ -3,11 +3,12 @@
 
 class GameOverOverlay {
 public:
+    void Reset() { selected_=0; armed_=false; }
     void Initialize(SpriteCommon* common,DirectXCommon* dx) {
         shade_.Initialize(common,dx,"resources/white1x1.png");
         const auto& white=TextureManager::GetInstance()->GetMetaData("resources/white1x1.png");
         shade_.SetScale({WinApp::kClientWidth/static_cast<float>(white.width),WinApp::kClientHeight/static_cast<float>(white.height),1});
-        font_.Initialize(common,dx,160); selected_=0; armed_=false;
+        font_.Initialize(common,dx,160); Reset();
     }
     int Hit(const Vector2& p) const {
         if (std::abs(p.x-WinApp::kClientWidth*.5f)>155) return -1;

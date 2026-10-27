@@ -3,6 +3,7 @@
 #include "../../tests/ScreenTransitionTests.h"
 #include "../../tests/CameraSequenceRuntimeTests.h"
 #include "../../tests/GameOverSequenceRuntimeTests.h"
+#include "../../tests/TitleGameOverDemoTests.h"
 #include "../../tests/HotelStageRuntimeTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
@@ -74,6 +75,15 @@ int GameApp::Run() {
     if (!Initialize_()) {
         Finalize_();
         return -1;
+    }
+    if (HasLaunchArgument(L"--title-gameover-demo-test")) {
+        int result=0;
+        std::filesystem::create_directories("generated/title-demo-tests");
+        try { RunTitleGameOverDemoTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/title-demo-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
     }
     if (HasLaunchArgument(L"--gameover-sequence-test")) {
         int result=0;
@@ -384,6 +394,13 @@ void GameApp::Update(float dt) {
 void GameApp::Update(float dt, float unscaledDt) {
 
     input_->Update();
+    render_->UpdateViewPostPreview(unscaledDt);
+#ifdef USE_IMGUI
+    if (input_->HasFocus() && input_->IsKeyTrigger(DIK_F9)) {
+        render_->ToggleViewPostDebug();
+        if (render_->ViewPostDebugVisible()) input_->SetCameraControlEnabled(false);
+    }
+#endif
     if (transitionCheck_) transitionCheck_->Update(*this);
 
     unsigned int simulationUpdates = 1;
@@ -485,7 +502,7 @@ void GameApp::Draw() {
 #ifdef USE_IMGUI
     if (imgui_) {
 #ifdef PLACEMENT_EDITOR_RELEASE
-        if (!imgui_->IsWeaponWorkspace() && sceneMgr_->CurrentName()!="EnemyAITest") {
+        if (!imgui_->IsWeaponWorkspace() && sceneMgr_->CurrentName()!="EnemyAITest" && !render_->ViewPostDebugVisible()) {
             render_->DrawOffscreenToBackBuffer(); sceneMgr_->DrawOverlay2D(*this);
             if (transitionCheck_) transitionCheck_->Draw(*this);
             imgui_->End(dx_->GetCommandList()); dx_->PostDraw(); return;

@@ -1,4 +1,5 @@
 #include "GameScene.h"
+#include "GameOverMenuInput.h"
 #include "GameApp.h"
 #include "Object3dCommon.h"
 #include "ImGuiManagaer.h"
@@ -145,6 +146,7 @@ void GameScene::UpdateShutterAudio(bool running) {
 
 void GameScene::OnEnter(GameApp& app) {
     app.Render()->ResetDeathPostEffect();
+    app.Render()->ResetViewPostPreview();
     SetWindowTextW(app.Win()->GetHwnd(),L"アンアライブ");
     gameOver_.Reset(); gameOverMenuTime_=0;
     startSequence_=CameraSequence{}; sequenceOwnsCamera_=false; sequenceWaiting_=false; sequenceInputGuard_=false; sequenceDebugCommand_=0;
@@ -302,6 +304,7 @@ void GameScene::OnEnter(GameApp& app) {
 }
 void GameScene::OnExit(GameApp& app) {
     app.Render()->ResetDeathPostEffect();
+    app.Render()->ResetViewPostPreview();
     gameOver_.Reset(); gameOverMenuTime_=0;
     player_.SetMovementEnabled(true); player_.CurrentWeapon().CancelBurst();
     camera_.SetNearZ(.1f); camera_.SetFovY(kNormalFovDegrees*kDegreesToRadians);
@@ -577,30 +580,7 @@ void GameScene::UpdateGameOver(GameApp& app,float dt) {
     for (auto& visual:weaponVisuals_) visual->Update(0);
     if (!gameOver_.MenuReady()) return;
     gameOverMenuTime_=gameOver_.MenuElapsed();
-    // Require a release after the camera handoff; held fire/Enter cannot Retry.
-    if (!gameOverOverlay_.Armed()) {
-        if (!input.IsLeftMousePressed() && !input.IsKeyPressed(DIK_RETURN) && !input.IsKeyPressed(DIK_NUMPADENTER) && !input.IsKeyPressed(DIK_SPACE)) gameOverOverlay_.Arm();
-        return;
-    }
-    if (!input.HasFocus()) return;
-    RECT rect{}; bool hovered=true;
-#ifdef USE_IMGUI
-    hovered=app.ImGui()->IsSceneImageHovered();
-    app.ImGui()->GetSceneImageRect(rect);
-    if (ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive()) return;
-#else
-    GetClientRect(app.Win()->GetHwnd(),&rect);
-    POINT origin{}; ClientToScreen(app.Win()->GetHwnd(),&origin); OffsetRect(&rect,origin.x,origin.y);
-#endif
-    POINT cursor{}; int hit=-1;
-    if (hovered && rect.right>rect.left && rect.bottom>rect.top && GetCursorPos(&cursor) && PtInRect(&rect,cursor)) {
-        hit=gameOverOverlay_.Hit({static_cast<float>(cursor.x-rect.left)*WinApp::kClientWidth/(rect.right-rect.left),
-            static_cast<float>(cursor.y-rect.top)*WinApp::kClientHeight/(rect.bottom-rect.top)});
-    }
-    // Mouse selection only on a click: a stationary cursor must not undo keys.
-    if (input.IsKeyTrigger(DIK_UP) || input.IsKeyTrigger(DIK_DOWN) || input.IsKeyTrigger(DIK_W) || input.IsKeyTrigger(DIK_S)) gameOverOverlay_.Toggle();
-    if (hit>=0 && input.IsLeftMouseTrigger()) { gameOverOverlay_.Select(hit); LeaveGameOver(app,hit==0); }
-    else if (input.IsKeyTrigger(DIK_RETURN) || input.IsKeyTrigger(DIK_NUMPADENTER) || input.IsKeyTrigger(DIK_SPACE)) LeaveGameOver(app,gameOverOverlay_.Selected()==0);
+    if (const auto choice=UpdateGameOverMenuInput(app,gameOverOverlay_)) LeaveGameOver(app,*choice==0);
 }
 
 void GameScene::UpdateClearMenu(GameApp& app) {
@@ -842,6 +822,7 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
 }
 void GameScene::DrawRender(GameApp& app) {
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
+    if (!gameOver_.Active()) app.Render()->ApplyViewPostPreview();
     ground_.Draw();
     gameOver_.Draw();
     if (sequenceOwnsCamera_ && startPlayerVisual_) {
@@ -858,11 +839,13 @@ void GameScene::DrawRender(GameApp& app) {
 #endif
     for (size_t i=0; i<weaponVisuals_.size(); ++i)
         if (weapons_.Pickups()[i].visible) weaponVisuals_[i]->Draw();
-    for(auto& enemy : enemies_) enemy->Draw(!showroom_ || showEnemyMarkers_,gameOver_.Active() ? .16f : 0);
+    if (gameOver_.EnemiesVisible())
+        for(auto& enemy : enemies_) enemy->Draw(!showroom_ || showEnemyMarkers_,gameOver_.Active() ? .16f : 0);
     for(auto& visual : projectileVisuals_) visual->Draw();
     bullets_.Draw();
     // 半透明の爆発球は不透明な敵・弾の後に描き、Releaseでも範囲を見せる。
-    for (auto& enemy : enemies_) enemy->DrawExplosion();
+    if (gameOver_.EnemiesVisible())
+        for (auto& enemy : enemies_) enemy->DrawExplosion();
 }
 
 
@@ -874,6 +857,7 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 #endif
 
 void GameScene::DrawImGui(GameApp& app) {
+    app.Render()->DrawViewPostEffectsImGui(gameOver_.settings.post.doubleVision,gameOver_.settings.post.impactBlur);
     if (gameOver_.Active()) return;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) { DrawWeaponWorkspace(app); return; }

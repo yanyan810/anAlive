@@ -8,13 +8,16 @@
 #include <numeric>
 
 // Uses the production presentation PSO, actual GPU pixels and timestamp queries.
-inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem::path& directory) {
+inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem::path& directory,
+    const std::vector<DeathPostEffectParameters>& fpsProbes) {
     const auto check=[](bool ok,const char* message) { if (!ok) throw std::runtime_error(message); };
     auto* dx=app.Dx(); auto& render=*app.Render(); auto* device=dx->GetDevice();
     std::ofstream report(directory/"post-gpu.csv");
-    report<<"width,height,copy_us,combined_us,delta_us,fullscreen_draws,disabled_death_draws\n";
+    report<<"width,height,copy_us,existing_effects_us,combined_us,noise_delta_us,fullscreen_draws,disabled_death_draws\n";
     std::ofstream mosaicReport(directory/"mosaic-gpu.csv");
     mosaicReport<<"width,height,forced_strength,normal_chroma,normal_colored_fraction,forced_chroma,time_delta,near_time_delta,epoch_delta,source_max_delta\n";
+    std::ofstream temporalReport(directory/"noise-temporal-gpu.csv");
+    temporalReport<<"width,height,epoch,time_seconds,mean_linear_luminance,mean_rgb_delta\n";
     UINT64 frequency=0; check(SUCCEEDED(dx->GetCommandQueue()->GetTimestampFrequency(&frequency)) && frequency>0,"GPU timestamp frequency unavailable");
     D3D12_QUERY_HEAP_DESC queryDesc{}; queryDesc.Type=D3D12_QUERY_HEAP_TYPE_TIMESTAMP; queryDesc.Count=2;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> queries;
@@ -70,7 +73,10 @@ inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem
         combined.blurPixels=1; combined.chromaticPixels=.75f; combined.vignetteColor={.08f,.003f,.008f,1};
         combined.mosaicStrength=postDefaults.mosaicStrength; combined.mosaicColorStrength=postDefaults.mosaicColorStrength;
         std::vector<std::vector<uint8_t>> frames;
-        for (int probe=0;probe<19;++probe) {
+        const int clockProbeEnd=33+static_cast<int>(width==1280 ? fpsProbes.size() : 0);
+        const int viewProbeStart=clockProbeEnd+3;
+        const int probeCount=viewProbeStart+5;
+        for (int probe=0;probe<probeCount;++probe) {
             DeathPostEffectParameters p;
             if (probe==1) p.desaturation=1;
             if (probe==2) p.vignette=.5f;
@@ -89,13 +95,34 @@ inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem
             if (probe==14) p.mosaicTime=.01f;
             if (probe==15) { p.mosaicTime=10; p.mosaicChangeRate=0; }
             if (probe==17 || probe==18) p.mosaicTime=1/postDefaults.mosaicChangeRate+(probe==17 ? -.002f : .002f);
+            if (probe>=19) {
+                p.mosaicStrength=postDefaults.mosaicStrength; p.mosaicColorStrength=postDefaults.mosaicColorStrength;
+                p.mosaicCellSize=postDefaults.mosaicCellSize; p.mosaicChangeRate=postDefaults.mosaicChangeRate;
+                if (probe==19) p.mosaicDensity=0;
+                if (probe==20) p.mosaicDensity=.35f;
+                if (probe>=21 && probe<33) p.mosaicTime=(static_cast<float>(probe-21)+.25f)/postDefaults.mosaicChangeRate;
+                if (probe>=33 && probe<clockProbeEnd) {
+                    const auto& clock=fpsProbes[probe-33];
+                    p.mosaicTime=clock.mosaicTime; p.mosaicChangeRate=clock.mosaicChangeRate;
+                }
+            }
+            if (probe>=clockProbeEnd && probe<viewProbeStart) {
+                p.mosaicOcclusion=1;
+                if (probe==clockProbeEnd+2) { p.mosaicStrength=0; p.mosaicDensity=0; }
+            }
+            if (probe>=viewProbeStart) {
+                p={};
+                if (probe!=viewProbeStart+1) { p.doubleVisionStrength=1; p.doubleVisionOffsetPixels={10,0}; p.doubleVisionOpacity=.5f; }
+                if (probe>=viewProbeStart+1 && probe<=viewProbeStart+3) p.impactBlurPixels=1.5f;
+                if (probe==viewProbeStart+4) p.doubleVisionOpacity=0;
+            }
             render.SetDeathPostEffect(p); begin();
             const auto draws=render.FullscreenDrawCount(), deathDraws=render.DeathPostDrawCount();
-            render.DrawFullscreenPass(PostEffectMode::FullScreen,probe>=10 ? greySrv : srv,nullptr,true);
+            render.DrawFullscreenPass(PostEffectMode::FullScreen,probe>=10 && probe<viewProbeStart && probe!=clockProbeEnd+1 ? greySrv : srv,nullptr,true);
             check(render.FullscreenDrawCount()-draws==1,"Death post added a fullscreen draw");
             check(render.DeathPostDrawCount()-deathDraws==(p.Active() ? 1u : 0u),"Disabled death post did GPU work");
             if (probe==11) check(render.DeathPostEffect().mosaicStrength==1 && render.deathPostData_->mosaicStrength==1 && render.deathPostData_->mosaicColorStrength==1 && render.deathPostData_->mosaicCellSize==.015f,"Forced mosaic did not reach the GPU constant buffer at 1/1/0.015");
-            if (probe==6 || probe==16) ui.Draw();
+            if (probe==6 || probe==16 || probe==viewProbeStart+3) ui.Draw();
             finish();
             DirectX::ScratchImage image; constexpr auto state=D3D12_RESOURCE_STATE_RENDER_TARGET;
             check(SUCCEEDED(DirectX::CaptureTexture(dx->GetCommandQueue(),target.Get(),false,image,state,state)),"Post effect GPU capture failed");
@@ -155,8 +182,64 @@ inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem
         const double coloredFraction=static_cast<double>(colored)/samplePixels;
         check(chroma>=6 && chroma<55 && coloredFraction>.4,"Default mosaic is not visibly colored on grey or is overwhelming");
         check(forcedChroma>chroma*2 && forcedChroma>25,"Forced 1.0 mosaic is not clearly visible on grey");
-        check(timeDifference>.8 && nearDifference<.5 && timeDifference>nearDifference*5 && epochDifference<.5,"Mosaic pattern did not change slowly/continuously");
+        check(timeDifference>.8 && nearDifference==0 && epochDifference>.8,"Noise did not hold within an epoch/change at the next epoch");
+        check(frames[12]==frames[14] && frames[12]==frames[17],"Noise changed before the 50ms time step");
         check(frames[12]==frames[15],"Zero mosaic change rate did not freeze the pattern");
+        check(frames[19]==frames[10],"Zero noise density did not use the exact copy path");
+        size_t occupied=0,totalCells=0;
+        for (uint32_t y=0;y<height;++y) for (uint32_t x=0;x<width;++x) {
+            const auto* sparse=pixel(20,x,y); const auto* base=pixel(10,x,y);
+            if (!std::equal(sparse,sparse+3,base)) ++occupied;
+            ++totalCells;
+        }
+        const double occupiedFraction=static_cast<double>(occupied)/totalCells;
+        check(occupiedFraction>.32 && occupiedFraction<.38,"Noise density did not control occupied cells");
+        // Twelve actual GPU frames on an unchanged source: quantify both local
+        // random changes and global brightness stability without camera motion.
+        double minimumLuminance=1,maximumLuminance=0;
+        for (int probe=21;probe<33;++probe) {
+            double luminance=0,difference=0;
+            const auto linear=[](uint8_t c) { const double v=c/255.0; return v<=.04045 ? v/12.92 : std::pow((v+.055)/1.055,2.4); };
+            for (size_t i=0;i<frames[probe].size();i+=4) {
+                const auto* rgb=&frames[probe][i];
+                luminance+=.2125*linear(rgb[0])+.7154*linear(rgb[1])+.0721*linear(rgb[2]);
+                for (int ch=0;ch<3;++ch) difference+=std::abs(rgb[ch]-frames[probe==21 ? 12 : probe-1][i+ch]);
+            }
+            luminance/=static_cast<double>(width)*height;
+            difference/=static_cast<double>(width)*height*3;
+            minimumLuminance=std::min(minimumLuminance,luminance); maximumLuminance=std::max(maximumLuminance,luminance);
+            check(probe==21 ? difference==0 : difference>.8,"GPU temporal captures did not show independent held patterns");
+            temporalReport<<width<<','<<height<<','<<probe-21<<','<<(probe-21+.25)/postDefaults.mosaicChangeRate<<','<<luminance<<','<<difference<<'\n';
+        }
+        check(maximumLuminance-minimumLuminance<.003,"Random noise caused a global brightness flash");
+        if (width==1280) for (int probe=33;probe<clockProbeEnd;probe+=3)
+            check(frames[probe]==frames[probe+1] && frames[probe]==frames[probe+2],"30/60/144 FPS produced different GPU noise pixels");
+        check(frames[clockProbeEnd]==frames[clockProbeEnd+1] && frames[clockProbeEnd]==frames[clockProbeEnd+2],
+            "Opaque disappearance noise retained scene silhouettes or holes");
+        size_t coveredColors=0;
+        for (size_t i=0;i<frames[clockProbeEnd].size();i+=4) {
+            const auto* rgb=&frames[clockProbeEnd][i];
+            if (*std::max_element(rgb,rgb+3)-*std::min_element(rgb,rgb+3)>25) ++coveredColors;
+        }
+        check(coveredColors>static_cast<size_t>(width)*height*.8,"Opaque cover was not full-screen rainbow noise");
+        check(frames[viewProbeStart]!=frames[0] && frames[viewProbeStart+1]!=frames[0] &&
+            frames[viewProbeStart+2]!=frames[viewProbeStart] && frames[viewProbeStart+2]!=frames[viewProbeStart+1],"View effects did not work independently/together");
+        const auto decode=[](uint8_t c) { const double v=c/255.0; return v<=.04045 ? v/12.92 : std::pow((v+.055)/1.055,2.4); };
+        const auto encode=[](double v) { return 255*(v<=.0031308 ? v*12.92 : 1.055*std::pow(v,1/2.4)-.055); };
+        const uint32_t ghostX=width/3-5, ghostY=height/2;
+        for (int channel=0;channel<3;++channel) {
+            const double expected=encode((decode(pixel(0,ghostX,ghostY)[channel])+decode(pixel(0,ghostX+10,ghostY)[channel]))*.5);
+            check(std::abs(pixel(viewProbeStart,ghostX,ghostY)[channel]-expected)<2,"Double Vision was not a shifted copy of all RGB channels");
+        }
+        uint64_t centerOriginal=0, centerBlurred=0;
+        for (uint32_t x=width*3/4;x<width-3;++x) {
+            centerOriginal+=std::abs(pixel(0,x,height/2)[0]-pixel(0,x+1,height/2)[0]);
+            centerBlurred+=std::abs(pixel(viewProbeStart+1,x,height/2)[0]-pixel(viewProbeStart+1,x+1,height/2)[0]);
+        }
+        check(centerBlurred<centerOriginal*.9,"Impact Blur did not blur the center using the shared kernel");
+        const auto* viewHud=pixel(viewProbeStart+3,width/2,height/2);
+        check(viewHud[0]==0 && viewHud[1]==255 && viewHud[2]==0,"View effects leaked onto UI");
+        check(frames[viewProbeStart+4]==frames[0],"Zero opacity did not restore exact copy pixels");
         mosaicReport<<width<<','<<height<<",1,"<<chroma<<','<<coloredFraction<<','<<forcedChroma<<','<<timeDifference<<','<<nearDifference<<','<<epochDifference<<','<<maxMosaicDelta<<'\n';
         uint64_t preservedVariation=0;
         for (uint32_t x=width*3/4;x<width-3;++x) preservedVariation+=std::abs(pixel(7,x,3)[0]-pixel(7,x+1,3)[0]);
@@ -165,10 +248,12 @@ inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem
         // Interleave the PSOs, alternating their order to reduce clock/thermal
         // drift. Discard warmup pairs. VSync/CPU waits are outside the queries;
         // production has no query overhead.
-        std::vector<double> samples[2];
-        for (int repeat=0;repeat<10;++repeat) for (int order=0;order<2;++order) {
-            const int mode=(repeat+order)%2;
-            render.SetDeathPostEffect(mode==1 ? combined : DeathPostEffectParameters{});
+        std::vector<double> samples[3];
+        for (int repeat=0;repeat<10;++repeat) for (int order=0;order<3;++order) {
+            const int mode=(repeat+order)%3;
+            auto parameters=mode==0 ? DeathPostEffectParameters{} : combined;
+            if (mode==1) parameters.mosaicStrength=0;
+            render.SetDeathPostEffect(parameters);
                 begin(); auto* command=dx->GetCommandList();
                 command->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
                 constexpr int draws=128;
@@ -182,12 +267,14 @@ inline void RunGameOverPostEffectRuntimeTests(GameApp& app,const std::filesystem
                 const D3D12_RANGE noWrite{0,0}; readback->Unmap(0,&noWrite);
                 if (repeat>=2) samples[mode].push_back(us);
         }
-        double times[2]{};
-        for (int mode=0;mode<2;++mode) {
+        double times[3]{};
+        for (int mode=0;mode<3;++mode) {
             std::sort(samples[mode].begin(),samples[mode].end());
-            times[mode]=(samples[mode][3]+samples[mode][4])*.5;
+            const auto middle=samples[mode].size()/2;
+            check(middle>0,"Insufficient GPU timing samples");
+            times[mode]=(samples[mode][middle-1]+samples[mode][middle])*.5;
         }
-        report<<width<<','<<height<<','<<times[0]<<','<<times[1]<<','<<times[1]-times[0]<<",1,0\n";
+        report<<width<<','<<height<<','<<times[0]<<','<<times[1]<<','<<times[2]<<','<<times[2]-times[1]<<",1,0\n";
         // Strengths all zero must select the exact same copy pipeline/pixels.
         render.ResetDeathPostEffect(); begin(); render.DrawFullscreenPass(PostEffectMode::FullScreen,srv,nullptr,true); finish();
         DirectX::ScratchImage bypass; constexpr auto rtState=D3D12_RESOURCE_STATE_RENDER_TARGET;

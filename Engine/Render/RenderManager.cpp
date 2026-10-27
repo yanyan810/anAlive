@@ -256,10 +256,81 @@ void RenderManager::SetDeathPostEffect(const DeathPostEffectParameters& paramete
     deathPost_.mosaicCellSize=std::clamp(limit(parameters.mosaicCellSize,.05f),.001f,.05f);
     deathPost_.mosaicColorStrength=limit(parameters.mosaicColorStrength,1);
     deathPost_.mosaicTime=limit(parameters.mosaicTime,3600);
-    deathPost_.mosaicChangeRate=limit(parameters.mosaicChangeRate,2);
+    deathPost_.mosaicChangeRate=limit(parameters.mosaicChangeRate,120);
+    deathPost_.mosaicDensity=limit(parameters.mosaicDensity,1);
+    deathPost_.mosaicOcclusion=limit(parameters.mosaicOcclusion,1);
+    ViewPostEffectParameters view{parameters.doubleVisionStrength,parameters.doubleVisionOffsetPixels,parameters.doubleVisionOpacity,parameters.impactBlurPixels};
+    ApplyViewPostEffects(deathPost_,view);
     deathPost_.vignetteColor={limit(parameters.vignetteColor.x,1),limit(parameters.vignetteColor.y,1),limit(parameters.vignetteColor.z,1),1};
     deathPost_.edgeInner=limit(parameters.edgeInner,.95f);
     deathPost_.edgeOuter=std::clamp(limit(parameters.edgeOuter,1.5f),deathPost_.edgeInner+.05f,1.5f);
+}
+
+void RenderManager::SetViewPostEffects(const ViewPostEffectParameters& parameters) {
+    ApplyViewPostEffects(deathPost_,parameters);
+}
+
+void RenderManager::UpdateViewPostPreview(float unscaledDt) {
+    if ((previewDouble_ || previewImpact_) && std::isfinite(unscaledDt) && unscaledDt>0)
+        previewViewTime_+=std::min(unscaledDt,.1f);
+    if (previewImpact_ && std::isfinite(unscaledDt) && unscaledDt>0)
+        previewImpactTime_+=std::min(unscaledDt,.1f);
+}
+
+void RenderManager::ApplyViewPostPreview() {
+    if (!previewDouble_ && !previewImpact_) return;
+    auto vision=previewVision_; vision.enabled&=previewDouble_;
+    auto impact=previewImpactSettings_; impact.enabled&=previewImpact_;
+    auto parameters=EvaluateViewPostEffects(vision,1,impact,previewImpactTime_,previewViewTime_);
+    if (impact.enabled && previewImpactHold_) parameters.impactBlurPixels=ViewPostLimit(impact.strength,0,3);
+    SetViewPostEffects(parameters);
+}
+
+void RenderManager::ResetViewPostPreview() {
+    previewDouble_=previewImpact_=false; previewImpactTime_=0; previewViewTime_=0;
+    SetViewPostEffects({});
+}
+
+void RenderManager::SetViewPostPreview(const DoubleVisionSettings& vision,const ImpactBlurSettings& impact,
+    bool previewDouble,bool previewImpact,bool holdPeak) {
+    previewVision_=vision; previewImpactSettings_=impact;
+    previewDouble_=previewDouble; previewImpact_=previewImpact; previewImpactHold_=holdPeak; previewImpactTime_=0; previewViewTime_=0;
+}
+
+void RenderManager::DrawViewPostEffectsImGui(DoubleVisionSettings& vision,ImpactBlurSettings& impact) {
+#ifdef USE_IMGUI
+    if (!viewPostDebugVisible_) return;
+    ImGui::SetNextWindowSize({370,470},ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("View Post Effects (F9)",&viewPostDebugVisible_)) {
+        ImGui::TextWrapped("Edit death effects below. Preview toggles affect gameplay view only; the sequence clock is unchanged.");
+        ImGui::PushID("double");
+        ImGui::SeparatorText("Double Vision");
+        ImGui::Checkbox("Enable",&vision.enabled);
+        ImGui::SliderFloat("Strength",&vision.strength,0,2);
+        ImGui::SliderFloat2("Offset (pixels)",&vision.offsetPixels.x,-64,64);
+        ImGui::SliderFloat("Opacity",&vision.opacity,0,.8f);
+        ImGui::SliderFloat("Sway Amount (pixels)",&vision.swayPixels,0,32);
+        ImGui::SliderFloat("Sway Speed (Hz)",&vision.swaySpeed,0,5);
+        ImGui::Checkbox("Preview Double Vision",&previewDouble_);
+        ImGui::PopID(); ImGui::PushID("impact");
+        ImGui::SeparatorText("Impact Blur");
+        ImGui::Checkbox("Enable",&impact.enabled);
+        ImGui::SliderFloat("Strength (pixels)",&impact.strength,0,3);
+        ImGui::SliderFloat("Duration (seconds)",&impact.duration,.02f,2);
+        ImGui::Checkbox("Preview Impact Blur",&previewImpact_);
+        ImGui::Checkbox("Hold Impact Peak",&previewImpactHold_);
+        if (ImGui::Button("Replay Impact")) { previewImpact_=true; previewImpactHold_=false; previewImpactTime_=0; }
+        ImGui::PopID();
+        if (ImGui::Button("Stop Preview")) ResetViewPostPreview();
+        ImGui::SameLine();
+        if (ImGui::Button("Reset Settings")) { vision={}; impact={}; ResetViewPostPreview(); }
+        ImGui::TextWrapped("Both preview toggles: combined. One toggle: isolated. Escape releases the mouse.");
+    }
+    ImGui::End();
+    previewVision_=vision; previewImpactSettings_=impact;
+#else
+    (void)vision; (void)impact;
+#endif
 }
 
 void RenderManager::SetMode(PostEffectMode mode)

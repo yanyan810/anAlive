@@ -20,8 +20,13 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     const auto postDistance=[](const DeathPostEffectParameters& a,const DeathPostEffectParameters& b) {
         return std::max({std::abs(a.vignette-b.vignette),std::abs(a.desaturation-b.desaturation),
             std::abs(a.blurPixels-b.blurPixels),std::abs(a.chromaticPixels-b.chromaticPixels),
+            std::abs(a.doubleVisionStrength-b.doubleVisionStrength),std::abs(a.impactBlurPixels-b.impactBlurPixels),
+            std::abs(a.doubleVisionOpacity-b.doubleVisionOpacity),
+            std::abs(a.doubleVisionOffsetPixels.x-b.doubleVisionOffsetPixels.x),std::abs(a.doubleVisionOffsetPixels.y-b.doubleVisionOffsetPixels.y),
             std::abs(a.mosaicStrength-b.mosaicStrength),
+            std::abs(a.mosaicOcclusion-b.mosaicOcclusion),
             std::abs(a.mosaicCellSize-b.mosaicCellSize),std::abs(a.mosaicColorStrength-b.mosaicColorStrength),
+            std::abs(a.mosaicDensity-b.mosaicDensity),std::abs(a.mosaicChangeRate-b.mosaicChangeRate),
             a.mosaicStrength>0 && b.mosaicStrength>0 ? std::abs(a.mosaicTime-b.mosaicTime) : 0.0f,
             std::abs(a.vignetteColor.x-b.vignetteColor.x),std::abs(a.vignetteColor.y-b.vignetteColor.y),std::abs(a.vignetteColor.z-b.vignetteColor.z)});
     };
@@ -91,6 +96,7 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
             trace<<name<<" visibleRedPixels="<<redPixels<<std::endl;
             app.Render()->SetDeathPostEffect(original);
         }
+        return image;
     };
     const auto finish=[&] {
         for (int i=0;i<100 && scenes.IsTransitioning();++i) { scenes.Update(app,.05f); draw(); }
@@ -111,6 +117,39 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     const auto deathPoint=game->level_.collision.Move(start,start+Vector3{.25f,0,.25f},.4f,1.8f,true);
     game->player_.SetStage(&game->level_.collision,deathPoint,game->level_.playerRotation);
     game->player_.RefreshVisuals();
+    const auto previewReference=capture("preview-00-original");
+    app.Render()->ToggleViewPostDebug(); // Also render the actual tuning window in both builds.
+    app.Render()->SetViewPostPreview({}, {},true,false);
+    capture("preview-01-double-vision");
+    check(app.Render()->DeathPostEffect().doubleVisionStrength==1 && app.Render()->DeathPostEffect().impactBlurPixels==0,"Isolated Double Vision preview failed");
+    app.Render()->UpdateViewPostPreview(.1f); app.Render()->UpdateViewPostPreview(.1f);
+    const auto swayFirst=capture("preview-01a-double-sway-020");
+    const auto firstOffset=app.Render()->DeathPostEffect().doubleVisionOffsetPixels;
+    app.Render()->UpdateViewPostPreview(.1f); app.Render()->UpdateViewPostPreview(.1f);
+    const auto swaySecond=capture("preview-01b-double-sway-040");
+    const auto secondOffset=app.Render()->DeathPostEffect().doubleVisionOffsetPixels;
+    check(std::hypot(firstOffset.x-secondOffset.x,firstOffset.y-secondOffset.y)>2,"Double Vision preview did not sway independently of impact");
+    const auto* swayA=swayFirst.GetImage(0,0,0); const auto* swayB=swaySecond.GetImage(0,0,0); size_t swayChanges=0;
+    for (size_t row=0;row<swayA->height;++row) for (size_t col=0;col<swayA->width*4;++col)
+        if (swayA->pixels[row*swayA->rowPitch+col]!=swayB->pixels[row*swayB->rowPitch+col]) ++swayChanges;
+    check(swayChanges>500,"Double Vision sway did not change actual stage GPU pixels");
+    app.Render()->SetViewPostPreview({}, {},false,true);
+    capture("preview-02-impact-blur");
+    check(app.Render()->DeathPostEffect().doubleVisionStrength==0 && app.Render()->DeathPostEffect().impactBlurPixels==1.5f,"Isolated Impact Blur preview failed");
+    app.Render()->SetViewPostPreview({}, {},true,true);
+    capture("preview-03-combined");
+    check(app.Render()->DeathPostEffect().doubleVisionStrength==1 && app.Render()->DeathPostEffect().impactBlurPixels==1.5f,"Combined preview failed");
+    check(!game->gameOver_.Active() && game->gameOver_.Elapsed()==0 && game->player_.GetHP()==100,"Preview advanced death/HP");
+    app.Render()->SetViewPostPreview({}, {},false,true,false);
+    app.Render()->UpdateViewPostPreview(.1f); app.Render()->UpdateViewPostPreview(.11f);
+    app.Render()->ApplyViewPostPreview();
+    check(app.Render()->DeathPostEffect().impactBlurPixels==0,"Preview impact did not expire independently");
+    app.Render()->ResetViewPostPreview(); app.Render()->ToggleViewPostDebug();
+    const auto previewReset=capture("preview-04-reset");
+    const auto* originalPixels=previewReference.GetImage(0,0,0); const auto* resetPixels=previewReset.GetImage(0,0,0);
+    for (size_t row=0;row<originalPixels->height;++row)
+        check(std::equal(originalPixels->pixels+row*originalPixels->rowPitch,originalPixels->pixels+row*originalPixels->rowPitch+originalPixels->width*4,
+            resetPixels->pixels+row*resetPixels->rowPitch),"Preview reset changed ordinary gameplay drawing");
     game->player_.ApplyDamage(100,{1,0,0}); game->Update(app,0);
     check(game->gameOver_.Phase()==GameOverSequence::State::Death && game->gameOver_.HasVisual(),"HP zero did not start death");
     check(!input.IsCameraControlEnabled() && !game->player_.IsMovementEnabled(),"Death did not release controls");
@@ -139,6 +178,9 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
         {timeAt(seq,State::Opening,.25f),"08-opening-early",State::Opening},
         {timeAt(seq,State::Opening,.75f),"09-opening-late",State::Opening},
         {timeAt(seq,State::Awake,.5f),"10-eyes-open-still",State::Awake},
+        {timeAt(seq,State::Awake,0)+.375f,"10a-disappear-noise-peak",State::Awake},
+        {timeAt(seq,State::Awake,0)+.4499f,"10b-before-disappearance",State::Awake},
+        {timeAt(seq,State::Awake,0)+.4501f,"10c-after-disappearance",State::Awake},
         {timeAt(seq,State::Rising,seq.RiseHeadEnd()*.5f),"11-head-movement",State::Rising},
         {timeAt(seq,State::Rising,(seq.RisePauseStart()+seq.RisePauseEnd())*.5f),"12-head-pause",State::Rising},
         {timeAt(seq,State::Rising,.6f),"13-rising",State::Rising},
@@ -147,6 +189,7 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
         {seq.MenuDelay()+.35f,"16-game-over",State::Wander}}) {
         game->Update(app,checkpoint.first-previous); previous=checkpoint.first;
         check(game->gameOver_.Phase()==checkpoint.phase,"Consciousness state transition is mistimed");
+        check(seq.EnemiesVisible()==(checkpoint.first<timeAt(seq,State::Awake,0)+.45f),"Enemy draw gate changed outside the noise endpoint");
         check(scenes.Fade().State()==TransitionState::Idle,"Consciousness overlay altered scene transition fade");
         check(game->gameOver_.MenuReady()==(checkpoint.phase==State::Wander),"Menu appeared before Wander");
         check(game->gameOver_.body_.get()==body,"Corpse was replaced during reanimation");
@@ -220,7 +263,9 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     capture("17-wander");
     check(game->LeaveGameOver(app,true) && !game->LeaveGameOver(app,true),"Retry duplicate guard failed");
     finish(); game=dynamic_cast<GameScene*>(scenes.Current());
+    // Outgoing scenes may be retired by finish(); test the new scene's draw gate here.
     check(game && game->stageId_==stage && !game->gameOver_.Active() && !game->gameOver_.HasVisual(),"Retry did not reset sequence/current stage");
+    check(game->gameOver_.EnemiesVisible(),"Retry retained the enemy draw gate");
     check(StageLength(game->player_.GetTransform().translate-start)<1e-5f && game->player_.GetHP()==100 && game->stage_.Time()==0,"Retry did not reset spawn/HP/time");
     check(game->player_.IsMovementEnabled() && game->gameOver_.WorldTimeScale()==1,"Retry left movement/timing state behind");
     check(game->gameOver_.Vision().shade==0 && game->gameOver_.Vision().opening==1,"Retry retained eyelids/blackout");
@@ -233,6 +278,7 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     check(scenes.TransitionTo("GameOverTest",.05f,.05f),"Stage reload after Title failed"); finish();
     game=dynamic_cast<GameScene*>(scenes.Current());
     check(game && game->player_.GetHP()==100 && !game->gameOver_.Active(),"Stage reload retained death");
+    check(game->gameOver_.EnemiesVisible(),"Title/stage reload retained hidden enemies");
     game->player_.ApplyDamage(100); game->Update(app,0); game->Update(app,timeAt(game->gameOver_,State::Opening,.4f));
     const auto* interrupted=game;
     scenes.Change(app,"GameOverTest");
@@ -240,11 +286,151 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     check(!interrupted->gameOver_.Active() && !interrupted->gameOver_.HasVisual() && interrupted->gameOver_.WorldTimeScale()==1 &&
         interrupted->gameOver_.Vision().shade==0 && interrupted->gameOver_.Vision().opening==1,"Reload during opening did not clean up OnExit");
     check(!interrupted->gameOver_.PostEffect().Active() && !app.Render()->DeathPostEffect().Active(),"Interrupted scene leaked death post effect");
+    check(interrupted->gameOver_.EnemiesVisible(),"Interrupted opening retained the enemy draw gate");
     game=dynamic_cast<GameScene*>(scenes.Current());
     check(game && !game->gameOver_.Active() && game->player_.GetHP()==100,"Interrupted stage reload failed");
+    // Production DrawRender GPU check: three ordinary pooled actors, including
+    // broken/dead pieces, above stage geometry so the fixture is always in view.
+    const auto ordinaryEnemies=game->enemies_;
+    game->enemies_.clear();
+    for (int i=0;i<3;++i) {
+        auto* enemy=game->enemyPool_.Acquire("normal",9000+i,"gameover-render-probe",{(i-1)*3.0f,100,0},{});
+        enemy->SetAIPaused(true);
+        if (i==1) enemy->ApplyDamage(EnemyPartType::LeftArm,10000,{0,0,1});
+        if (i==2) enemy->Die();
+        enemy->UpdateVisuals(0); game->enemies_.push_back(enemy);
+    }
+    const auto probeEnemies=game->enemies_;
+    const auto poolCount=game->enemyPool_.Active(), allocations=game->enemyPool_.RuntimeAllocations();
+    const auto probeView=[&] {
+        game->camera_.SetTranslate({0,102,-10}); game->camera_.SetRotate({}); game->camera_.Update();
+        // Object3d caches view/projection constants during Update, not Draw.
+        game->ground_.Update(0); game->SyncShutterVisuals();
+        for (auto& visual:game->weaponVisuals_) visual->Update(0);
+        for (auto* enemy:game->enemies_) enemy->UpdateVisuals(0);
+    };
+    game->BeginGameOver(app);
+    game->gameOver_.settings.post.enabled=false;
+    game->gameOver_.Update(timeAt(game->gameOver_,State::Awake,0)+.4499f,game->level_.collision,game->camera_);
+    probeView();
+    const auto visibleProbe=capture("disappear-visible-three-with-debris");
+    game->enemies_.clear();
+    const auto emptyProbe=capture("disappear-empty-reference");
+    game->enemies_=probeEnemies;
+    game->gameOver_.Update(.0002f,game->level_.collision,game->camera_); probeView();
+    check(!game->gameOver_.EnemiesVisible() && game->gameOver_.Phase()==State::Awake,"Enemy draw gate missed its single frame boundary with post disabled");
+    const auto hiddenProbe=capture("disappear-hidden-three-with-debris");
+    const auto difference=[](const DirectX::ScratchImage& a,const DirectX::ScratchImage& b) {
+        const auto* x=a.GetImage(0,0,0); const auto* y=b.GetImage(0,0,0); size_t changed=0;
+        for (size_t row=0;row<x->height;++row) for (size_t col=0;col<x->width*4;++col)
+            if (x->pixels[row*x->rowPitch+col]!=y->pixels[row*y->rowPitch+col]) ++changed;
+        return changed;
+    };
+    const auto visiblePixels=difference(visibleProbe,emptyProbe), hiddenPixels=difference(hiddenProbe,emptyProbe);
+    trace<<"disappearance GPU visibleBytes="<<visiblePixels<<" hiddenBytes="<<hiddenPixels<<std::endl;
+    check(visiblePixels>100 && hiddenPixels==0,"Enemy/debris GPU pixels did not disappear together in one frame");
+    check(game->enemyPool_.Active()==poolCount && game->enemyPool_.RuntimeAllocations()==allocations &&
+        game->enemies_==probeEnemies && !probeEnemies[0]->IsDead() && probeEnemies[2]->IsDead(),"Disappearance changed pooled objects/liveness");
+    for (auto* enemy:probeEnemies) check(enemy->AI().paused,"Disappearance changed ordinary AI");
+    // Restoring just the sequence draw gate recovers identical damaged geometry.
+    game->gameOver_.Reset(); probeView();
+    // Keep the same Awake overlay/UI for an exact GPU comparison after Reset.
+    game->gameOver_.state_=State::Awake;
+    const auto restoredProbe=capture("disappear-restored-three-with-debris");
+    check(difference(visibleProbe,restoredProbe)==0,"Reset did not restore exact enemy/debris drawing");
+    game->gameOver_.Reset();
+    app.Dx()->WaitForGPU();
+    game->enemies_=ordinaryEnemies;
+    for (auto* enemy:probeEnemies) game->enemyPool_.ReleaseForReset(enemy);
+    game->BeginGameOver(app);
+    game->gameOver_.Update(timeAt(game->gameOver_,State::Awake,0)+.46f,game->level_.collision,game->camera_);
+    check(!game->gameOver_.EnemiesVisible(),"Hidden-exit fixture did not reach disappearance");
+    const auto* hiddenOutgoing=game;
+    scenes.Change(app,"GameOverTest");
+    check(hiddenOutgoing->gameOver_.EnemiesVisible() && !hiddenOutgoing->gameOver_.Active(),"Scene exit after disappearance did not restore draw state");
+    game=dynamic_cast<GameScene*>(scenes.Current());
+    check(game && game->gameOver_.EnemiesVisible(),"New scene inherited hidden enemies");
     // Compare sequence phase/camera at different update rates on a stationary world.
     const GameOverSequence::DeathContext death{game->player_.GetTransform(),{game->player_.EyePosition(),{},1.04719755f},{},game->player_.Settings().cameraHeight};
     Camera aCamera,bCamera,cCamera; GameOverSequence a,b,c; StageWorld flat;
+    std::vector<DeathPostEffectParameters> fpsProbes;
+    DoubleVisionSettings steadyVision; steadyVision.swayPixels=0;
+    const auto steady=EvaluateViewPostEffects(steadyVision,1,{},-1,.3);
+    check(steady.doubleVisionOffsetPixels.x==10 && steady.doubleVisionOffsetPixels.y==3,"Zero sway amount did not preserve the fixed offset");
+    steadyVision.swayPixels=12; steadyVision.swaySpeed=0;
+    const auto stopped=EvaluateViewPostEffects(steadyVision,1,{},-1,.3);
+    check(stopped.doubleVisionOffsetPixels.x==10 && stopped.doubleVisionOffsetPixels.y==3,"Zero sway speed did not stop motion");
+    const auto moving=EvaluateViewPostEffects({},1,{},-1,.2), fading=EvaluateViewPostEffects({},.5f,{},-1,.2);
+    check(std::abs((moving.doubleVisionOffsetPixels.x-10)*.5f-(fading.doubleVisionOffsetPixels.x-10))<.0001f,
+        "Double Vision sway did not fade with death exposure");
+    a.settings={}; a.Begin(app.ObjCom(),app.Dx(),&aCamera,game->enemyDefinitions_.Find("normal"),{},death);
+    a.Update(timeAt(a,State::Death,.5f),flat,aCamera);
+    const float earlyDouble=a.PostEffect().doubleVisionStrength;
+    check(earlyDouble>0 && earlyDouble<.35f && a.PostEffect().impactBlurPixels==0,"View effects did not start gradually on death");
+    a.Update(timeAt(a,State::Collapse,.95f)-a.Elapsed(),flat,aCamera);
+    const float fallDouble=a.PostEffect().doubleVisionStrength;
+    check(fallDouble>earlyDouble && a.PostEffect().impactBlurPixels==0,"Double Vision did not increase during collapse");
+    a.Update(timeAt(a,State::FloorHold,0)+.01f-a.Elapsed(),flat,aCamera);
+    const float contactBlur=a.PostEffect().impactBlurPixels;
+    check(contactBlur>1.4f && a.LandingTime()>.009f,"Impact Blur did not synchronize with the contact/camera clock");
+    a.Update(.09f,flat,aCamera);
+    check(a.PostEffect().impactBlurPixels>0 && a.PostEffect().impactBlurPixels<contactBlur,"Impact Blur did not decay naturally");
+    a.Update(.101f,flat,aCamera); check(a.PostEffect().impactBlurPixels==0,"Impact Blur persisted beyond duration");
+    a.Update(timeAt(a,State::Closing,.8f)-a.Elapsed(),flat,aCamera);
+    check(a.PostEffect().doubleVisionStrength<fallDouble*.1f,"Double Vision did not recover before closure");
+    a.Update(timeAt(a,State::Corpse,0)-a.Elapsed(),flat,aCamera);
+    check(!a.PostEffect().Active(),"New view effects remained after full closure");
+    a.Update(timeAt(a,State::Opening,.5f)-a.Elapsed(),flat,aCamera);
+    check(a.PostEffect().doubleVisionStrength==0 && a.PostEffect().impactBlurPixels==0,"New view effects leaked into awakening");
+    a.Reset();
+    // Enemy count/frustum are deliberately absent: the sequence must finish
+    // the same anomaly at 30/60/144 FPS and after a delayed update.
+    for (float tick:{1.0f/30,1.0f/60,1.0f/144,10.0f}) {
+        a.Reset(); a.settings={};
+        a.Begin(app.ObjCom(),app.Dx(),&aCamera,game->enemyDefinitions_.Find("normal"),{},death);
+        const float opened=timeAt(a,State::Awake,0);
+        const auto advanceTo=[&](float target) {
+            float left=target-a.Elapsed();
+            while (left>0) { const float step=std::min(left,tick); a.Update(step,flat,aCamera); left-=step; }
+        };
+        advanceTo(opened);
+        check(a.EnemiesVisible() && a.Vision().opening==1,"Enemies vanished before fully opening");
+        const auto still=aCamera.GetTranslate(), rotation=aCamera.GetRotate();
+        advanceTo(opened+.375f);
+        const float pulsePeak=a.PostEffect().mosaicStrength;
+        a.settings.post.enemyDisappearNoiseBoost=0;
+        check(a.EnemiesVisible() && std::abs(pulsePeak-a.PostEffect().mosaicStrength-.22f)<.0001f,"Disappearance pulse peak/strength setting failed");
+        a.settings.post.enemyDisappearNoiseBoost=.22f;
+        advanceTo(opened+.4499f); check(a.EnemiesVisible() && a.PostEffect().mosaicOcclusion==1,"Noise did not fully cover the frame before disappearance");
+        advanceTo(opened+.4501f); check(!a.EnemiesVisible() && a.PostEffect().mosaicOcclusion==1,"Noise did not fully cover the enemy cut");
+        a.settings.post.enemyDisappearNoiseOcclusion=.5f;
+        check(a.PostEffect().mosaicOcclusion==.5f,"Full cover strength setting was ignored");
+        a.settings.post.enemyDisappearNoiseOcclusion=1;
+        const auto afterPulse=a.PostEffect(); a.settings.post.enemyDisappearNoiseBoost=0;
+        check(postDistance(afterPulse,a.PostEffect())==0,"Noise did not resume its existing envelope");
+        check(StageLength(aCamera.GetTranslate()-still)<.001f && rotationDistance(aCamera.GetRotate(),rotation)<.001f,"Camera moved during disappearance");
+        advanceTo(opened+.526f);
+        check(a.PostEffect().mosaicOcclusion==0,"Full cover persisted after the short noise burst");
+        advanceTo(a.MenuDelay()+.05f);
+        check(a.MenuReady() && !a.EnemiesVisible(),"Wander restored hidden enemies");
+        a.Reset(); check(a.EnemiesVisible(),"Reset did not restore enemies after Wander");
+    }
+    for (bool postEnabled:{false,true}) {
+        a.Reset(); a.settings={}; a.settings.awakeSeconds=.01f;
+        a.settings.enemyDisappearDelaySeconds=.8f; a.settings.enemyDisappearNoiseSeconds=.25f;
+        a.settings.post.enabled=postEnabled;
+        a.Begin(app.ObjCom(),app.Dx(),&aCamera,game->enemyDefinitions_.Find("normal"),{},death);
+        check(a.Duration(State::Awake)>1.1999f,"Retimed disappearance did not extend stillness");
+        a.Update(timeAt(a,State::Awake,0)+1.0499f,flat,aCamera);
+        check(a.EnemiesVisible(),"Retimed disappearance occurred early");
+        a.Update(.0002f,flat,aCamera);
+        check(!a.EnemiesVisible() && a.Phase()==State::Awake,"Retimed disappearance depended on post toggle");
+        // Changing settings after the event must never make enemies reappear.
+        a.settings.enemyDisappearDelaySeconds=10; a.Update(0,flat,aCamera);
+        check(!a.EnemiesVisible(),"Settings edit unlatched the draw gate");
+        a.Reset(); check(a.EnemiesVisible(),"Reset during Awake retained hidden enemies");
+    }
+    a.settings={};
     a.Begin(app.ObjCom(),app.Dx(),&aCamera,game->enemyDefinitions_.Find("normal"),{},death);
     b.Begin(app.ObjCom(),app.Dx(),&bCamera,game->enemyDefinitions_.Find("normal"),{},death);
     for (int i=0;i<120;++i) a.Update(1.0f/30,flat,aCamera);
@@ -342,6 +528,14 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
             for (const auto* other:{&b,&c}) check(std::abs(a.Vision().shade-other->Vision().shade)<.001f &&
                 std::abs(a.Vision().opening-other->Vision().opening)<.001f,"Darkness/eyelids depend on FPS");
             for (const auto* other:{&b,&c}) check(postDistance(a.PostEffect(),other->PostEffect())<.003f,"Death post effect depends on FPS");
+            if (a.PostEffect().mosaicStrength>0) {
+                const auto epoch=[](const DeathPostEffectParameters& p) { return std::floor(p.mosaicTime*p.mosaicChangeRate+.0001f); };
+                check(epoch(a.PostEffect())==epoch(b.PostEffect()) && epoch(a.PostEffect())==epoch(c.PostEffect()),"Random noise epoch depends on FPS");
+                if (scenario==0 && yaw==0 && (std::abs(time-timeAt(a,State::Opening,.75f))<.00001f ||
+                    std::abs(time-timeAt(a,State::Awake,.5f))<.00001f || std::abs(time-timeAt(a,State::Rising,.5f))<.00001f)) {
+                    for (const auto* seq:{&a,&c,&b}) fpsProbes.push_back(seq->PostEffect()); // 30, 60, 144.
+                }
+            }
             if (a.Phase()==State::FloorHold || a.Phase()==State::Closing || a.Phase()==State::Corpse || a.Phase()==State::Opening || a.Phase()==State::Awake) {
                 check(std::abs(aCamera.GetTranslate().y-(origin.y+a.settings.floorEyeHeight))<.01f,"Corpse did not hold floor-level FPS");
                 check(rotationDistance(aCamera.GetRotate(),context.camera.rotation)>.6f,"Collapse did not roll FPS camera");
@@ -509,6 +703,7 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     a.settings.post.enabled=true;
     a.settings.post.vignetteEnabled=a.settings.post.desaturationEnabled=a.settings.post.blurEnabled=a.settings.post.chromaticEnabled=false;
     a.settings.post.mosaicEnabled=false;
+    a.settings.post.doubleVision.enabled=a.settings.post.impactBlur.enabled=false;
     check(!a.PostEffect().Active(),"Disabling all death post types failed");
     // The awakening anomaly must never leak into death, closed eyes or Wander.
     // Its peak is after full opening; decay leaves the existing UI unaffected.
@@ -525,11 +720,26 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     a.settings.post.mosaicEnabled=true; a.settings.post.enabled=false;
     check(!a.PostEffect().Active(),"Master post toggle retained awakening mosaic"); a.settings.post.enabled=true;
     a.settings.post.mosaicStrength=.025f; a.settings.post.mosaicCellSize=.012f; a.settings.post.mosaicColorStrength=.2f;
+    a.settings.post.mosaicDensity=.4f; a.settings.post.mosaicChangeRate=37;
     const auto tuned=a.PostEffect();
     check(std::abs(tuned.mosaicStrength-.025f)<.0001f && tuned.mosaicCellSize==.012f && tuned.mosaicColorStrength==.2f,"Mosaic tuning did not reach renderer parameters");
+    check(tuned.mosaicDensity==.4f && tuned.mosaicChangeRate==37,"Noise density/rate settings did not reach renderer parameters");
     a.settings.post.mosaicPeakSeconds=2.35f;
     check(a.PostEffect().mosaicStrength<tuned.mosaicStrength,"Mosaic peak timing setting had no effect");
     a.settings.post={};
+    // The integrated clock is monotonic and slows smoothly through Rising.
+    const auto clockAt=[&](State phase,double seconds) {
+        const auto savedState=a.state_; const auto savedTime=a.phaseTime_;
+        a.state_=phase; a.phaseTime_=seconds; const auto p=a.PostEffect();
+        a.state_=savedState; a.phaseTime_=savedTime; return p.mosaicTime;
+    };
+    const float awakeRate=(clockAt(State::Awake,.31)-clockAt(State::Awake,.30))/.01f;
+    const float riseRate=(clockAt(State::Rising,1.61)-clockAt(State::Rising,1.60))/.01f;
+    const float lateRate=(clockAt(State::Rising,3.11)-clockAt(State::Rising,3.10))/.01f;
+    check(awakeRate>.99f && riseRate<.6f && riseRate>.5f && lateRate<.17f && lateRate>.14f,"Noise rate did not slow through Rising");
+    a.settings.post.mosaicRiseEndRateScale=1;
+    check(std::abs(clockAt(State::Rising,2)-clockAt(State::Rising,1)-1)<.0001f,"Rise noise rate scale setting had no effect");
+    a.settings.post.mosaicRiseEndRateScale=.15f;
     a.Update(timeAt(a,State::Rising,.5f)-a.Elapsed(),flat,aCamera);
     const float midRise=a.PostEffect().mosaicStrength;
     check(midRise>0 && midRise<a.settings.post.mosaicStrength*.7f,"Mosaic did not decay during rise");
@@ -540,10 +750,11 @@ inline void RunGameOverSequenceRuntimeTests(GameApp& app) {
     a.Update(a.MenuDelay()+.01f-a.Elapsed(),flat,aCamera);
     check(!a.PostEffect().Active(),"Long mosaic decay leaked into Wander");
     a.Reset(); check(!a.PostEffect().Active(),"Mosaic reset failed");
-    RunGameOverPostEffectRuntimeTests(app,dir);
+    check(fpsProbes.size()==9,"Missing presentation-clock GPU FPS probes");
+    RunGameOverPostEffectRuntimeTests(app,dir,fpsProbes);
     a.Update(std::numeric_limits<float>::quiet_NaN(),flat,aCamera); a.Update(-1,flat,aCamera);
     check(std::isfinite(a.Elapsed()),"Invalid dt corrupted sequence");
     a.Reset(); a.Reset(); check(!a.Active() && !a.HasVisual(),"Reset not idempotent");
     app.Dx()->WaitForGPU();
-    std::ofstream(dir/"result.txt")<<"PASS: "<<stage<<" death post: forced 1/1/0.015 reaches GPU constants, visible colored blocks on grey, slow continuous pattern changes, retained scene detail, real Opening/Awake/Rising forced/off captures; persistent red through Closing start/mid/99.2%-closed GPU views, opaque eyelids remain black, red absent on reopening; phase-synced recovery, mosaic delay/peak/decay/settings/reset, 30/60/144 FPS and boundary continuity, 4 GPU viewport sizes and timestamp benchmarks, UI isolation, exact disabled-copy pixels/no extra draws, Corpse/Wander bypass, Retry/Title/interruption reset; braced death/camera collision (24 cases), single opening/rise/Wander (20s), frozen HP/weapons/enemies/stage, held-input guards, 4 poses x 4 headings, invalid dt. Menu destinations exercised through the UI's command handler.\n";
+    std::ofstream(dir/"result.txt")<<"PASS: "<<stage<<" death post: discrete 20Hz GPU noise, identical pixels within a step and across 30/60/144 FPS, independent epochs, 12-frame luminance stability, density/zero-rate bypass, integrated Rising/Possess slowdown, retained scene detail, real Opening/Awake/Rising forced/off captures; persistent red through Closing GPU views, opaque eyelids remain black, red absent on reopening; unchanged strength delay/peak/decay/settings/reset, 4 GPU viewport sizes and timestamp benchmarks, UI isolation, exact disabled-copy pixels/no extra draws, Corpse/Wander bypass, Retry/Title/interruption reset; braced death/camera collision (24 cases), single opening/rise/Wander (20s), frozen HP/weapons/enemies/stage, held-input guards, 4 poses x 4 headings, invalid dt.\n";
 }

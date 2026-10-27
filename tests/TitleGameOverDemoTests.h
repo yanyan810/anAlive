@@ -47,16 +47,33 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
             if (x->pixels[row*x->rowPitch+col]!=y->pixels[row*y->rowPitch+col]) ++changed;
         return changed;
     };
+    check(title->mode_==Mode::GameOver,"This branch must open directly in GAME OVER mode");
+    capture("00-default-game-over");
+    check(title->SetMode(Mode::GameStart),"Could not select normal mode for regression checks");
     const auto startView=capture("00-game-start-mode");
-    check(TitleScene::ModeSwitchHit({990,30})==0 && TitleScene::ModeSwitchHit({1150,30})==1 &&
-        TitleScene::ModeSwitchHit({640,360})==-1,"Title mode button hit bounds failed");
-    const auto targetId=title->startTarget_->GetSpawnId();
-    check(title->SetMode(Mode::GameOver) && !title->gameOver_.Active() && !title->start_.Starting(),"Mode selection started an animation");
+    check(title->SetMode(Mode::GameOver) && !scenes.IsTransitioning() && !title->start_.Starting(),"Mode selection started an animation");
     const auto demoView=capture("01-game-over-mode");
     check(difference(startView,demoView)>1000,"Mode selection did not replace 3D text");
     AABB demoBounds{}; title->demoText_.GetModel()->GetLocalAABB(demoBounds);
     const auto bounds=title->startExplosion_.source.bounds;
     check(StageLength(demoBounds.min-bounds.min)<.01f && StageLength(demoBounds.max-bounds.max)<.01f,"GAME OVER did not fit GAME START bounds");
+    // Moving/turning the view must render the word at its fixed world location.
+    // Compare the normal frame against a freshly synchronized camera reference.
+    const auto originalPose=title->player_.GetTransform();
+    for (int pose=0;pose<3;++pose) {
+        if (pose==2) check(title->SetMode(Mode::GameStart),"Could not hide demo text for camera test");
+        const auto position=originalPose.translate+Vector3{pose==1 ? 0.0f : .75f,0,0};
+        const auto rotation=originalPose.rotate+Vector3{0,pose==0 ? 0.0f : .16f,0};
+        title->player_.SetStage(&title->level_.collision,position,rotation);
+        title->UpdateWorld(app,0,false);
+        if (pose==2) check(title->SetMode(Mode::GameOver),"Could not restore demo mode after camera movement");
+        const auto frame=capture(("01-camera-motion-"+std::to_string(pose)).c_str());
+        title->demoText_.Update(0);
+        const auto reference=capture(("01-camera-reference-"+std::to_string(pose)).c_str());
+        check(difference(frame,reference)==0,"GAME OVER retained stale camera projection after movement/turn/mode switch");
+    }
+    title->player_.SetStage(&title->level_.collision,originalPose.translate,originalPose.rotate);
+    title->UpdateWorld(app,0,false);
     const auto demoAim=[&] {
         const auto origin=title->player_.EyePosition();
         for (const auto& face:title->demoTextParts_[0].geometry->faces) {
@@ -75,94 +92,129 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
         BulletSimulation simulation; simulation.Spawn(bullet); title->bullets_.Restore(simulation);
         title->UpdateWorld(app,.2f,false);
     };
-    fire({0,1,0}); check(!title->gameOver_.Active(),"A missed shot started the demo"); title->bullets_.Clear();
+    fire({0,1,0}); check(!scenes.IsTransitioning(),"A missed shot started the demo"); title->bullets_.Clear();
     const auto direction=demoAim();
     StageCollider wall; const auto wallCenter=title->player_.EyePosition()+direction*2;
     wall.local={wallCenter-Vector3{.3f,.3f,.3f},wallCenter+Vector3{.3f,.3f,.3f}}; wall.UpdateMatrices();
     title->level_.collision.colliders.push_back(wall);
-    fire(direction); check(!title->gameOver_.Active(),"A shot through a wall started the demo");
+    fire(direction); check(!scenes.IsTransitioning(),"A shot through a wall started the demo");
     title->level_.collision.colliders.pop_back(); title->bullets_.Clear();
-    const auto initialCamera=title->camera_.GetTranslate(), initialRotation=title->camera_.GetRotate();
-    const auto capacity=title->pool_.Capacity();
     fire(direction);
-    check(title->gameOver_.Phase()==State::Death && title->player_.IsDead() && !title->start_.Starting() &&
-        scenes.Current()==title && !scenes.IsTransitioning(),"Actual GAME OVER bullet impact did not start an in-place death");
-    check(StageLength(title->gameOver_.Death().camera.position-initialCamera)<.001f &&
-        StageLength(title->gameOver_.Death().camera.rotation-initialRotation)<.001f,"Demo lost impact camera pose");
-    check(!title->SetMode(Mode::GameStart) && title->bullets_.Count()==0 && !input.IsCameraControlEnabled(),"Demo accepted title controls or retained shots");
-    const auto& s=title->gameOver_.settings;
-    const float floorAt=s.staggerSeconds+s.collapseSeconds;
-    const float opened=floorAt+s.floorHoldSeconds+s.closeSeconds+s.corpseSeconds+s.openSeconds;
-    const auto advance=[&](float target) { title->UpdateGameOverDemo(app,std::max(0.0f,target-title->gameOver_.Elapsed())); };
-    advance(s.staggerSeconds*.5f); capture("02-death-double-vision");
-    check(title->gameOver_.PostEffect().doubleVisionStrength>0 && title->gameOver_.PostEffect().vignette>0,"Demo omitted death post effects");
-    advance(floorAt+.01f); capture("03-contact-impact-blur");
-    check(title->gameOver_.PostEffect().impactBlurPixels>1,"Demo omitted contact blur");
-    advance(floorAt+s.floorHoldSeconds+s.closeSeconds+.1f);
-    const auto dark=capture("04-eyes-closed");
-    for (size_t i=0;i<dark.GetImage(0,0,0)->height;++i) for (size_t x=0;x<dark.GetImage(0,0,0)->width;++x) {
-        const auto* p=dark.GetImage(0,0,0)->pixels+i*dark.GetImage(0,0,0)->rowPitch+x*4;
-        check(p[0]==0 && p[1]==0 && p[2]==0,"Closed eyes leaked title/mode controls");
+    check(scenes.IsTransitioning() && title->transitionRequested_ && !title->SetMode(Mode::GameStart),
+        "GAME OVER impact did not request/lock the stage transition");
+    const auto finishTransition=[&] {
+        for (int i=0;i<240 && scenes.IsTransitioning();++i) { scenes.Update(app,.05f); draw(); }
+        check(!scenes.IsTransitioning(),"Scene transition did not finish");
+        release();
+    };
+    finishTransition();
+    auto* game=dynamic_cast<GameScene*>(scenes.Current());
+    check(game && game->IsGameOverDemo() && game->stageLoaded_,"Demo did not reach its dedicated GameScene");
+    std::ofstream trace(dir/"trace.txt");
+    const auto checkDemoStart=[&] {
+        check(game->player_.GetHP()==20 && game->player_.CurrentWeapon().Definition().id.empty() &&
+            !game->player_.IsMovementEnabled(),"Demo HP/unarmed/player lock policy failed");
+        check(!game->sequenceOwnsCamera_ && game->enemies_.size()==6 && game->weaponVisuals_.empty() &&
+            game->stage_.Goals().empty() && !game->gameOver_.Active(),"Demo retained intro/pickups/goals/death state");
+        game->BeginStartSequence(app,true);
+        check(!game->sequenceOwnsCamera_,"Demo allowed forced start camera");
+        check(!game->HandleInteraction(true,true),"Demo allowed a weapon pickup");
+        for (size_t i=0;i<game->enemies_.size();++i) {
+            const auto* enemy=game->enemies_[i]; const auto& d=enemy->Definition();
+            const float range=StageLength(enemy->GetPosition()-game->player_.GetTransform().translate);
+            check(d.id=="normal" && range>d.collisionRadius+.4f && range<d.attackRange,
+                "Demo enemy overlaps player or starts outside melee range");
+            check(EnemyNavigation::Clear(&game->level_.collision,enemy->GetPosition(),game->player_.GetTransform().translate,
+                d.collisionRadius,d.collisionHeight),"Demo enemy body route is blocked");
+            for (size_t j=0;j<i;++j) check(StageLength(enemy->GetPosition()-game->enemies_[j]->GetPosition())>
+                d.collisionRadius+game->enemies_[j]->Definition().collisionRadius,"Demo enemies overlap");
+        }
+    };
+    const auto dieByEnemies=[&](int retry) {
+        checkDemoStart();
+        // Inputs, including held fire/reload/pickup and movement, cannot arm or move this demo player.
+        input.keys_[DIK_W]=input.keys_[DIK_E]=input.keys_[DIK_R]=0x80;
+        input.leftMouseDown_=true;
+        const auto spawn=game->player_.GetTransform().translate;
+        float seconds=0;
+        while (!game->gameOver_.Active() && seconds<3) {
+            game->Update(app,1.0f/60); seconds+=1.0f/60;
+        }
+        trace<<"retry="<<retry<<" deathSeconds="<<seconds<<" attacks="<<game->enemyAttackCount_<<'\n';
+        check(game->gameOver_.Active() && game->player_.IsDead() && seconds<3 && game->enemyAttackCount_>=2,
+            "Ordinary enemies failed to kill demo player quickly");
+        check(StageLength(game->player_.GetTransform().translate-spawn)<.001f && game->shotCount_==0 &&
+            game->player_.CurrentWeapon().Definition().id.empty(),"Held input moved/armed/fired the demo player");
+        for (const auto* enemy:game->enemies_) check(enemy->AI().visible && enemy->AI().inFov &&
+            !enemy->AI().occluded && enemy->AI().hasLastSeen,"A demo enemy failed ordinary perception");
+        check(game->gameOver_.HasVisual() && StageLength(game->gameOver_.Death().impactDirection)>0,
+            "Demo bypassed ordinary impact/death context");
+        release();
+    };
+    checkDemoStart(); capture("02-demo-stage-unarmed");
+    dieByEnemies(0);
+    const auto& settings=game->gameOver_.settings;
+    const float floorAt=settings.staggerSeconds+settings.collapseSeconds;
+    const float opened=floorAt+settings.floorHoldSeconds+settings.closeSeconds+settings.corpseSeconds+settings.openSeconds;
+    const auto advance=[&](float target) { game->UpdateGameOver(app,std::max(0.0f,target-game->gameOver_.Elapsed())); };
+    advance(settings.staggerSeconds*.5f); capture("03-death-double-vision");
+    check(game->gameOver_.PostEffect().doubleVisionStrength>0,"Demo omitted double vision");
+    advance(floorAt+.01f); capture("04-contact-impact-blur");
+    check(game->gameOver_.PostEffect().impactBlurPixels>1,"Demo omitted impact blur");
+    advance(floorAt+settings.floorHoldSeconds+settings.closeSeconds+.1f);
+    const auto dark=capture("05-eyes-closed");
+    const auto* pixels=dark.GetImage(0,0,0);
+    for (size_t y=0;y<pixels->height;++y) for (size_t x=0;x<pixels->width;++x) {
+        const auto* pixel=pixels->pixels+y*pixels->rowPitch+x*4;
+        check(pixel[0]==0 && pixel[1]==0 && pixel[2]==0,"Closed eyes leaked scene pixels");
     }
-    advance(opened+.2f); capture("05-eyes-open");
-    check(title->gameOver_.EnemiesVisible() && title->gameOver_.PostEffect().mosaicStrength>0,"Demo hid enemy before opening or omitted rainbow noise");
-    advance(opened+.4499f); capture("06-rainbow-cover-before-cut");
-    check(title->gameOver_.EnemiesVisible() && title->gameOver_.PostEffect().mosaicOcclusion==1,"Demo cover-before-cut failed");
-    advance(opened+.4501f); capture("07-rainbow-cover-after-cut");
-    check(!title->gameOver_.EnemiesVisible() && title->gameOver_.PostEffect().mosaicOcclusion==1,"Demo did not hide ordinary enemy under full noise");
-    advance(opened+.55f);
-    // Exact GPU comparison: only ordinary enemies/shadows disappear. Stage,
-    // background title and GAME OVER text must match a reference without enemies.
-    title->gameOver_.settings.post.enabled=false;
-    title->camera_.SetTranslate(initialCamera); title->camera_.SetRotate(initialRotation); title->camera_.Update();
-    title->environment_.Update(0); title->demoText_.Update(0);
-    for (auto* enemy:title->enemies_) enemy->UpdateVisuals(0);
-    const auto hidden=capture("08-selective-enemy-hidden");
-    const auto actors=title->enemies_; title->enemies_={title->startTarget_.get()};
-    const auto reference=capture("08-selective-reference"); title->enemies_=actors;
-    check(difference(hidden,reference)==0,"Enemy shadow/geometry remained or title text/stage disappeared");
-    title->gameOver_.settings.post.enabled=true;
-    input.keys_[DIK_RETURN]=0x80; input.leftMouseDown_=true;
-    advance(title->gameOver_.MenuDelay()+.2f); capture("09-game-over-menu");
-    check(!title->gameOverOverlay_.Armed() && title->gameOver_.AI().state==EnemyState::Wander,"Demo skipped Wander or accepted held input");
-    const auto before=title->gameOver_.Position();
-    for (int i=0;i<1200;++i) {
-        const auto p=title->gameOver_.Position(); title->UpdateGameOverDemo(app,1.0f/60);
-        check(EnemyNavigation::Clear(&title->level_.collision,p,title->gameOver_.Position(),s.collisionRadius,title->player_.Settings().cameraHeight+.18f),"Demo Wander crossed title collision");
-        const auto eye=title->camera_.GetTranslate();
-        check(StageLength(FirstPersonCamera::ResolveOverlap(title->level_.collision,eye,s.cameraRadius)-eye)<.005f,"Demo camera penetrated title geometry");
+    advance(opened+.2f); capture("06-eyes-open");
+    check(game->gameOver_.EnemiesVisible() && game->gameOver_.PostEffect().mosaicStrength>0,"Demo omitted rainbow noise");
+    advance(opened+.4499f); capture("07-noise-before-enemy-cut");
+    check(game->gameOver_.EnemiesVisible() && game->gameOver_.PostEffect().mosaicOcclusion==1,"Demo cover-before-cut failed");
+    advance(opened+.4501f); capture("08-noise-after-enemy-cut");
+    check(!game->gameOver_.EnemiesVisible() && game->gameOver_.PostEffect().mosaicOcclusion==1,"Demo enemy disappearance failed");
+    advance(game->gameOver_.MenuDelay()+.2f); capture("09-demo-menu");
+    check(game->gameOver_.MenuReady() && game->gameOver_.AI().state==EnemyState::Wander,"Demo did not reach Wander/menu");
+    for (int retry=1;retry<=3;++retry) {
+        check(game->LeaveGameOver(app,true),"Demo Retry rejected");
+        finishTransition(); game=dynamic_cast<GameScene*>(scenes.Current());
+        check(game && game->IsGameOverDemo(),"Retry lost dedicated stage ID");
+        dieByEnemies(retry);
+        advance(game->gameOver_.MenuDelay()+.2f);
     }
-    check(StageLength(before-title->gameOver_.Position())>.1f && !title->gameOver_.EnemiesVisible(),"Demo Wander was stuck or restored enemies");
-    release(); title->UpdateGameOverDemo(app,0); check(title->gameOverOverlay_.Armed(),"Demo menu did not arm on release");
-    for (int retry=0;retry<3;++retry) {
-        check(title->ChooseDemoMenu(app,true),"Demo Retry rejected");
-        check(title->gameOver_.Phase()==State::Death && title->gameOver_.EnemiesVisible() &&
-            title->mode_==Mode::GameOver && title->enemies_.size()==2 && title->pool_.Capacity()==capacity &&
-            title->pool_.RuntimeAllocations()==0 && !title->enemies_[0]->IsDead() && !title->startTarget_->IsDead(),"Demo Retry retained actor/visibility state");
-        check(StageLength(title->gameOver_.Death().player.translate-title->level_.playerPosition)<.001f &&
-            StageLength(title->gameOver_.Death().camera.rotation-title->level_.playerRotation)<.001f,"Demo Retry did not restore title start pose");
-        title->UpdateGameOverDemo(app,title->gameOver_.MenuDelay()+.1f);
-        check(scenes.Current()==title && !scenes.IsTransitioning() && title->gameOver_.MenuReady(),"Demo Retry created a scene or failed to finish");
-    }
-    check(title->ChooseDemoMenu(app,false),"Demo Title rejected");
-    check(title->mode_==Mode::GameStart && !title->gameOver_.Active() && title->gameOver_.EnemiesVisible() &&
-        title->player_.GetHP()==100 && title->player_.IsMovementEnabled() && !app.Render()->DeathPostEffect().Active() &&
-        title->environment_.GetModel()==title->environmentFull_ && title->startTarget_->GetSpawnId()==targetId,"Demo Title did not restore normal title");
+    check(game->LeaveGameOver(app,false),"Demo Title rejected");
+    finishTransition(); title=dynamic_cast<TitleScene*>(scenes.Current());
+    check(title && title->mode_==Mode::GameOver && title->player_.GetHP()==100 &&
+        !app.Render()->DeathPostEffect().Active(),"Title did not restore default GAME OVER and clear death post effects");
     capture("10-title-restored");
-    // Normal GAME START still uses the original HP target, burst and stage transition.
+    // Exercise the normal mode retained in ImGui for debugging.
+    check(title->SetMode(Mode::GameStart),"Could not select normal mode after returning to Title");
     const auto origin=title->player_.EyePosition(); Vector3 normalDirection{}; bool found=false;
     for (const auto& face:title->startExplosion_.source.geometry->faces) {
         const auto delta=(face[0]+face[1]+face[2])*(1.0f/3)-origin; const auto d=delta*(1/StageLength(delta));
         EnemyPartHit hit; StageHit block;
-        if (title->startTarget_->Raycast(origin,d,100,hit) && !title->level_.collision.Raycast(origin,d,hit.distance,block)) { normalDirection=d; found=true; break; }
+        if (title->startTarget_->Raycast(origin,d,100,hit) && !title->level_.collision.Raycast(origin,d,hit.distance,block)) {
+            normalDirection=d; found=true; break;
+        }
     }
-    check(found,"Could not aim at normal GAME START after Title"); fire(normalDirection);
-    check(title->start_.Starting() && !title->gameOver_.Active() && title->startExplosion_.fragmentCount>0,"Normal GAME START was broken by demo mode");
+    check(found,"Could not aim at restored GAME START"); fire(normalDirection);
+    check(title->start_.Starting() && title->startExplosion_.fragmentCount>0,"Normal GAME START explosion was broken");
     title->UpdateWorld(app,title->start_.delay+.01f,false);
-    check(scenes.IsTransitioning(),"Normal GAME START did not request the original stage transition");
-    for (int i=0;i<200 && scenes.IsTransitioning();++i) { scenes.Update(app,.05f); draw(); }
-    check(!scenes.IsTransitioning() && scenes.CurrentName()=="Stage03" && dynamic_cast<GameScene*>(scenes.Current()),"Normal GAME START did not reach Stage03");
-    check(!app.Render()->DeathPostEffect().Active(),"Demo post effects leaked to normal gameplay");
+    check(scenes.IsTransitioning(),"Normal GAME START did not request transition");
+    finishTransition(); game=dynamic_cast<GameScene*>(scenes.Current());
+    check(game && game->stageId_=="stage03" && !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
+        !game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),
+        "Demo HP/weapon/movement policy leaked into normal GAME START");
+    check(!app.Render()->DeathPostEffect().Active(),"Demo post effects leaked to normal game");
+    // Both other normal stages retain their ordinary HP, weapons and spawn data.
+    for (const auto* id:{"stage01","stage02"}) {
+        scenes.Register("NormalDemoIsolation",[id]{ return std::make_unique<GameScene>(false,id); });
+        scenes.Change(app,"NormalDemoIsolation"); game=dynamic_cast<GameScene*>(scenes.Current());
+        check(game && game->stageLoaded_ && !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
+            !game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),"Demo policy leaked to normal stage");
+        draw();
+    }
     app.Dx()->WaitForGPU();
-    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER mode visuals and exact glyph hits, miss/wall rejection, in-place existing GameOverSequence and death post effects, black eyelids, rainbow cover and selective ordinary-enemy/shadow disappearance, title stage/text preservation, safe Wander (20s), held-input guard, 3 retries without scene/pool growth, Title restores start mode/camera/HP/visibility/post, original GAME START explosion and Stage03 transition.\n";
+    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER visuals and precise hits, miss/wall rejection, dedicated exported stage, 6 non-overlapping normal enemies with clear sight/routes and natural attacks, HP20 unarmed player, held input suppression, no intro, ordinary death effects (double vision, impact blur, black eyelids, rainbow cover and enemy disappearance), Wander/menu, 3 full stage retries, default/returned title shows GAME OVER without mode buttons, debug GAME START reaches Stage03, no demo policy leakage to stage01/02/03.\n";
 }

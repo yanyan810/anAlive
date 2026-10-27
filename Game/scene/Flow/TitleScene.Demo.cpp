@@ -1,8 +1,6 @@
 #include "TitleScene.h"
 #include "GameApp.h"
-#include "GameOverMenuInput.h"
 #include "ModelManager.h"
-#include <numbers>
 
 void TitleScene::PrepareDemoText(GameApp& app) {
     // Reuse the exported font/bevels. O and V already exist in the decorative
@@ -59,91 +57,25 @@ void TitleScene::PrepareDemoText(GameApp& app) {
 }
 
 bool TitleScene::SetMode(Mode mode) {
-    if (!ready_ || gameOver_.Active() || pendingDemoDeath_ || start_.Starting() || explosionPreview_ || transitionRequested_) return false;
+    if (!ready_ || pendingDemoTransition_ || start_.Starting() || explosionPreview_ || transitionRequested_) return false;
     mode_=mode; bullets_.Clear(); suppressFireUntilRelease_=true;
     return true;
 }
 
 std::optional<BulletHit> TitleScene::TraceDemoText(const Vector3& origin,const Vector3& direction,float distance) const {
-    if (mode_!=Mode::GameOver || gameOver_.Active() || pendingDemoDeath_) return {};
+    if (mode_!=Mode::GameOver || pendingDemoTransition_) return {};
     EnemyPartHit part;
     if (!RaycastEnemyParts(demoTextParts_,Matrix4x4::MakeIdentity4x4(),origin,direction,distance,part)) return {};
     BulletHit hit; hit.distance=part.distance; hit.position=part.position; hit.wall=false; hit.targetIndex=2; return hit;
 }
 
 void TitleScene::BeginGameOverDemo(GameApp& app) {
-    if (gameOver_.Active() || mode_!=Mode::GameOver || start_.Starting()) return;
-    pendingDemoDeath_=false;
-    const GameOverSequence::DeathContext death{player_.GetTransform(),
-        {camera_.GetTranslate(),camera_.GetRotate(),camera_.GetFovY()},{},player_.Settings().cameraHeight};
-    player_.ApplyDamage(player_.GetHP()); player_.SetMovementEnabled(false); player_.CurrentWeapon().CancelBurst();
-    suppressFireUntilRelease_=true; initialCapturePending_=false; bullets_.Clear();
-    auto& input=*app.GetInput(); input.SetCameraControlEnabled(false); input.SetMouseCaptureRect(nullptr);
-#ifdef USE_IMGUI
-    ImGui::GetIO().ConfigFlags=(ImGui::GetIO().ConfigFlags & ~(ImGuiConfigFlags_NoMouse|ImGuiConfigFlags_NoMouseCursorChange)) | savedMouseFlags_;
-#endif
-    app.Render()->ResetViewPostPreview(); gameOverOverlay_.Reset();
-    gameOver_.Begin(app.ObjCom(),app.Dx(),&camera_,definitions_.Find("normal"),level_.playerVisual,death);
-    gameOver_.Update(0,level_.collision,camera_);
-    environment_.Update(0); demoText_.Update(0);
-    for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
-}
-
-void TitleScene::UpdateGameOverDemo(GameApp& app,float dt) {
-    app.GetInput()->SetCameraControlEnabled(false);
-    if (app.Scenes().IsTransitioning() || app.Scenes().Fade().IsActive()) return;
-    dt=std::isfinite(dt) ? std::max(0.0f,dt) : 0;
-    const float worldDt=gameOver_.WorldDelta(dt);
-    gameOver_.Update(dt,level_.collision,camera_);
-    environment_.Update(0); demoText_.Update(0);
-    for (auto* enemy:enemies_) enemy->UpdateVisuals(worldDt);
-    UpdateStartExplosionVisuals();
-    if (gameOver_.MenuReady()) if (const auto choice=UpdateGameOverMenuInput(app,gameOverOverlay_)) ChooseDemoMenu(app,*choice==0);
-}
-
-void TitleScene::ResetDemo(GameApp& app,bool normalMode) {
-    // Retries can discard actor/debris constants referenced by the preceding frame.
-    app.Dx()->WaitForGPU();
-    gameOver_.Reset(); gameOverOverlay_.Reset(); pendingDemoDeath_=false;
-    app.Render()->ResetDeathPostEffect(); app.Render()->ResetViewPostPreview();
-    bullets_.Clear(); explosionPreview_=false; startExplosion_.fragmentCount=0;
-    const float delay=start_.delay; start_={}; start_.delay=delay; transitionRequested_=false;
-    RestoreUnalive(); RestoreInstruction();
-    startTarget_->ResetForSpawn(startTarget_->GetSpawnId(),"GAME_START",{},{});
-    if (!enemies_.empty()) pool_.ReleaseForReset(enemies_[0]);
-    SpawnEnemy(); respawnTime_=0;
-    player_.ResetHPForDebug(); player_.SetMovementEnabled(true);
-    player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
-    player_.CurrentWeapon().Equip(*weapons_.Find(weaponId_)); player_.CurrentWeapon().SetInfiniteAmmo(true);
-    camera_.SetNearZ(.1f); camera_.SetFovY(std::numbers::pi_v<float>/3); player_.RefreshVisuals();
-    mode_=normalMode ? Mode::GameStart : Mode::GameOver;
+    if (mode_!=Mode::GameOver || start_.Starting() || transitionRequested_) return;
+    // Called after the bullet update has finished iterating its live shots.
+    pendingDemoTransition_=false;
+    transitionRequested_=app.Scenes().TransitionTo("GameOverDemo",.75f,.75f,{0,0,0},FadeEasing::Linear);
+    if (!transitionRequested_) return;
+    bullets_.Clear(); player_.CurrentWeapon().CancelBurst();
     suppressFireUntilRelease_=true; initialCapturePending_=false;
-    app.GetInput()->SetCameraControlEnabled(false); app.GetInput()->SetMouseCaptureRect(nullptr);
-    ResetLightFlicker(); environment_.Update(0); demoText_.Update(0);
-    for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
-}
-
-bool TitleScene::ChooseDemoMenu(GameApp& app,bool retry) {
-    if (!gameOver_.MenuReady() || app.Scenes().IsTransitioning()) return false;
-    ResetDemo(app,!retry);
-    if (retry) BeginGameOverDemo(app);
-    return true;
-}
-
-int TitleScene::ModeSwitchHit(const Vector2& point) {
-    if (point.y<20 || point.y>52 || point.x<980 || point.x>=1260) return -1;
-    return point.x<1120 ? 0 : 1;
-}
-
-void TitleScene::DrawModeSwitch() {
-    modeFont_.Reset();
-    for (int i=0;i<2;++i) {
-        const bool selected=(mode_==Mode::GameOver)==(i==1);
-        modeButtons_[i].SetColor(selected ? Vector4{.12f,.22f,.27f,.9f} : Vector4{.03f,.04f,.05f,.75f});
-        modeButtons_[i].Update(uiView_,uiProjection_); modeButtons_[i].Draw();
-        modeFont_.DrawText(i==0 ? "GAME START" : "GAME OVER",990.0f+i*140,28,11,
-            selected ? Vector4{1,.85f,.45f,1} : Vector4{.65f,.7f,.75f,1});
-    }
-    modeFont_.DrawText("ESC: SELECT MODE",1010,58,10,{.65f,.7f,.75f,.85f});
-    modeFont_.Draw(uiView_,uiProjection_);
+    app.GetInput()->SetCameraControlEnabled(false);
 }

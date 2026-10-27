@@ -326,6 +326,7 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("EnemyPlacementEditor", [] { return std::make_unique<EnemyPlacementEditorScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
+    sceneMgr_->Register("GameOverDemo", [] { return std::make_unique<GameScene>(false,"gameover_demo"); });
     sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
     #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     sceneMgr_->Register("Showroom", [] { return std::make_unique<ShowroomScene>(); });

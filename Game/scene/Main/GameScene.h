@@ -51,6 +51,8 @@ public:
     void SetStartSequenceEnabled(bool enabled) { startSequenceEnabled_=enabled; }
     bool PlacementTestFinished() const { return player_.IsDead() || !stage_.IsPlaying(); }
 private:
+    friend void RunTitleGameOverDemoTests(GameApp& app);
+    bool IsGameOverDemo() const { return !showroom_ && stageId_=="gameover_demo"; }
     friend void RunGameOverSequenceRuntimeTests(GameApp& app);
     void BeginGameOver(GameApp& app);
     void UpdateGameOver(GameApp& app,float dt);

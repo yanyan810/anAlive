@@ -18,3 +18,4 @@ $captureDirectory=Join-Path (Split-Path $resultPath) $Configuration
 New-Item -ItemType Directory -Force $captureDirectory | Out-Null
 Get-ChildItem -LiteralPath (Split-Path $resultPath) -Filter '*.png' -File | Copy-Item -Destination $captureDirectory
 Copy-Item -LiteralPath $resultPath -Destination (Join-Path $captureDirectory 'result.txt')
+Copy-Item -LiteralPath (Join-Path (Split-Path $resultPath) 'trace.txt') -Destination $captureDirectory

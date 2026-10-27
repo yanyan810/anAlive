@@ -496,6 +496,7 @@
     <ClInclude Include="Engine\Render\OffscreenPass.h" />
     <ClInclude Include="Engine\Render\RenderManager.h" />
     <ClInclude Include="Engine\Render\DeathPostEffect.h" />
+    <ClInclude Include="Engine\Render\ViewPostEffects.h" />
     <ClInclude Include="externals\imgui\imconfig.h" />
     <ClInclude Include="externals\imgui\imgui.h" />
     <ClInclude Include="externals\imgui\backends\imgui_impl_dx12.h" />
@@ -641,6 +642,9 @@
     <ClInclude Include="Game\CameraSequenceOverrides.h" />
     <ClInclude Include="Game\StartPlayerVisual.h" />
     <ClCompile Include="Game\GameOverSequence.cpp" />
+    <ClCompile Include="Game\scene\Flow\TitleScene.Demo.cpp" />
+    <ClInclude Include="Game\GameOverMenuInput.h" />
+    <ClInclude Include="tests\TitleGameOverDemoTests.h" />
     <ClInclude Include="Game\GameOverSequence.h" />
     <ClInclude Include="Game\FirstPersonCamera.h" />
     <ClInclude Include="Game\GameOverVisionOverlay.h" />

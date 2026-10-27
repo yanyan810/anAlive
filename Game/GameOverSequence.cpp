@@ -27,6 +27,7 @@ Vector3 RollView(const Vector3& view,float roll,const Vector3& previous) {
 void GameOverSequence::Reset() {
     body_.reset(); state_=State::Inactive; death_={}; ai_={}; floorMotion_={};
     elapsed_=wanderTime_=0; phaseTime_=0; position_={}; bodyVisible_=false;
+    enemiesHidden_=false;
 }
 
 void GameOverSequence::Begin(Object3dCommon* common,DirectXCommon* dx,Camera* camera,
@@ -65,6 +66,14 @@ void GameOverSequence::Begin(Object3dCommon* common,DirectXCommon* dx,Camera* ca
 
 float GameOverSequence::Duration() const { return Duration(state_); }
 
+float GameOverSequence::EnemyDisappearDelay() const {
+    return std::isfinite(settings.enemyDisappearDelaySeconds) ? std::clamp(settings.enemyDisappearDelaySeconds,0.0f,10.0f) : .3f;
+}
+
+float GameOverSequence::EnemyDisappearNoiseDuration() const {
+    return std::isfinite(settings.enemyDisappearNoiseSeconds) ? std::clamp(settings.enemyDisappearNoiseSeconds,.01f,2.0f) : .15f;
+}
+
 float GameOverSequence::Duration(State state) const {
     float d=0;
     switch (state) {
@@ -74,7 +83,10 @@ float GameOverSequence::Duration(State state) const {
     case State::Closing: d=settings.closeSeconds; break;
     case State::Corpse: d=settings.corpseSeconds; break;
     case State::Opening: d=settings.openSeconds; break;
-    case State::Awake: d=settings.awakeSeconds; break;
+    case State::Awake:
+        // Retiming the anomaly must not let Rising interrupt observation of it.
+        d=std::max(std::isfinite(settings.awakeSeconds) ? settings.awakeSeconds : .6f,
+            EnemyDisappearDelay()+EnemyDisappearNoiseDuration()+std::max(.15f,EnemyDisappearNoiseDuration()*.5f)); break;
     case State::Rising: d=settings.riseSeconds; break;
     case State::Possess: d=settings.possessSeconds; break;
     default: return std::numeric_limits<float>::infinity();
@@ -157,8 +169,19 @@ DeathPostEffectParameters GameOverSequence::PostEffect() const {
     result.chromaticPixels=s.chromaticEnabled ? std::clamp(result.chromaticPixels,0.0f,2.0f) : 0;
     result.edgeInner=std::clamp(s.edgeInner,0.0f,.95f);
     result.edgeOuter=std::clamp(s.edgeOuter,result.edgeInner+.05f,1.5f);
+    float doubleExposure=0;
+    if (state_==State::Death) doubleExposure=.35f*Smooth(t);
+    else if (state_==State::Collapse) doubleExposure=.35f+.65f*CollapseProgress();
+    else if (state_==State::FloorHold || state_==State::Closing) {
+        const float recovery=Duration(State::FloorHold)+Duration(State::Closing);
+        doubleExposure=1-Smooth(LandingTime()/recovery);
+    }
+    double viewTime=phaseTime_;
+    for (int i=static_cast<int>(State::Death);i<static_cast<int>(state_);++i) viewTime+=Duration(static_cast<State>(i));
+    ApplyViewPostEffects(result,EvaluateViewPostEffects(s.doubleVision,doubleExposure,s.impactBlur,
+        state_<=State::Closing ? LandingTime() : -1,viewTime));
     if (s.mosaicEnabled && state_>=State::Opening) {
-        // The envelope and slow pattern motion share the existing phase clock.
+        // The strength envelope retains its existing opening/decay settings.
         double awakeTime=phaseTime_;
         for (int i=static_cast<int>(State::Opening);i<static_cast<int>(state_);++i) awakeTime+=Duration(static_cast<State>(i));
         const auto finite=[](float value,float fallback) { return std::isfinite(value) ? value : fallback; };
@@ -170,10 +193,36 @@ DeathPostEffectParameters GameOverSequence::PostEffect() const {
         const float time=static_cast<float>(awakeTime);
         result.mosaicStrength=std::clamp(finite(s.mosaicStrength,0),0.0f,1.0f)
             *Smooth((time-start)/(peak-start))*(1-Smooth((time-risingAt)/decay));
+        // A smooth, luminance-preserving strength pulse; no white/black flash or new pass.
+        // Its endpoint is the same boundary that latches the enemy draw gate below.
+        if (state_==State::Awake && !enemiesHidden_)
+            result.mosaicStrength=std::clamp(result.mosaicStrength+
+                std::clamp(finite(s.enemyDisappearNoiseBoost,0),0.0f,1.0f)*
+                pulse(static_cast<float>(phaseTime_),EnemyDisappearDelay(),EnemyDisappearNoiseDuration()),0.0f,1.0f);
+        // Cover the actual cut, including frames immediately before/after it.
+        // Short smooth edges surround a fully opaque plateau; its total width
+        // is the configured noise duration and its center is the disappearance.
+        if (state_==State::Awake) {
+            const float cover=(static_cast<float>(phaseTime_)-EnemyDisappearDelay()-EnemyDisappearNoiseDuration())/EnemyDisappearNoiseDuration()+.5f;
+            result.mosaicOcclusion=std::clamp(finite(s.enemyDisappearNoiseOcclusion,0),0.0f,1.0f)
+                *Smooth(cover*6)*(1-Smooth((cover-5.0f/6)*6));
+        }
         result.mosaicCellSize=std::clamp(finite(s.mosaicCellSize,.006f),.001f,.05f);
         result.mosaicColorStrength=std::clamp(finite(s.mosaicColorStrength,0),0.0f,1.0f);
-        result.mosaicTime=time;
-        result.mosaicChangeRate=std::clamp(finite(s.mosaicChangeRate,0),0.0f,2.0f);
+        result.mosaicDensity=std::clamp(finite(s.mosaicDensity,1),0.0f,1.0f);
+        result.mosaicChangeRate=std::clamp(finite(s.mosaicChangeRate,0),0.0f,120.0f);
+        // Analytically integrate the rate envelope, rather than multiplying
+        // elapsed time by a falling rate (which could run epochs backwards).
+        // Integral of smoothstep(x) on [0,1] is x^3 - x^4/2. No per-frame
+        // accumulator: identical presentation time gives identical GPU seeds.
+        const double riseDuration=Duration(State::Rising), possessDuration=Duration(State::Possess);
+        const double riseTime=std::clamp(awakeTime-risingAt,0.0,riseDuration);
+        const double possessTime=std::clamp(awakeTime-risingAt-riseDuration,0.0,possessDuration);
+        const double rateScale=std::clamp(finite(s.mosaicRiseEndRateScale,.15f),0.0f,1.0f);
+        const auto integratedSmooth=[](double x) { return x*x*x*(1-x*.5); };
+        result.mosaicTime=static_cast<float>(std::min(awakeTime,static_cast<double>(risingAt))
+            +riseTime-(1-rateScale)*riseDuration*integratedSmooth(riseTime/riseDuration)
+            +rateScale*(possessTime-possessDuration*integratedSmooth(possessTime/possessDuration)));
     }
     return result;
 }
@@ -243,6 +292,9 @@ void GameOverSequence::Update(float dt,const StageWorld& world,Camera& camera) {
     while (remaining>0) {
         const float step=std::min({remaining,1.0f/60,static_cast<float>(Duration()-phaseTime_)});
         Step(step,world); elapsed_+=step; phaseTime_+=step; remaining=std::max(0.0f,remaining-step);
+        // Latch once, independent of enemy count, visibility, post toggles or frame rate.
+        if (state_==State::Awake && phaseTime_>=static_cast<double>(EnemyDisappearDelay())+EnemyDisappearNoiseDuration())
+            enemiesHidden_=true;
         if (phaseTime_>=Duration()-1e-6f && state_!=State::Wander) Advance();
         // Sweep along the entire fall/rise path, also when one frame spans phases.
         UpdateCamera(world);

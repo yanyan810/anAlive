@@ -4,11 +4,13 @@
 #include <memory>
 #include <string>
 #include <filesystem>
+#include <vector>
 #include <wrl.h>
 #include <d3d12.h>
 
 #include "OffscreenPass.h"
 #include "DeathPostEffect.h"
+#include "ViewPostEffects.h"
 
 class DirectXCommon;
 class SrvManager;
@@ -71,6 +73,16 @@ public:
     bool IsEffectEnabled(PostEffectMode mode) const;
     void ClearEffects();
     void SetDeathPostEffect(const DeathPostEffectParameters& parameters);
+    // Any scene can use these effects without creating a GameOverSequence.
+    void SetViewPostEffects(const ViewPostEffectParameters& parameters);
+    void UpdateViewPostPreview(float unscaledDt);
+    void ApplyViewPostPreview();
+    void SetViewPostPreview(const DoubleVisionSettings& vision,const ImpactBlurSettings& impact,
+        bool previewDouble,bool previewImpact,bool holdPeak=true);
+    void ResetViewPostPreview();
+    void DrawViewPostEffectsImGui(DoubleVisionSettings& vision,ImpactBlurSettings& impact);
+    bool ViewPostDebugVisible() const { return viewPostDebugVisible_; }
+    void ToggleViewPostDebug() { viewPostDebugVisible_=!viewPostDebugVisible_; }
     void ResetDeathPostEffect() { deathPost_={}; }
     const DeathPostEffectParameters& DeathPostEffect() const { return deathPost_; }
     uint64_t FullscreenDrawCount() const { return fullscreenDraws_; }
@@ -90,7 +102,8 @@ public:
     OffscreenPass* GetOffscreen() const { return offscreen_.get(); }
 
 private:
-    friend void RunGameOverPostEffectRuntimeTests(GameApp& app, const std::filesystem::path& directory);
+    friend void RunGameOverPostEffectRuntimeTests(GameApp& app, const std::filesystem::path& directory,
+        const std::vector<DeathPostEffectParameters>& fpsProbes);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunTitleSceneTests(GameApp& app);
 #endif
@@ -142,6 +155,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> deathPostCB_;
     DeathPostEffectParameters* deathPostData_=nullptr;
     DeathPostEffectParameters deathPost_;
+    bool viewPostDebugVisible_=false, previewDouble_=false, previewImpact_=false, previewImpactHold_=true;
+    float previewImpactTime_=0;
+    double previewViewTime_=0;
+    DoubleVisionSettings previewVision_;
+    ImpactBlurSettings previewImpactSettings_;
     uint64_t fullscreenDraws_=0, deathPostDraws_=0;
 
     static constexpr int kEffectCount = static_cast<int>(PostEffectMode::Count);

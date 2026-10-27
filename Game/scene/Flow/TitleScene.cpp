@@ -3,6 +3,7 @@
 #include "ImGuiManagaer.h"
 #include "WinApp.h"
 #include "GeometryGenerator.h"
+#include "GameOverMenuInput.h"
 #include <map>
 #include <numbers>
 #ifdef USE_IMGUI
@@ -91,7 +92,9 @@ std::optional<BulletHit> TitleScene::TraceInstruction(const Vector3& origin,cons
 std::optional<BulletHit> TitleScene::TraceTitleText(const Vector3& origin,const Vector3& direction,float distance) const {
     const auto title=TraceUnalive(origin,direction,distance);
     const auto instruction=TraceInstruction(origin,direction,title ? title->distance : distance);
-    return instruction ? instruction : title;
+    const auto nearest=instruction ? instruction : title;
+    const auto demo=TraceDemoText(origin,direction,nearest ? nearest->distance : distance);
+    return demo ? demo : nearest;
 }
 
 std::optional<BulletHit> TitleScene::TraceBackgroundText(const TextExplosion& burst,size_t index,
@@ -461,6 +464,8 @@ bool TitleScene::LoadLayout() {
 }
 
 void TitleScene::OnEnter(GameApp& app) {
+    gameOver_.Reset(); mode_=Mode::GameStart; pendingDemoDeath_=false;
+    app.Render()->ResetDeathPostEffect(); app.Render()->ResetViewPostPreview();
     savedClearColor_ = app.Render()->GetOffscreen()->GetClearColor();
     app.Render()->GetOffscreen()->SetClearColor({.008f,.01f,.016f,1});
     auto& input = *app.GetInput();
@@ -523,10 +528,19 @@ void TitleScene::OnEnter(GameApp& app) {
     environment_.SetEnableLighting(2);
     environment_.Update(0);
     PrepareBackgroundExplosions(app);
+    PrepareDemoText(app);
+    gameOverOverlay_.Initialize(app.SpriteCom(),app.Dx());
+    gameOverVision_.Initialize(app.SpriteCom(),app.Dx());
+    modeFont_.Initialize(app.SpriteCom(),app.Dx(),64);
     const float width = static_cast<float>(WinApp::kClientWidth), height = static_cast<float>(WinApp::kClientHeight);
     uiView_ = Matrix4x4::MakeIdentity4x4();
     uiProjection_ = Matrix4x4::MakeOrthographicMatrix(0,0,width,height,0,100);
     const auto& white = TextureManager::GetInstance()->GetMetaData("resources/white1x1.png");
+    for (size_t i=0;i<modeButtons_.size();++i) {
+        auto& button=modeButtons_[i]; button.Initialize(app.SpriteCom(),app.Dx(),"resources/white1x1.png");
+        button.SetPosition({980.0f+static_cast<float>(i)*140,20});
+        button.SetScale({136.0f/static_cast<float>(white.width),32.0f/static_cast<float>(white.height),1});
+    }
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
         sprite->Initialize(app.SpriteCom(),app.Dx(),"resources/white1x1.png");
         sprite->SetAnchorPoint({.5f,.5f}); sprite->SetPosition({width*.5f,height*.5f});
@@ -554,12 +568,14 @@ void TitleScene::SpawnEnemy() {
     ApplyLighting();
 }
 void TitleScene::OnBulletImpact(const BulletEnemyImpact& impact) {
-    if (enemies_[impact.enemyIndex] == startTarget_.get() && impact.result.damage>0 && startTarget_->IsDead()) {
+    if (mode_==Mode::GameStart && enemies_[impact.enemyIndex] == startTarget_.get() && impact.result.damage>0 && startTarget_->IsDead()) {
         if (start_.Begin()) BeginStartExplosion();
     }
     ApplyLighting();
 }
 void TitleScene::OnExit(GameApp& app) {
+    gameOver_.Reset(); pendingDemoDeath_=false; mode_=Mode::GameStart;
+    app.Render()->ResetDeathPostEffect(); app.Render()->ResetViewPostPreview();
     app.Render()->GetOffscreen()->SetClearColor(savedClearColor_);
     app.GetInput()->SetCameraControlEnabled(false);
     app.GetInput()->SetMouseCaptureRect(nullptr);
@@ -573,7 +589,13 @@ void TitleScene::OnExit(GameApp& app) {
 }
 void TitleScene::Update(GameApp& app, float dt) {
     if (!ready_ || !NextScene().empty()) return;
+    if (gameOver_.Active()) { UpdateGameOverDemo(app,dt); return; }
     auto& input = *app.GetInput();
+    if (!input.IsCameraControlEnabled() && input.HasFocus() && input.IsLeftMouseTrigger())
+        if (const auto p=SceneMenuPointer(app)) {
+            const int hit=ModeSwitchHit(*p);
+            if (hit>=0) { SetMode(hit==0 ? Mode::GameStart : Mode::GameOver); initialCapturePending_=false; return; }
+        }
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F7) && !start_.Starting() && !explosionPreview_) {
         app.Scenes().TransitionTo("EnemyPlacementEditor"); return;
     }
@@ -628,6 +650,7 @@ void TitleScene::Update(GameApp& app, float dt) {
     UpdateWorld(app,dt,controls);
 }
 void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
+    if (gameOver_.Active()) { UpdateGameOverDemo(app,dt); return; }
     auto& input = *app.GetInput();
     UpdateLightFlicker(dt);
     player_.RefreshVisuals(); // Remove last frame's shake before gameplay/raycast updates.
@@ -648,17 +671,25 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     const BulletTrace titleTarget=[this](const Vector3& origin,const Vector3& direction,float distance) {
         return TraceTitleText(origin,direction,distance);
     };
-    bullets_.Update(dt,level_.collision,enemies_,[this](const BulletEnemyImpact& hit) { OnBulletImpact(hit); },
+    // The title label is an Enemy-shaped target only in normal mode. Demo mode
+    // uses the new text's exact triangles and never damages/consumes GAME START.
+    auto targets=enemies_;
+    if (mode_==Mode::GameOver) std::erase(targets,startTarget_.get());
+    bullets_.Update(dt,level_.collision,targets,[this](const BulletEnemyImpact& hit) { OnBulletImpact(hit); },
         titleTarget,[this](const Bullet& bullet,const BulletHit& hit) {
             if (bullet.damage<=0) return;
             if (hit.targetIndex==0) BeginUnaliveExplosion();
             else if (hit.targetIndex==1) BeginInstructionExplosion();
+            else if (hit.targetIndex==2) pendingDemoDeath_=true;
         });
+    // Begin only after BulletSimulation finishes its iteration; clearing live
+    // bullets from an impact callback would invalidate that iteration.
+    if (pendingDemoDeath_) { BeginGameOverDemo(app); return; }
     controls = controls && !StartExplosionActive();
     auto& weapon = player_.CurrentWeapon();
     const int shots = player_.UpdateShooting(input,dt,controls && !suppressFireUntilRelease_,false);
     for (int shot=0; shot<shots; ++shot)
-        bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,enemies_,titleTarget);
+        bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,targets,titleTarget);
     ApplyStartCameraShake();
     UpdateStartExplosionVisuals();
     environment_.Update(dt);
@@ -673,7 +704,8 @@ void TitleScene::DrawShadow(GameApp&) {
         if (shadow.roomCastsShadows) environment_.DrawDirectionalShadow(shadowMap_);
         else environment_.DrawDirectionalShadow(shadowMap_,roomShadowMeshes_);
         for (auto* enemy : enemies_)
-            if (enemy!=startTarget_.get() || !StartExplosionActive()) enemy->DrawDirectionalShadow(shadowMap_);
+            if (enemy==startTarget_.get() ? mode_==Mode::GameStart && !StartExplosionActive() : gameOver_.EnemiesVisible()) enemy->DrawDirectionalShadow(shadowMap_);
+        if (mode_==Mode::GameOver) demoText_.DrawDirectionalShadow(shadowMap_);
         if (StartExplosionActive()) DrawTextExplosion(startExplosion_,true);
         for (auto* burst : {&unaliveExplosion_,&instructionExplosion_})
             if (burst->active) DrawTextExplosion(*burst,true);
@@ -683,20 +715,29 @@ void TitleScene::DrawShadow(GameApp&) {
         {shadow.enabled ? shadow.strength : 0,shadow.bias,1.0f/DirectionalShadowMap::kResolution,lighting_.ambientIntensity},shadowMap_.Srv());
 }
 
-void TitleScene::DrawRender(GameApp&) {
+void TitleScene::DrawRender(GameApp& app) {
     if (!ready_) return;
+    app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     environment_.Draw();
     for (auto* enemy : enemies_)
-        if (enemy!=startTarget_.get() || !StartExplosionActive()) enemy->Draw(false);
+        if (enemy==startTarget_.get() ? mode_==Mode::GameStart && !StartExplosionActive() : gameOver_.EnemiesVisible())
+            enemy->Draw(false,gameOver_.Active() ? .16f : 0);
+    if (mode_==Mode::GameOver) demoText_.Draw();
+    gameOver_.Draw();
     if (StartExplosionActive()) DrawTextExplosion(startExplosion_,false);
     for (auto* burst : {&unaliveExplosion_,&instructionExplosion_})
         if (burst->active) DrawTextExplosion(*burst,false);
     bullets_.Draw();
-    for (auto* enemy : enemies_) enemy->DrawExplosion();
+    if (gameOver_.EnemiesVisible()) for (auto* enemy : enemies_) enemy->DrawExplosion();
 }
 void TitleScene::DrawOverlay2D(GameApp&) {
     if (!ready_ || start_.Starting()) return;
+    if (gameOver_.Active()) {
+        gameOverOverlay_.Draw(uiView_,uiProjection_,gameOver_.MenuReady(),gameOver_.MenuElapsed());
+        gameOverVision_.Draw(gameOver_.Vision(),gameOver_.settings.eyelidCurve); return;
+    }
     crosshairHorizontal_.Draw(); crosshairVertical_.Draw();
+    DrawModeSwitch();
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     enemyAITestEntry_.Draw();
     enemyPlacementEntry_.Draw();
@@ -706,7 +747,16 @@ void TitleScene::DrawOverlay2D(GameApp&) {
 void TitleScene::DrawImGui(GameApp& app) {
 #ifdef USE_IMGUI
     if (!ready_) return;
+    app.Render()->DrawViewPostEffectsImGui(gameOver_.settings.post.doubleVision,gameOver_.settings.post.impactBlur);
+    if (gameOver_.Active()) return;
     if (ImGui::Begin("Title Lighting")) {
+        ImGui::BeginDisabled(start_.Starting() || explosionPreview_ || app.Scenes().IsTransitioning());
+        int mode=mode_==Mode::GameOver ? 1 : 0;
+        if (ImGui::RadioButton("GAME START",mode==0)) SetMode(Mode::GameStart);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("GAME OVER demo",mode==1)) SetMode(Mode::GameOver);
+        ImGui::TextUnformatted("Shoot the selected 3D word. Esc releases mouse for mode buttons.");
+        ImGui::EndDisabled();
         ImGui::BeginDisabled(start_.Starting() || explosionPreview_ || app.Scenes().IsTransitioning());
         if (ImGui::Button("Enemy AI Test（敵AIテスト） F6")) app.Scenes().TransitionTo("EnemyAITest");
         if (ImGui::Button("Enemy Placement Editor（敵配置編集） F7")) app.Scenes().TransitionTo("EnemyPlacementEditor");

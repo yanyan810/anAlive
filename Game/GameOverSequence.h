@@ -3,6 +3,7 @@
 #include "EnemyAI.h"
 #include "CameraSequence.h"
 #include "DeathPostEffect.h"
+#include "ViewPostEffects.h"
 #include <memory>
 
 // Scene-local presentation actor: never registered with EnemyPool/StageProgress.
@@ -11,6 +12,8 @@ public:
     enum class State { Inactive, Death, Collapse, FloorHold, Closing, Corpse, Opening, Awake, Rising, Possess, Wander };
     enum class DeathPose { FromImpact, Supine, Prone, LeftSide, RightSide };
     struct PostSettings {
+        DoubleVisionSettings doubleVision;
+        ImpactBlurSettings impactBlur;
         bool enabled=true, vignetteEnabled=true, desaturationEnabled=true, blurEnabled=true, chromaticEnabled=true;
         Vector3 red{.10f,.004f,.010f}; // Linear RGB, deliberately dark.
         float staggerVignette=.28f, collapseVignette=.36f, closingVignette=.50f;
@@ -25,9 +28,13 @@ public:
         float edgeInner=.35f, edgeOuter=1.0f;
         bool mosaicEnabled=true;
         float mosaicStrength=.26f, mosaicCellSize=.006f, mosaicColorStrength=.8f;
-        float mosaicChangeRate=.35f; // Smooth spatial-pattern changes per second; 0 freezes it.
+        float mosaicChangeRate=20; // Random patterns per presentation second; 0 freezes it.
+        float mosaicDensity=1; // Fraction of cells carrying noise; 1 preserves full-screen visibility.
+        float mosaicRiseEndRateScale=.15f; // Rate remaining at the end of Rising, then fades in Possess.
         // Start/peak: seconds from Opening; decay: seconds from Rising.
         float mosaicStartSeconds=.35f, mosaicPeakSeconds=1.95f, mosaicDecaySeconds=3.5f;
+        float enemyDisappearNoiseBoost=.22f; // Additive strength, using the same rainbow noise.
+        float enemyDisappearNoiseOcclusion=1; // Full-screen cover centered on enemy disappearance.
     };
     struct Settings {
         float staggerSeconds=.3f, collapseSeconds=1.2f;
@@ -36,6 +43,8 @@ public:
         float landingSeconds=.18f, landingShake=.03f, landingLift=.012f, landingShakeHz=12;
         float floorHoldSeconds=.3f, closeSeconds=.7f, corpseSeconds=1.2f;
         float openSeconds=1.8f, awakeSeconds=.6f;
+        // Seconds after full opening; Awake always covers the pulse plus .15s of stillness.
+        float enemyDisappearDelaySeconds=.3f, enemyDisappearNoiseSeconds=.15f;
         float closeCurve=3, openCurve=1.1f, eyelidCurve=.75f;
         float riseSeconds=3.2f, possessSeconds=1.1f, settleSeconds=3;
         // Pause timing/duration in seconds from Rising start; head time and heights are fractions.
@@ -72,6 +81,8 @@ public:
     const Vector3& Position() const { return position_; }
     const EnemyAI& AI() const { return ai_; }
     bool HasVisual() const { return body_!=nullptr; }
+    // One scene-local draw gate for all pooled enemies, including their debris/markers.
+    bool EnemiesVisible() const { return !enemiesHidden_; }
     struct VisionState { float shade=0, opening=1; };
     VisionState Vision() const;
     DeathPostEffectParameters PostEffect() const;
@@ -81,6 +92,8 @@ private:
     friend void RunGameOverSequenceRuntimeTests(class GameApp& app);
     float Duration() const;
     float Duration(State state) const;
+    float EnemyDisappearDelay() const;
+    float EnemyDisappearNoiseDuration() const;
     float RiseProgress() const;
     float CollapseProgress() const;
     float LandingTime() const;
@@ -104,4 +117,5 @@ private:
     EnemyAI ai_;
     StageWorld::PlayerMotion floorMotion_;
     bool bodyVisible_=false;
+    bool enemiesHidden_=false;
 };

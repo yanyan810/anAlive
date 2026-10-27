@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "stage": {
+    "id": "gameover_demo",
+    "model": "levels/gameover_demo/gameover_demo.gltf"
+  },
+  "playerSpawn": {
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ]
+  },
+  "colliders": [
+    {
+      "id": "Floor",
+      "position": [
+        0.0,
+        -0.25,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        6.0,
+        0.25,
+        6.0
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Wall_Back",
+      "position": [
+        0.0,
+        2.0,
+        -6.199999809265137
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        6.400000095367432,
+        2.0,
+        0.20000000298023224
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Wall_Front",
+      "position": [
+        0.0,
+        2.0,
+        6.199999809265137
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        6.400000095367432,
+        2.0,
+        0.20000000298023224
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Wall_Left",
+      "position": [
+        -6.199999809265137,
+        2.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        0.20000000298023224,
+        2.0,
+        6.0
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "Wall_Right",
+      "position": [
+        6.199999809265137,
+        2.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "scale": [
+        0.20000000298023224,
+        2.0,
+        6.0
+      ],
+      "localBounds": {
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  ],
+  "enemyRandom": {
+    "useFixedSeed": true,
+    "seed": 42
+  },
+  "spawnPoints": [
+    {
+      "id": "DemoEnemy_01",
+      "position": [
+        0.0,
+        0.0,
+        1.2999999523162842
+      ],
+      "rotation": [
+        0.0,
+        -1.570796251296997,
+        0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "DemoEnemy_02",
+      "position": [
+        1.1258330345153809,
+        0.0,
+        0.6499999761581421
+      ],
+      "rotation": [
+        0.0,
+        -0.5235989093780518,
+        0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "DemoEnemy_03",
+      "position": [
+        1.1258330345153809,
+        0.0,
+        -0.6499999761581421
+      ],
+      "rotation": [
+        0.0,
+        0.5235989093780518,
+        0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "DemoEnemy_04",
+      "position": [
+        1.5920407760118202e-16,
+        0.0,
+        -1.2999999523162842
+      ],
+      "rotation": [
+        -0.0,
+        1.570796251296997,
+        0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "DemoEnemy_05",
+      "position": [
+        -1.1258330345153809,
+        0.0,
+        -0.6499999761581421
+      ],
+      "rotation": [
+        -0.0,
+        2.6179938316345215,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "DemoEnemy_06",
+      "position": [
+        -1.1258330345153809,
+        0.0,
+        0.6499999761581421
+      ],
+      "rotation": [
+        -0.0,
+        -2.6179938316345215,
+        -0.0
+      ],
+      "activation": "StageStart",
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "spawnInterval": 0.0,
+      "initialDelay": 0.0,
+      "enemy": "normal",
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1
+        }
+      ]
+    }
+  ],
+  "spawnTriggers": [],
+  "spawnGroups": [],
+  "weaponRandom": {
+    "useFixedSeed": true,
+    "seed": 42
+  },
+  "weaponSpawnPoints": [],
+  "goalTriggers": []
+}

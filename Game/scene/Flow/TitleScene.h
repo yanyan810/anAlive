@@ -10,9 +10,6 @@
 #include "Sprite.h"
 #include "TitleLighting.h"
 #include "DirectionalShadowMap.h"
-#include "GameOverSequence.h"
-#include "GameOverOverlay.h"
-#include "GameOverVisionOverlay.h"
 #include <array>
 #ifdef USE_IMGUI
 #include "DebugJsonEditor.h"
@@ -42,20 +39,10 @@ private:
     void PrepareDemoText(GameApp& app);
     std::optional<BulletHit> TraceDemoText(const Vector3& origin,const Vector3& direction,float distance) const;
     void BeginGameOverDemo(GameApp& app);
-    void UpdateGameOverDemo(GameApp& app,float dt);
-    void ResetDemo(GameApp& app,bool normalMode);
-    bool ChooseDemoMenu(GameApp& app,bool retry);
-    void DrawModeSwitch();
-    static int ModeSwitchHit(const Vector2& point);
-    Mode mode_=Mode::GameStart;
-    GameOverSequence gameOver_;
-    GameOverOverlay gameOverOverlay_;
-    GameOverVisionOverlay gameOverVision_;
+    Mode mode_=Mode::GameOver;
     Object3d demoText_;
     EnemyParts demoTextParts_;
-    UIFont modeFont_;
-    std::array<Sprite,2> modeButtons_;
-    bool pendingDemoDeath_=false;
+    bool pendingDemoTransition_=false;
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)

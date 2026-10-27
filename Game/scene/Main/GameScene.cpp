@@ -33,7 +33,7 @@ void GameScene::RefreshSequenceVisuals() {
 }
 
 void GameScene::BeginStartSequence(GameApp& app,bool force) {
-    if (!startSequenceEnabled_ || showroom_ || placementTest_ || !stage_.IsPlaying()) return;
+    if (IsGameOverDemo() || !startSequenceEnabled_ || showroom_ || placementTest_ || !stage_.IsPlaying()) return;
     const auto it=std::find_if(level_.cameraSequences.begin(),level_.cameraSequences.end(),[force](const auto& d){return d.id=="start" && (force || d.enabled);});
     if (it==level_.cameraSequences.end()) return;
     sequenceEye_={player_.EyePosition(),player_.GetTransform().rotate,kNormalFovDegrees*kDegreesToRadians};
@@ -195,7 +195,15 @@ void GameScene::OnEnter(GameApp& app) {
     if (placementTest_) spawnSystem_.SetPlacements(*placementTest_);
     InitializeShutters(app);
     weaponVisuals_.clear();
-    if (const auto* initial = weapons_.InitialWeapon()) player_.CurrentWeapon().Equip(*initial);
+    player_.CurrentWeapon()=WeaponRuntime{};
+    if (IsGameOverDemo()) {
+        // Scene-local policy: no weapon, pickups or movement needed to show death.
+        player_.ApplyDamage(player_.GetHP()-20.0f);
+        player_.SetMovementEnabled(false);
+        // StageStart enemies build their first WVP before FadeIn simulation runs.
+        // Bind the spawn camera now so they are correctly placed in that first view.
+        player_.RefreshVisuals();
+    } else if (const auto* initial = weapons_.InitialWeapon()) player_.CurrentWeapon().Equip(*initial);
     pelletRandom_.seed(weapons_.ActualSeed() ^ 0x9e3779b9u); // independent of placement lottery
     gameHUD_.Initialize(app.SpriteCom(),app.Dx());
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
@@ -705,7 +713,7 @@ void GameScene::UpdateADS(
 bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
     if (!pressed) return false;
     if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
-    return allowPickup && weapons_.TryPickup(player_.GetTransform().translate,player_.CurrentWeapon());
+    return !IsGameOverDemo() && allowPickup && weapons_.TryPickup(player_.GetTransform().translate,player_.CurrentWeapon());
 }
 
 void GameScene::UpdateEnemySpawns(float dt, bool processTriggers) {
@@ -727,7 +735,7 @@ void GameScene::UpdateEnemySpawns(float dt, bool processTriggers) {
 void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     Input& input = *app.GetInput();
     auto& weapon = player_.CurrentWeapon();
-    const bool controls = wasCaptured && input.IsCameraControlEnabled() && input.HasFocus();
+    const bool controls = !IsGameOverDemo() && wasCaptured && input.IsCameraControlEnabled() && input.HasFocus();
     bool allowPickup=true;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     allowPickup=!(showroom_ && weaponEditor_.mode==WeaponEditorMode::Test);
@@ -851,6 +859,7 @@ void GameScene::DrawRender(GameApp& app) {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
+    if (IsGameOverDemo()) return;
     player_.CurrentWeapon().Equip(definition);
     suppressFireUntilRelease_ = true;
 }

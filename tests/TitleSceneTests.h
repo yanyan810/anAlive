@@ -24,6 +24,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     fade.Reset(); check(fade.Alpha()==0,"Fade reset");
     auto* title = dynamic_cast<TitleScene*>(app.Scenes().Current());
     check(title && title->ready_, "Title layout failed to load");
+    check(title->SetMode(TitleScene::Mode::GameStart),"Could not select normal mode for title regression");
     check(title->player_.CurrentWeapon().InfiniteAmmo(), "Title weapon must have unlimited ammunition");
     const auto spotIntensity=[&](size_t index) {
         void* mapped=nullptr;
@@ -645,6 +646,7 @@ inline void RunTitleSceneTests(GameApp& app) {
         freshTitle->environment_.GetModel()==freshTitle->environmentFull_,
         "Background text destruction leaked into the next title scene");
     title=freshTitle;
+    check(title->SetMode(TitleScene::Mode::GameStart),"Could not select normal mode for fresh title regression");
     for (size_t i=0;i<title->lighting_.spots.size();++i)
         check(spotIntensity(i)==title->lighting_.spots[i].intensity,"Fresh title failed to restore spotlight brightness");
     // Keep the regression where both decorative words are destroyed before starting.

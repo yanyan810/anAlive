@@ -60,7 +60,7 @@ void Object3d::Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx) {
 
 void Object3d::Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx, SrvManager* srv, SkinningCommon* skinCom) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
-    ++debugInitializationCount;
+    ++debugInitializationCount_;
 #endif
 	this->object3dCommon = object3dCommon;
 	dx_ = dx;

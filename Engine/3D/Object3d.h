@@ -62,7 +62,7 @@ public:
 public:
 
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
-    inline static size_t debugInitializationCount=0; // Pool regression checks (main render thread).
+    static size_t DebugInitializationCount() { return debugInitializationCount_; }
 #endif
 	void Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx);
 	void Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx, SrvManager* srv, SkinningCommon* skinCom);
@@ -221,6 +221,9 @@ public:
 	}
 
 private:
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    inline static size_t debugInitializationCount_=0; // Main render thread only.
+#endif
 	void EnsureInstanceMaterial_();
 	void BindDirectionalShadow_(ID3D12GraphicsCommandList* cmd, UINT rootIndex=10);
     void PrepareInstanceMeshMaterials_();

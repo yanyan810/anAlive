@@ -87,7 +87,6 @@ public:
     const DebugReplayRecorder& ReplayRecorder() const { return replayRecorder_; }
     const DebugReplayRecorder& PlayerReplayRecorder() const { return playerReplayRecorder_; }
     const DebugReplayPlayer& ReplayPlayer() const { return replayPlayer_; }
-    DebugInputReplay& InputReplay() { return inputReplay_; }
     const DebugInputReplay& InputReplay() const { return inputReplay_; }
     const DebugGenericActionReplay& GenericActionReplay() const { return genericActionReplay_; }
     const DebugAction& LastAction() const { return lastAction_; }

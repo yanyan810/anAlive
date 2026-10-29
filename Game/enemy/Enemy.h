@@ -70,7 +70,6 @@ public:
     void DrawPartDebug(const Matrix4x4& viewProjection, const Vector2& screenMin, const Vector2& screenMax, bool forceParts=false, bool forceMovement=false, bool rangeOnly=false) const;
     void DrawImGui();
     const EnemyDefinition& Definition() const { return definition_; }
-    void ApplyDefinition(const EnemyDefinition& definition);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     Vector3 HeadCenterForDebug() const {
         for (size_t i=0;i<parts_.size();++i) if (parts_[i].role==EnemyPartRole::Head && !parts_[i].Destroyed())
@@ -109,7 +108,12 @@ public:
 #endif
     float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f);
     const EnemyAI& AI() const { return ai_; }
-    EnemySenses& Senses() { return ai_.settings.senses; }
+    const EnemySenses& Senses() const { return ai_.settings.senses; }
+    bool ConfigureSenses(const EnemySenses& senses) {
+        if (!senses.IsValid()) return false;
+        ai_.settings.senses = senses;
+        return true;
+    }
     void SetAIPaused(bool paused) { ai_.paused=paused; ai_.attacksThisUpdate=0; }
     void ResetAI() {
         const auto settings=ai_.settings; ai_={}; ai_.settings=settings;
@@ -120,11 +124,6 @@ public:
     const Vector3& GetRotation() const { return rotation_; }
     void SetPosition(const Vector3& position) { position_ = position; }
     void SetRotation(const Vector3& rotation) { rotation_ = rotation; }
-    void SetSpawnIdentity(uint64_t id, const std::string& trigger) {
-        spawnId_ = id;
-        id_ = "Enemy_" + std::string(id < 10 ? 2 : id < 100 ? 1 : 0, '0') + std::to_string(id);
-        spawnTriggerId_ = trigger;
-    }
     uint64_t GetSpawnId() const { return spawnId_; }
     const std::string& GetId() const { return id_; }
     const std::string& GetSpawnTriggerId() const { return spawnTriggerId_; }
@@ -139,6 +138,12 @@ public:
     void SetPartVisible(EnemyPartType type, bool visible);
     void SetPartVisible(size_t index,bool visible) { if (index<visuals_.size()) visuals_[index].visible=visible; }
 private:
+    void ApplyDefinition(const EnemyDefinition& definition);
+    void SetSpawnIdentity(uint64_t id, const std::string& trigger) {
+        spawnId_ = id;
+        id_ = "Enemy_" + std::string(id < 10 ? 2 : id < 100 ? 1 : 0, '0') + std::to_string(id);
+        spawnTriggerId_ = trigger;
+    }
     bool placementPreview_=false;
     const Object3dLight* sceneLight_ = nullptr;
     void ApplySceneLight(Object3d& object);

@@ -44,7 +44,7 @@ void GameScene::BeginStartSequence(GameApp& app,bool force) {
         startPlayerVisual_->Initialize(app.ObjCom(),app.Dx(),&camera_,enemyDefinitions_.Find("normal"),player_.Settings().cameraHeight);
     }
     sequenceOwnsCamera_=true; sequenceWaiting_=true;
-    player_.CurrentWeapon().CancelBurst();
+    player_.CancelWeaponBurst();
     adsBlend_=0; player_.SetLookSensitivityMultiplier(1);
     app.GetInput()->SetCameraControlEnabled(false);
 #ifdef USE_IMGUI
@@ -61,7 +61,7 @@ void GameScene::FinishStartSequence(GameApp& app) {
     // Player has not moved while the sequence owned the camera. Its own refresh
     // is the authoritative handoff, including the exact original Euler angles.
     player_.RefreshVisuals(); camera_.SetFovY(sequenceEye_.fov); camera_.Update();
-    player_.CurrentWeapon().CancelBurst();
+    player_.CancelWeaponBurst();
     sequenceInputGuard_=true; suppressFireUntilRelease_=true; initialCapturePending_=true;
     app.GetInput()->SetCameraControlEnabled(false);
     RefreshSequenceVisuals();
@@ -195,7 +195,7 @@ void GameScene::OnEnter(GameApp& app) {
     if (placementTest_) spawnSystem_.SetPlacements(*placementTest_);
     InitializeShutters(app);
     weaponVisuals_.clear();
-    player_.CurrentWeapon()=WeaponRuntime{};
+    player_.UnequipWeapon();
     if (IsGameOverDemo()) {
         // Scene-local policy: no weapon, pickups or movement needed to show death.
         player_.ApplyDamage(player_.GetHP()-20.0f);
@@ -203,7 +203,7 @@ void GameScene::OnEnter(GameApp& app) {
         // StageStart enemies build their first WVP before FadeIn simulation runs.
         // Bind the spawn camera now so they are correctly placed in that first view.
         player_.RefreshVisuals();
-    } else if (const auto* initial = weapons_.InitialWeapon()) player_.CurrentWeapon().Equip(*initial);
+    } else if (const auto* initial = weapons_.InitialWeapon()) player_.EquipWeapon(*initial);
     pelletRandom_.seed(weapons_.ActualSeed() ^ 0x9e3779b9u); // independent of placement lottery
     gameHUD_.Initialize(app.SpriteCom(),app.Dx());
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
@@ -314,7 +314,7 @@ void GameScene::OnExit(GameApp& app) {
     app.Render()->ResetDeathPostEffect();
     app.Render()->ResetViewPostPreview();
     gameOver_.Reset(); gameOverMenuTime_=0;
-    player_.SetMovementEnabled(true); player_.CurrentWeapon().CancelBurst();
+    player_.SetMovementEnabled(true); player_.CancelWeaponBurst();
     camera_.SetNearZ(.1f); camera_.SetFovY(kNormalFovDegrees*kDegreesToRadians);
     startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
     if (shutterAudio_) shutterAudio_->StopAll();
@@ -388,7 +388,7 @@ void GameScene::Update(GameApp& app, float dt) {
         ResetShowroomEnemies(app); resetEnemiesPending_=false;
         weapons_.ResetPickups();
         const auto equipped=player_.CurrentWeapon().Definition();
-        player_.CurrentWeapon().Equip(equipped);
+        player_.EquipWeapon(equipped);
         shotCount_=0; hitCount_=0; lastDamage_=0;
         suppressFireUntilRelease_=true;
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
@@ -400,7 +400,7 @@ void GameScene::Update(GameApp& app, float dt) {
     if (showroom_) {
         if (weaponEditor_.mode==WeaponEditorMode::Test && input.IsKeyTrigger(DIK_ESCAPE)) {
             weaponEditor_.mode=WeaponEditorMode::Edit;
-            if (beforeWeaponTest_) player_.CurrentWeapon()=*beforeWeaponTest_;
+            if (beforeWeaponTest_) player_.RestoreWeaponForDebug(*beforeWeaponTest_);
             beforeWeaponTest_.reset();
             bullets_.Clear(); enemyProjectiles_.Clear(); projectileVisuals_.clear();
             adsBlend_=0; player_.SetLookSensitivityMultiplier(1);
@@ -549,7 +549,7 @@ void GameScene::BeginGameOver(GameApp& app) {
     const GameOverSequence::DeathContext death{player_.GetTransform(),
         {camera_.GetTranslate(),camera_.GetRotate(),camera_.GetFovY()},player_.LastImpactDirection(),player_.Settings().cameraHeight};
     startSequence_.Stop(); sequenceOwnsCamera_=false; sequenceDebugCommand_=0;
-    player_.SetMovementEnabled(false); player_.CurrentWeapon().CancelBurst();
+    player_.SetMovementEnabled(false); player_.CancelWeaponBurst();
     initialCapturePending_=false; suppressFireUntilRelease_=true; adsBlend_=0;
     app.GetInput()->SetCameraControlEnabled(false); app.GetInput()->SetMouseCaptureRect(nullptr);
 #ifdef USE_IMGUI
@@ -713,7 +713,7 @@ void GameScene::UpdateADS(
 bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
     if (!pressed) return false;
     if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
-    return !IsGameOverDemo() && allowPickup && weapons_.TryPickup(player_.GetTransform().translate,player_.CurrentWeapon());
+    return !IsGameOverDemo() && allowPickup && player_.TryPickupWeapon(weapons_);
 }
 
 void GameScene::UpdateEnemySpawns(float dt, bool processTriggers) {
@@ -734,7 +734,7 @@ void GameScene::UpdateEnemySpawns(float dt, bool processTriggers) {
 
 void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     Input& input = *app.GetInput();
-    auto& weapon = player_.CurrentWeapon();
+    const auto& weapon = player_.CurrentWeapon();
     const bool controls = !IsGameOverDemo() && wasCaptured && input.IsCameraControlEnabled() && input.HasFocus();
     bool allowPickup=true;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
@@ -794,7 +794,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     for(size_t i=0;i<enemies_.size();++i) {
         if (enemies_[i]->IsDead() || (showroom_ && freezeEnemies_)) continue;
         if (enemies_[i]->Definition().IsRanged() && enemies_[i]->PendingAttackCount()>0) {
-            enemyProjectiles_.projectiles.push_back(MakeEnemyProjectile(enemies_[i]->Definition(),
+            enemyProjectiles_.Spawn(MakeEnemyProjectile(enemies_[i]->Definition(),
                 enemies_[i]->GetPosition()+Vector3{0,1.2f,0},player_.GetTransform().translate));
             enemies_[i]->ConfirmAttack(0);
             enemyAttackCount_+=enemies_[i]->PendingAttackCount();
@@ -860,7 +860,7 @@ void GameScene::DrawRender(GameApp& app) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
     if (IsGameOverDemo()) return;
-    player_.CurrentWeapon().Equip(definition);
+    player_.EquipWeapon(definition);
     suppressFireUntilRelease_ = true;
 }
 #endif
@@ -919,13 +919,14 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::Text("Yaw / Pitch: %.1f / %.1f deg", transform.rotate.y * 57.2957795f, transform.rotate.x * 57.2957795f);
     ImGui::BeginDisabled(captured || sequenceOwnsCamera_);
     if (ImGui::Button("Reset Player HP (Debug)")) player_.ResetHPForDebug();
-    auto& settings = player_.Settings();
+    auto settings = player_.Settings();
     ImGui::SliderFloat("Eye height", &settings.cameraHeight, 0.5f, 2.5f);
     ImGui::SliderFloat("Move speed", &settings.moveSpeed, 0.5f, 15.0f);
     ImGui::SliderFloat("Mouse sensitivity", &settings.mouseSensitivity, 0.0005f, 0.01f, "%.4f");
+    player_.ConfigureMovement(settings);
     for (const auto& enemy : enemies_)
         ImGui::Text("%s | %s | %s", enemy->GetId().c_str(), EnemyTypeName(enemy->Definition().type), enemy->GetSpawnTriggerId().c_str());
-    ImGui::Text("Enemy Projectiles: %zu", enemyProjectiles_.projectiles.size());
+    ImGui::Text("Enemy Projectiles: %zu", enemyProjectiles_.Projectiles().size());
     const auto selectedLabel=enemies_.empty() ? std::string("No Enemy") : enemies_[static_cast<size_t>(selectedEnemy_)]->GetId();
     if (ImGui::BeginCombo("Selected Enemy", selectedLabel.c_str())) {
         for(int i=0;i<static_cast<int>(enemies_.size());++i) {
@@ -948,7 +949,7 @@ void GameScene::DrawImGui(GameApp& app) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
-    auto& weapon = player_.CurrentWeapon();
+    const auto& weapon = player_.CurrentWeapon();
     ImGui::BeginDisabled(captured || !stage_.IsPlaying() || weapons_.Definitions().empty());
     const auto& equipped = weapon.Definition();
     if (ImGui::BeginCombo("Equip Weapon (Debug)", equipped.id.empty() ? "No weapon" : equipped.displayName.c_str())) {
@@ -1190,7 +1191,7 @@ void GameScene::DrawOverlay2D(GameApp&) {
 }
 
 void GameScene::SyncProjectileVisuals(GameApp& app) {
-    const auto& projectiles=enemyProjectiles_.projectiles;
+    const auto& projectiles=enemyProjectiles_.Projectiles();
     while (projectileVisuals_.size()<projectiles.size()) {
         auto visual=std::make_unique<Object3d>();
         visual->Initialize(app.ObjCom(),app.Dx()); visual->SetCamera(&camera_);
@@ -1426,7 +1427,7 @@ void GameScene::DrawShowroomTools(GameApp& app) {
         ImGui::PushID(pickup.spawnPointId.c_str());
         ImGui::BeginDisabled(app.GetInput()->IsCameraControlEnabled());
         if (ImGui::Button("Equip")) {
-            if (const auto* d=weapons_.Find(pickup.weaponId)) player_.CurrentWeapon().Equip(*d);
+            if (const auto* d=weapons_.Find(pickup.weaponId)) player_.EquipWeapon(*d);
             suppressFireUntilRelease_=true;
         }
         ImGui::EndDisabled(); ImGui::PopID();

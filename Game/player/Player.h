@@ -21,10 +21,22 @@ public:
     }
     const Transform& GetTransform() const { return transform_; }
     Vector3 EyePosition() const { return transform_.translate+Vector3{0,settings_.cameraHeight,0}; }
-    FPSMotion::Settings& Settings() { return settings_; }
     const FPSMotion::Settings& Settings() const { return settings_; }
-    WeaponRuntime& CurrentWeapon() { return currentWeapon_; }
+    bool ConfigureMovement(const FPSMotion::Settings& settings) {
+        if (!std::isfinite(settings.cameraHeight) || settings.cameraHeight <= 0 ||
+            !std::isfinite(settings.mouseSensitivity) || settings.mouseSensitivity < 0 ||
+            !std::isfinite(settings.moveSpeed) || settings.moveSpeed < 0) return false;
+        settings_ = settings;
+        return true;
+    }
     const WeaponRuntime& CurrentWeapon() const { return currentWeapon_; }
+    bool EquipWeapon(const WeaponDefinition& definition) { return currentWeapon_.Equip(definition); }
+    void UnequipWeapon() { currentWeapon_ = WeaponRuntime{}; }
+    void CancelWeaponBurst() { currentWeapon_.CancelBurst(); }
+    void SetInfiniteAmmo(bool enabled) { currentWeapon_.SetInfiniteAmmo(enabled); }
+    bool TryPickupWeapon(WeaponSystem& weapons) { return weapons.TryPickup(transform_.translate, currentWeapon_); }
+    // Editor/test snapshots are copies of an already valid runtime, including its timers.
+    void RestoreWeaponForDebug(const WeaponRuntime& weapon) { currentWeapon_ = weapon; }
     void ApplyDamage(float damage,const Vector3& direction={}) {
         if (hp_>0 && std::isfinite(damage) && damage>0) {
             hp_=std::max(0.0f,hp_-damage); lastImpactDirection_=direction;
@@ -55,6 +67,7 @@ public:
     bool IsDead() const { return hp_ <= 0; }
 
     void SetLookSensitivityMultiplier(float multiplier) {
+        if (!std::isfinite(multiplier)) return;
         lookSensitivityMultiplier_ =
             std::clamp(multiplier, 0.05f, 2.0f);
     }

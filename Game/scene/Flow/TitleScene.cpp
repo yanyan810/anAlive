@@ -216,7 +216,7 @@ void TitleScene::PrepareTextExplosion(GameApp& app,TextExplosion& burst,const st
 
 void TitleScene::BeginStartExplosion(bool preview) {
     explosionPreview_=preview;
-    player_.CurrentWeapon().CancelBurst();
+    player_.CancelWeaponBurst();
     // Preserve the existing damage/raycast target; title owns its special visual
     // burst. Discard its hidden generic face burst via the existing pool API.
     if (!preview) startTarget_->RetireFromPool();
@@ -498,8 +498,8 @@ void TitleScene::OnEnter(GameApp& app) {
     player_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     player_.SetMovementEnabled(true);
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
-    player_.CurrentWeapon().Equip(*weapons_.Find(weaponId_));
-    player_.CurrentWeapon().SetInfiniteAmmo(true);
+    player_.EquipWeapon(*weapons_.Find(weaponId_));
+    player_.SetInfiniteAmmo(true);
     player_.Update(input,0);
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     EnemyPoolSettings settings;
@@ -673,7 +673,7 @@ void TitleScene::UpdateWorld(GameApp& app, float dt, bool controls) {
     // bullets from an impact callback would invalidate that iteration.
     if (pendingDemoTransition_) { BeginGameOverDemo(app); return; }
     controls = controls && !StartExplosionActive();
-    auto& weapon = player_.CurrentWeapon();
+    const auto& weapon = player_.CurrentWeapon();
     const int shots = player_.UpdateShooting(input,dt,controls && !suppressFireUntilRelease_,false);
     for (int shot=0; shot<shots; ++shot)
         bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),0,random_,level_.collision,targets,titleTarget);

@@ -175,7 +175,6 @@ public:
     void ClearGroups();
     void RemoveGroup(const std::string& groupName);
     void ClearAllParticles();
-    void ClearGPUBuffers_(ParticleGroup& group);
     void DrawImGui(); // ★追加
     void DrawImGuiContents();
 
@@ -205,6 +204,7 @@ public:
     void EmitConfigured(const std::string& groupName, const Vector3& pos, float timeScale = 1.0f, float initialAge = 0.0f);
 
 private:
+    void ClearGPUBuffers_(ParticleGroup& group);
     ParticleManager() = default;
     ~ParticleManager() = default;
     ParticleManager(const ParticleManager&) = delete;

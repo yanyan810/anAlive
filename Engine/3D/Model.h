@@ -166,12 +166,11 @@ public:
 	static ModelData    LoadAssimpFile(const std::string& fullPath);
 	static ModelData    LoadPmxFile(const std::string& fullPath);
 
-	Vector4& GetMaterialColor()
+	Vector4 GetMaterialColor() const
 	{
-		static Vector4 dummy{ 1,1,1,1 };
 		if (!materialData_) {
 			OutputDebugStringA("[Model] GetMaterialColor returns dummy (materialData_ is null)\n");
-			return dummy;
+			return { 1,1,1,1 };
 		}
 		return materialData_->color;
 	}
@@ -185,7 +184,7 @@ public:
 		materialData_->color = c;
 	}
 
-	Material* GetMaterial() { return materialData_; }
+	const Material* GetMaterial() const { return materialData_; }
 
 	const Matrix4x4& GetRootLocalMatrix() const;
 	bool GetLocalAABB(AABB& out) const;

@@ -171,7 +171,7 @@ void EnemyAITestScene::Update(GameApp& app,float dt) {
         e->SetPosition(world_.Move(previous,previous+correction[i],d.collisionRadius,d.collisionHeight));
         const float hit=e->Update(dt,player,&world_,player_.Settings().cameraHeight); damage+=hit;
         if (e->PendingAttackCount()) {
-            if (d.IsRanged()) projectiles_.projectiles.push_back(MakeEnemyProjectile(d,e->GetPosition()+Vector3{0,1.2f,0},player));
+            if (d.IsRanged()) projectiles_.Spawn(MakeEnemyProjectile(d,e->GetPosition()+Vector3{0,1.2f,0},player));
             e->ConfirmAttack(hit);
         }
     }
@@ -179,20 +179,20 @@ void EnemyAITestScene::Update(GameApp& app,float dt) {
     SyncProjectiles(app);
 }
 void EnemyAITestScene::SyncProjectiles(GameApp& app) {
-    while (projectileVisuals_.size()<projectiles_.projectiles.size()) {
+    while (projectileVisuals_.size()<projectiles_.Projectiles().size()) {
         auto object=std::make_unique<Object3d>(); object->Initialize(app.ObjCom(),app.Dx()); object->SetCamera(&camera_);
         object->SetModel("cube/cube.obj"); object->SetTexture("resources/white1x1.png"); object->SetEnableLighting(0);
         object->SetMaterialColor({1,.4f,.1f,1}); projectileVisuals_.push_back(std::move(object));
     }
-    for (size_t i=0;i<projectiles_.projectiles.size();++i) {
-        const auto& p=projectiles_.projectiles[i]; auto& v=*projectileVisuals_[i];
+    for (size_t i=0;i<projectiles_.Projectiles().size();++i) {
+        const auto& p=projectiles_.Projectiles()[i]; auto& v=*projectileVisuals_[i];
         v.SetTranslate(p.position); v.SetScale({p.radius,p.radius,p.radius}); v.Update(0);
     }
 }
 void EnemyAITestScene::DrawRender(GameApp&) {
     for (auto& box:geometry_) box->Draw();
     for (auto* e:enemies_) { e->Draw(); e->DrawExplosion(); }
-    for (size_t i=0;i<projectiles_.projectiles.size();++i) projectileVisuals_[i]->Draw();
+    for (size_t i=0;i<projectiles_.Projectiles().size();++i) projectileVisuals_[i]->Draw();
 }
 void EnemyAITestScene::DrawOverlay2D(GameApp&) {
     const auto view=Matrix4x4::MakeIdentity4x4();
@@ -252,7 +252,7 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
             if (ImGui::Checkbox("選択したAIを一時停止",&paused)) enemy.SetAIPaused(paused);
             if (ImGui::Button("選択したAIをリセット")) enemy.ResetAI();
             ImGui::SeparatorText("索敵設定（選択中の敵へ即時反映）");
-            auto& s=enemy.Senses();
+            auto s=enemy.Senses();
             ImGui::SliderFloat("視認距離",&s.viewDistance,0,100);
             ImGui::SliderFloat("視野角（度）",&s.fieldOfView,0,360);
             ImGui::SliderFloat("発見時間（秒）",&s.detectionTime,0,5);
@@ -271,6 +271,7 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
             ImGui::SliderFloat("徘徊速度倍率",&s.wanderSpeedMultiplier,0,2);
             ImGui::SliderFloat("徘徊待機時間（秒）",&s.wanderWaitTime,0,10);
             if (ImGui::Button("定義の索敵設定に戻す")) s=enemy.Definition().senses;
+            enemy.ConfigureSenses(s);
             const auto& a=enemy.AI();
             ImGui::SeparatorText("AI状態");
             ImGui::Text("現在: %s / 距離: %.2f",StateName(enemy.GetState()),a.distance);

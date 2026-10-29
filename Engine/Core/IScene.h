@@ -37,6 +37,9 @@ public:
     // ImGui描画
     virtual void DrawImGui(GameApp& app) {}
     virtual bool ShowTransitionDebugUI() const { return true; }
+    // Scene tools can require the viewport UI even when Release normally draws
+    // gameplay directly to the back buffer. This policy belongs to the scene.
+    virtual bool UsesSceneViewport() const { return false; }
 
     virtual void DrawPreview(GameApp& app) {}
 

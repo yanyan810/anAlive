@@ -6,6 +6,7 @@
 #include "DirectXTex.h"
 #include "SrvManager.h"
 #include "scene/Main/GameScene.h"
+#include "ScenePolymorphismTests.h"
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -222,6 +223,7 @@ inline void CheckCompletedTransition(GameApp& app, const std::string& scene) {
 }
 
 inline void RunScreenTransitionTests(GameApp& app) {
+    ScenePolymorphismTests::Run(app);
     using namespace ScreenTransitionTests;
     FadeManager fade;
     Check(fade.State() == TransitionState::Idle && fade.Alpha() == 0, "Initial fade state");

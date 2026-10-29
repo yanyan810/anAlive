@@ -503,7 +503,7 @@ void GameApp::Draw() {
 #ifdef USE_IMGUI
     if (imgui_) {
 #ifdef PLACEMENT_EDITOR_RELEASE
-        if (!imgui_->IsWeaponWorkspace() && sceneMgr_->CurrentName()!="EnemyAITest" && !render_->ViewPostDebugVisible()) {
+        if (!imgui_->IsWeaponWorkspace() && !sceneMgr_->UsesSceneViewport() && !render_->ViewPostDebugVisible()) {
             render_->DrawOffscreenToBackBuffer(); sceneMgr_->DrawOverlay2D(*this);
             if (transitionCheck_) transitionCheck_->Draw(*this);
             imgui_->End(dx_->GetCommandList()); dx_->PostDraw(); return;

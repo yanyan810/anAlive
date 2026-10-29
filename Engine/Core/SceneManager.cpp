@@ -270,6 +270,10 @@ bool SceneManager::HasObjectLuminanceOutlineTargets() const {
     return CanDrawScene_() && current_->HasObjectLuminanceOutlineTargets();
 }
 
+bool SceneManager::UsesSceneViewport() const {
+    return current_ && current_->UsesSceneViewport();
+}
+
 void SceneManager::DrawTransitionImGui_([[maybe_unused]] GameApp& app) {
 #ifdef USE_IMGUI
     if (current_ && !current_->ShowTransitionDebugUI()) return;

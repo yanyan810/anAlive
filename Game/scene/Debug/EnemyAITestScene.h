@@ -17,6 +17,7 @@ public:
     void DrawOverlay2D(GameApp&) override;
     void DrawImGui(GameApp& app) override;
     bool ShowTransitionDebugUI() const override { return false; }
+    bool UsesSceneViewport() const override { return true; }
 private:
     friend void RunEnemyAITestSceneTests(GameApp& app);
     void AddBox(GameApp& app,const char* id,const Vector3& center,const Vector3& half,const Vector4& color,bool collider=true);

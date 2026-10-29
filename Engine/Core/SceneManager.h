@@ -44,6 +44,7 @@ public:
     bool HasObjectBloomTargets() const;
     bool HasObjectOutlineBloomTargets() const;
     bool HasObjectLuminanceOutlineTargets() const;
+    bool UsesSceneViewport() const;
 
     IScene* Current() { return current_.get(); }
     const std::string& CurrentName() const { return currentName_; }

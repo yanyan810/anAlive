@@ -75,7 +75,7 @@ void TitleScene::BeginGameOverDemo(GameApp& app) {
     pendingDemoTransition_=false;
     transitionRequested_=app.Scenes().TransitionTo("GameOverDemo",.75f,.75f,{0,0,0},FadeEasing::Linear);
     if (!transitionRequested_) return;
-    bullets_.Clear(); player_.CurrentWeapon().CancelBurst();
+    bullets_.Clear(); player_.CancelWeaponBurst();
     suppressFireUntilRelease_=true; initialCapturePending_=false;
     app.GetInput()->SetCameraControlEnabled(false);
 }

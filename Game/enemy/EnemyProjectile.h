@@ -65,14 +65,33 @@ inline float StepEnemyProjectile(EnemyProjectile& p, float dt, const Vector3& pl
     if (p.lifetime<=0) p.active=false;
     return damage;
 }
+class StageWorld;
 class EnemyProjectileSystem {
 public:
-    std::vector<EnemyProjectile> projectiles;
-    void Clear() { projectiles.clear(); }
+    const std::vector<EnemyProjectile>& Projectiles() const { return projectiles_; }
+    bool Spawn(const EnemyProjectile& projectile) {
+        const auto finiteVector=[](const Vector3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); };
+        if (!projectile.active || !finiteVector(projectile.position) || !finiteVector(projectile.velocity) ||
+            !std::isfinite(projectile.radius) || projectile.radius <= 0 ||
+            !std::isfinite(projectile.damage) || projectile.damage < 0 ||
+            !std::isfinite(projectile.lifetime) || projectile.lifetime <= 0 ||
+            (projectile.type != EnemyProjectileType::Bullet && projectile.type != EnemyProjectileType::Bomb)) return false;
+        if (projectile.type == EnemyProjectileType::Bomb &&
+            (!std::isfinite(projectile.gravity) || projectile.gravity <= 0 ||
+             !std::isfinite(projectile.fuseRemaining) || projectile.fuseRemaining < 0 ||
+             !std::isfinite(projectile.explosionRadius) || projectile.explosionRadius < 0 ||
+             !std::isfinite(projectile.explosionDamage) || projectile.explosionDamage < 0)) return false;
+        projectiles_.push_back(projectile);
+        return true;
+    }
+    void Clear() { projectiles_.clear(); }
+    float Update(float dt, const Vector3& player, const StageWorld& world, Vector3* impactDirection = nullptr);
     float Update(float dt,const Vector3& playerFeet) {
         float damage=0;
-        for (auto& p : projectiles) damage+=StepEnemyProjectile(p,dt,playerFeet);
-        std::erase_if(projectiles,[](const auto& p) { return !p.active; });
+        for (auto& p : projectiles_) damage+=StepEnemyProjectile(p,dt,playerFeet);
+        std::erase_if(projectiles_,[](const auto& p) { return !p.active; });
         return damage;
     }
+private:
+    std::vector<EnemyProjectile> projectiles_;
 };

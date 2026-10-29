@@ -28,6 +28,7 @@ public:
     void DrawOverlay2D(GameApp& app) override;
     void DrawImGui(GameApp& app) override;
     void Draw(GameApp&) override {}
+private:
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     Sprite enemyAITestEntry_;
     Sprite enemyPlacementEntry_;

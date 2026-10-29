@@ -63,7 +63,7 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     // Use the actual pooled enemy and the same corner colliders as the playable
     // chase/lost-sight area. The north-east hiding point is occluded by the L wall.
     auto* corner=scene->enemies_[3];
-    corner->Senses().detectionTime=0; corner->Senses().fieldOfView=360;
+    { auto senses=corner->Senses(); senses.detectionTime=0; senses.fieldOfView=360; corner->ConfigureSenses(senses); }
     const Vector3 observed{-24,0,20}, hidden{-14,0,40};
     for (int i=0;i<5;++i) corner->Update(.1f,observed+Vector3{static_cast<float>(i-4),0,0},&scene->world_);
     check(corner->AI().visible && corner->GetState()==EnemyState::Chase,"corner area cannot initially detect player");
@@ -90,31 +90,32 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     check(corner->GetState()==EnemyState::Chase,"corner reappearance did not resume pursuit");
     const auto afterSearch=corner->AI().wanderCenter;
     check(StageLength(afterSearch-searchStart)>.1f,"Wander did not center on post-search position");
-    corner->ResetAI(); corner->Senses()=corner->Definition().senses;
+    corner->ResetAI(); corner->ConfigureSenses(corner->Definition().senses);
     check(corner->AI().memory.count==0 && !corner->AI().memory.hasDirection && corner->AI().memory.clock==0,"AI reset retained observed history");
     auto* enemy=scene->enemies_[0]; scene->selected_=0;
     const auto at=enemy->GetPosition();
-    enemy->ResetAI(); enemy->Senses().viewDistance=0;
+    { auto senses=enemy->Senses(); enemy->ResetAI(); senses.viewDistance=0; enemy->ConfigureSenses(senses); }
     enemy->Update(1,at+Vector3{0,0,5},&scene->world_);
     check(enemy->GetState()==EnemyState::Idle && !enemy->AI().hasLastSeen,"live distance adjustment ignored");
-    enemy->Senses().viewDistance=100; enemy->Senses().fieldOfView=360; enemy->Senses().detectionTime=0;
+    { auto senses=enemy->Senses(); senses.viewDistance=100; senses.fieldOfView=360; senses.detectionTime=0; enemy->ConfigureSenses(senses); }
     enemy->Update(.1f,at+Vector3{0,0,5},&scene->world_);
     check(enemy->GetState()==EnemyState::Chase && enemy->AI().hasLastSeen,"live detection adjustment ignored");
     enemy->SetAIPaused(true); const auto stopped=enemy->GetPosition();
     enemy->Update(1,at+Vector3{0,0,6},&scene->world_);
     check(StageLength(enemy->GetPosition()-stopped)==0 && enemy->PendingAttackCount()==0,"selected AI pause failed");
     const auto primeSearch=[&]() {
-        enemy->Senses().detectionTime=0; enemy->Senses().fieldOfView=360;
-        enemy->Senses().loseSightTime=0; // This fixture isolates arrival/reset, not the grace clock.
+        // This fixture isolates arrival/reset, not the grace clock.
+        { auto senses=enemy->Senses(); senses.detectionTime=0; senses.fieldOfView=360;
+          senses.loseSightTime=0; enemy->ConfigureSenses(senses); }
         enemy->SetAIPaused(false);
         enemy->Update(.1f,enemy->GetPosition()+Vector3{0,0,5},&scene->world_);
         enemy->SetPosition(enemy->AI().lastSeen);
         enemy->Update(.1f,{1000,0,1000},&scene->world_);
         check(enemy->GetState()==EnemyState::Search,"search lifecycle fixture did not arrive");
-        enemy->Senses().searchSpeedMultiplier=.7f;
+        { auto senses=enemy->Senses(); senses.searchSpeedMultiplier=.7f; enemy->ConfigureSenses(senses); }
         enemy->Update(.1f,{1000,0,1000},&scene->world_);
         check(std::abs(enemy->AI().currentSpeed-enemy->Definition().moveSpeed*.7f)<.01f,"live search speed multiplier ignored");
-        enemy->Senses().searchDuration=.05f;
+        { auto senses=enemy->Senses(); senses.searchDuration=.05f; enemy->ConfigureSenses(senses); }
         check(enemy->AI().SearchRemaining()==0,"live search duration ignored");
     };
     primeSearch();
@@ -125,9 +126,9 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
         !enemy->AI().lastSeenReached && !enemy->AI().investigateUnreachable && enemy->AI().investigateBlockedTime==0 &&
         enemy->AI().memory.count==0 && !enemy->AI().memory.hasDirection && enemy->AI().memory.clock==0 &&
         StageLength(enemy->GetPosition()-beforeReset)==0,"AI reset teleported or retained search memory");
-    enemy->Senses()=enemy->Definition().senses;
+    enemy->ConfigureSenses(enemy->Definition().senses);
     primeSearch(); // Recycle a slot while its search clock/path/live tuning are dirty.
-    enemy->Senses().memoryRetentionTime=.3f; enemy->Senses().memoryRecordInterval=0; enemy->Senses().searchDirectionPriority=.2f;
+    { auto senses=enemy->Senses(); senses.memoryRetentionTime=.3f; senses.memoryRecordInterval=0; senses.searchDirectionPriority=.2f; enemy->ConfigureSenses(senses); }
     const auto definition=enemy->Definition().id;
     const auto spawnId=enemy->GetSpawnId();
     scene->Remove(app,false); check(scene->pool_.Active()==7 && scene->enemies_.size()==7,"selected deletion failed");

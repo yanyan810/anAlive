@@ -304,10 +304,10 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->UpdateWorld(app,0,false);
     check(spotIntensity(1)==0 && spotIntensity(0)==steadyLighting.spots[0].intensity &&
         spotIntensity(2)==steadyLighting.spots[2].intensity,"Enemy death failed to extinguish only its spotlight");
-    const auto allocations = Object3d::debugInitializationCount;
+    const auto allocations = Object3d::DebugInitializationCount();
     for (int i=0; i<80; ++i) title->UpdateWorld(app,.1f,false);
     check(title->enemies_.size()==2 && title->enemies_[0]==enemy && !enemy->IsDead(),"Title pool respawn");
-    check(Object3d::debugInitializationCount==allocations,"Title respawn allocated renderers");
+    check(Object3d::DebugInitializationCount()==allocations,"Title respawn allocated renderers");
     check(spotIntensity(1)==steadyLighting.spots[1].intensity,"Enemy respawn failed to restore its spotlight");
     check(title->player_.GetHP()==hp,"Title death explosion damaged player");
 
@@ -341,7 +341,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->bullets_.Update(.1f,unaliveBlocked,title->enemies_,{},unaliveTrace,
         [&](const Bullet&,const BulletHit&) { title->BeginUnaliveExplosion(); });
     check(!title->unaliveExplosion_.destroyed,"UNALIVE exploded through an occluding wall");
-    const auto unaliveAllocations=Object3d::debugInitializationCount;
+    const auto unaliveAllocations=Object3d::DebugInitializationCount();
     title->bullets_.Spawn(weapon,Matrix4x4::Translation(unaliveFirePosition),0,title->random_,empty,title->enemies_,unaliveTrace);
     check(!title->unaliveExplosion_.destroyed,"UNALIVE exploded before bullet flight");
     title->UpdateWorld(app,.1f,false);
@@ -362,7 +362,7 @@ inline void RunTitleSceneTests(GameApp& app) {
             letter.object->GetEnableLighting()==0,"UNALIVE glyph launch/spin/impact flash failed");
     }
     title->BeginUnaliveExplosion();
-    check(title->unaliveExplosion_.elapsed==0 && Object3d::debugInitializationCount==unaliveAllocations,
+    check(title->unaliveExplosion_.elapsed==0 && Object3d::DebugInitializationCount()==unaliveAllocations,
         "UNALIVE impact allocated renderers");
     capture(L"generated/title-tests/unalive-flash.png");
     title->UpdateWorld(app,.3f,false);
@@ -424,7 +424,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->bullets_.Update(.1f,instructionBlocked,title->enemies_,{},textTrace,
         [&](const Bullet&,const BulletHit&) { title->BeginInstructionExplosion(); });
     check(!instruction.destroyed,"SHOOT TO START exploded through an occluding wall");
-    const auto instructionAllocations=Object3d::debugInitializationCount;
+    const auto instructionAllocations=Object3d::DebugInitializationCount();
     title->bullets_.Spawn(weapon,Matrix4x4::Translation(instructionFirePosition),0,title->random_,title->level_.collision,title->enemies_,textTrace);
     check(!instruction.destroyed,"SHOOT TO START exploded before bullet flight");
     title->UpdateWorld(app,.1f,false);
@@ -438,7 +438,7 @@ inline void RunTitleSceneTests(GameApp& app) {
         check(StageLength(letter.motion.velocity)>0 && StageLength(letter.motion.angularVelocity)>0 && letter.motion.age==0 &&
             letter.object->GetEnableLighting()==0,"SHOOT TO START launch/spin/impact flash failed");
     }
-    check(Object3d::debugInitializationCount==instructionAllocations,"SHOOT TO START impact allocated renderers");
+    check(Object3d::DebugInitializationCount()==instructionAllocations,"SHOOT TO START impact allocated renderers");
     capture(L"generated/title-tests/instruction-flash.png");
     title->UpdateWorld(app,.3f,false);
     capture(L"generated/title-tests/instruction-explosion.png");
@@ -481,7 +481,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     for (const auto& letter : title->startExplosion_.letters) letterVertices+=letter.object->GetModel()->GetSourceVertexCount();
     check(letterVertices==title->startDefinition_.partAsset->defaults[0].geometry->triangles.size()*3,
         "Whole-letter extraction lost or duplicated GAME START geometry");
-    const auto previewAllocations=Object3d::debugInitializationCount;
+    const auto previewAllocations=Object3d::DebugInitializationCount();
     title->BeginStartExplosion(true);
     title->UpdateWorld(app,0,false);
     check(title->explosionPreview_ && !title->start_.Starting() && !title->startTarget_->IsDead() &&
@@ -490,7 +490,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     capture(L"generated/title-tests/explosion-preview-flash.png");
     title->UpdateWorld(app,2,false);
     check(!title->explosionPreview_ && !title->startTarget_->IsDead() && !app.Scenes().IsTransitioning() &&
-        Object3d::debugInitializationCount==previewAllocations,"Preview failed to restore title or allocated renderers");
+        Object3d::DebugInitializationCount()==previewAllocations,"Preview failed to restore title or allocated renderers");
     check(spotIntensity(2)==steadyLighting.spots[2].intensity,"GAME START preview failed to restore its spotlight");
     const auto settings=title->explosionSettings_;
     title->explosionSettings_.fragmentCount=40;
@@ -534,7 +534,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     title->bullets_.Spawn(weapon,Matrix4x4::Translation(firePosition),0,title->random_,blocked,title->enemies_);
     title->bullets_.Update(.1f,blocked,title->enemies_,[&](const BulletEnemyImpact& impact) {title->OnBulletImpact(impact);});
     check(!title->start_.Starting() && !title->startTarget_->IsDead(),"Shot passed wall to GAME START");
-    const auto gpuCount=Object3d::debugInitializationCount;
+    const auto gpuCount=Object3d::DebugInitializationCount();
     title->bullets_.Spawn(weapon,Matrix4x4::Translation(firePosition),0,title->random_,empty,title->enemies_);
     check(!title->start_.Starting(),"Shot spawned start without flight");
     title->UpdateWorld(app,.1f,false);
@@ -542,7 +542,7 @@ inline void RunTitleSceneTests(GameApp& app) {
     const auto dead=title->startTarget_->CaptureDebug();
     check(title->startTarget_->IsDead() && dead.faces.empty() && !dead.visible[0] && title->startExplosion_.fragmentCount==30,
         "GAME START failed to replace hidden generic shards with title burst");
-    check(Object3d::debugInitializationCount==gpuCount,"GAME START impact allocated renderers");
+    check(Object3d::DebugInitializationCount()==gpuCount,"GAME START impact allocated renderers");
     check(spotIntensity(2)==0 && spotIntensity(1)==steadyLighting.spots[1].intensity,
         "GAME START impact failed to extinguish its spotlight on the impact frame");
     check(title->lighting_.ToJson()==steadyLighting.ToJson(),"Destruction modified saved lighting settings");

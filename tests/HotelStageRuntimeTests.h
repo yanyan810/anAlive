@@ -7,8 +7,10 @@
 #include "RenderManager.h"
 #include "DirectXTex.h"
 #include <numbers>
+#include "EncapsulationChecks.h"
 
 inline void RunHotelStageRuntimeTests(GameApp& app) {
+    RunEncapsulationChecks();
     using HotelStageChecks::Check;
     if (std::wstring(GetCommandLineW()).find(L"--hotel-regression-test")!=std::wstring::npos) {
         // The existing SRV allocator is monotonic. Test unrelated stages in a fresh
@@ -78,7 +80,7 @@ inline void RunHotelStageRuntimeTests(GameApp& app) {
     Check(!game->weapons_.Pickups()[0].pickedUp,"Switch priority consumes E before pickup");
     Check(game->HandleInteraction(true,true) && game->weapons_.Pickups()[0].pickedUp &&
         game->level_.shutters.shutters[0].state==ShutterState::Opening,"Used switch cannot close; next E may pick up weapon");
-    game->weapons_=originalWeapons; game->player_.CurrentWeapon()=originalWeapon;
+    game->weapons_=originalWeapons; game->player_.RestoreWeaponForDebug(originalWeapon);
     for (int second=1;second<=30;++second) {
         for (int frame=0;frame<60;++frame) {
             game->Update(app,1.0f/60);

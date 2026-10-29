@@ -36,10 +36,6 @@ public:
     float GetLeftStickY() const;
     bool IsLeftStickUpTrigger(float threshold = 0.25f) const;
 
-    POINT prevMousePos_{};
-    POINT mouseDelta_{};
-
-    void UpdateMouseDelta();
     POINT GetMouseDelta() const { return mouseDelta_; }
     void SetCameraControlEnabled(bool enabled);
     bool IsCameraControlEnabled() const { return cameraControlEnabled_; }
@@ -58,6 +54,9 @@ public:
     bool IsKeyReleased(BYTE keyCode) const;*/
 
 private:
+    POINT prevMousePos_{};
+    POINT mouseDelta_{};
+    void UpdateMouseDelta();
     friend void RunGameOverSequenceRuntimeTests(class GameApp& app);
     friend void RunTitleGameOverDemoTests(class GameApp& app);
     friend void RunCameraSequenceRuntimeTests(class GameApp& app);

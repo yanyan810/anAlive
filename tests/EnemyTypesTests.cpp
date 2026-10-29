@@ -221,8 +221,8 @@ int main() {
     assert(StepEnemyProjectile(bomb,1,{0,0,14})==0);
     bomb=outside; assert(StepEnemyProjectile(bomb,1.21f,{0,0,30})==0 && !bomb.active);
     bomb=outside; bomb.lifetime=.1f; assert(StepEnemyProjectile(bomb,10,{0,0,14})==0 && !bomb.active);
-    EnemyProjectileSystem projectiles; projectiles.projectiles.push_back(outside); projectiles.Clear();
-    assert(projectiles.projectiles.empty() && projectiles.Update(10,{0,0,14})==0);
+    EnemyProjectileSystem projectiles; projectiles.Spawn(outside); projectiles.Clear();
+    assert(projectiles.Projectiles().empty() && projectiles.Update(10,{0,0,14})==0);
     EnemySpawnSystem spawns;
     json map={{"spawnPoints",json::array({{{"id","A"},{"position",{0,0,0}}}})},{"spawnTriggers",json::array()}};
     Save(map); assert(spawns.Load("enemy-types-test.json",definitions));

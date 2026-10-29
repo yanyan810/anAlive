@@ -6,8 +6,10 @@
 #include <fstream>
 #include <set>
 #include <stdexcept>
+#include "EncapsulationChecks.h"
 
 inline void RunEnemyPoolTests(GameApp& app) {
+    RunEncapsulationChecks();
     const auto check=[](bool ok,const char* message) { if (!ok) throw std::runtime_error(message); };
     std::filesystem::create_directories("generated/enemy-pool-tests");
     const auto read=[](const char* path) { std::ifstream f(path); nlohmann::json j; f>>j; return j; };
@@ -83,9 +85,9 @@ inline void RunEnemyPoolTests(GameApp& app) {
     };
     for (const auto& [id,definition]:definitions.All()) {
         (void)definition;
-        const auto gpuBefore=Object3d::debugInitializationCount;
+        const auto gpuBefore=Object3d::DebugInitializationCount();
         auto* enemy=pool.Acquire(id,next++,"first",{0,0,12},{});
-        enemy->Senses().detectionTime=0; enemy->Senses().fieldOfView=360;
+        { auto senses=enemy->Senses(); senses.detectionTime=0; senses.fieldOfView=360; enemy->ConfigureSenses(senses); }
         const auto original=enemy->CaptureDebug();
         verifyRenderedCollision(enemy);
         if (id=="normal") {
@@ -163,7 +165,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
             const auto reset=enemy->CaptureDebug();
             check(closeEnough(reset.visualTransforms[1].translate.y,reset.position.y),"pool retained animation offset");
         }
-        check(Object3d::debugInitializationCount==gpuBefore,"Acquire initialized Object3d");
+        check(Object3d::DebugInitializationCount()==gpuBefore,"Acquire initialized Object3d");
         check(!pool.Release(enemy),"living enemy released");
         enemy->Update(.5f,{0,0,12}); enemy->ConfirmAttack(10);
         enemy->ShowHitFeedback(size_t{0});
@@ -192,12 +194,12 @@ inline void RunEnemyPoolTests(GameApp& app) {
         enemy->UpdateVisuals(10);
         check(enemy->CanReturnToPool() && pool.Release(enemy),"expired enemy not released");
         check(!pool.Release(enemy),"double release");
-        const auto gpuReuse=Object3d::debugInitializationCount;
+        const auto gpuReuse=Object3d::DebugInitializationCount();
         auto* reused=pool.Acquire(id,next++,"second",{4,0,16},{0,1,0});
         check(reused==enemy && reused->GetSpawnId()==next-1 && reused->GetSpawnTriggerId()=="second","instance/identity reuse");
         check(reused->GetPosition().x==4 && reused->GetPosition().z==16,"spawn transform reset");
         verifyReset(reused,original);
-        check(Object3d::debugInitializationCount==gpuReuse,"reuse allocated GPU renderers");
+        check(Object3d::DebugInitializationCount()==gpuReuse,"reuse allocated GPU renderers");
         pool.ReleaseAll();
     }
     check(pool.RuntimeAllocations()==0,"prewarmed path overflowed");
@@ -230,9 +232,9 @@ inline void RunEnemyPoolTests(GameApp& app) {
     chunk->ApplyDamage(EnemyPartType::LeftArm,10000,{1,0,0});
     check(!chunk->CaptureDebug().detached.empty(),"chunk destruction missing");
     chunk->Die(); chunk->UpdateVisuals(10); check(pool.Release(chunk),"chunk release");
-    const auto gpuChunk=Object3d::debugInitializationCount;
+    const auto gpuChunk=Object3d::DebugInitializationCount();
     verifyReset(pool.Acquire("normal",next++,"chunk reset",{},{}),chunkOriginal);
-    check(Object3d::debugInitializationCount==gpuChunk,"chunk respawn initialized renderer");
+    check(Object3d::DebugInitializationCount()==gpuChunk,"chunk respawn initialized renderer");
     pool.ReleaseAll();
 
     // Real BulletManager traces non-owning active pointers and still delivers damage.
@@ -271,7 +273,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     std::ofstream("generated/enemy-pool-tests/spawns.json")<<spawnFixture;
     check(game.spawnSystem_.Load("generated/enemy-pool-tests/spawns.json",game.enemyDefinitions_),"spawn fixture");
     game.player_.SetStage(&game.level_.collision,{},{});
-    const auto spawnGpu=Object3d::debugInitializationCount;
+    const auto spawnGpu=Object3d::DebugInitializationCount();
     game.UpdateCombat(app,0,false);
     check(game.enemies_.size()==1,"scene trigger did not spawn");
     auto* spawned=game.enemies_[0]; const auto oldId=spawned->GetSpawnId();
@@ -279,7 +281,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     game.UpdateCombat(app,0,false);
     check(game.enemies_.size()==1 && game.enemies_[0]==spawned && spawned->GetSpawnId()!=oldId,"trigger reuse/ID tracking");
     check(game.stage_.DefeatedCount()==1,"scene lost defeat on release");
-    check(game.enemyPool_.RuntimeAllocations()==0 && Object3d::debugInitializationCount==spawnGpu,"scene spawn allocated renderers");
+    check(game.enemyPool_.RuntimeAllocations()==0 && Object3d::DebugInitializationCount()==spawnGpu,"scene spawn allocated renderers");
     for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
     game.RecycleEnemies();
 
@@ -298,7 +300,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     std::ofstream(groupPath)<<groupFixture;
     check(game.spawnSystem_.Load(groupPath,game.enemyDefinitions_),"group scene fixture");
     game.level_.collision.colliders.clear(); game.player_.SetStage(&game.level_.collision,{1000,0,0},{});
-    const auto beforeGroupGpu=Object3d::debugInitializationCount;
+    const auto beforeGroupGpu=Object3d::DebugInitializationCount();
     game.UpdateCombat(app,2.5f,false);
     const auto beforeGroup=game.CaptureDebug();
     check(game.enemies_.empty() && game.enemyPool_.Active()==0,"group spawned before start time");
@@ -306,7 +308,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(game.enemies_.size()==6 && game.enemyPool_.Active()==6 && game.spawnSystem_.Groups()[0].spawned==6,
         "simultaneous group not entirely active in one scene update");
     check(game.enemyPool_.RuntimeAllocations()==1,"simultaneous overflow bypassed existing pool expansion");
-    check(Object3d::debugInitializationCount>beforeGroupGpu,"overflow slot was not prepared");
+    check(Object3d::DebugInitializationCount()>beforeGroupGpu,"overflow slot was not prepared");
     const auto groupPointers=game.enemies_;
     std::vector<Enemy::DebugState> groupOriginal;
     std::set<uint64_t> groupIds;
@@ -327,7 +329,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     const auto broken=rangedTarget->CaptureDebug();
     check(!rangedTarget->IsDead() && broken.parts[2].Destroyed() && !broken.visible[2],"group nonfatal part destruction");
     for (auto* enemy:game.enemies_) if (!enemy->IsDead()) {
-        enemy->Senses().detectionTime=0; enemy->Senses().fieldOfView=360;
+        { auto senses=enemy->Senses(); senses.detectionTime=0; senses.fieldOfView=360; enemy->ConfigureSenses(senses); }
         enemy->Update(.125f,enemy->GetPosition()+Vector3{0,0,2});
         check(enemy->GetState()!=EnemyState::Idle,"group AI did not advance");
         enemy->Die();
@@ -337,10 +339,10 @@ inline void RunEnemyPoolTests(GameApp& app) {
     for (auto* enemy:game.enemies_) enemy->UpdateVisuals(10);
     game.RecycleEnemies();
     check(game.enemies_.empty() && game.enemyPool_.Active()==0,"group enemies did not return to pool");
-    const auto reusedGpu=Object3d::debugInitializationCount;
+    const auto reusedGpu=Object3d::DebugInitializationCount();
     game.spawnSystem_.Reset(); game.UpdateCombat(app,3,false);
     check(game.enemies_==groupPointers && game.enemyPool_.RuntimeAllocations()==1,"group slots not reused after reset");
-    check(Object3d::debugInitializationCount==reusedGpu,"group reuse initialized renderers");
+    check(Object3d::DebugInitializationCount()==reusedGpu,"group reuse initialized renderers");
     for (size_t i=0;i<game.enemies_.size();++i) {
         // UpdateCombat(3) above includes three seconds of fresh simulation after
         // acquire: the clock must advance, but hidden targets must leave no samples.
@@ -351,7 +353,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     game.RestoreDebug(app,beforeGroup);
     check(game.enemies_.empty() && game.spawnSystem_.ElapsedTime()==2.5 && game.spawnSystem_.Groups()[0].spawned==0,"group rewind state");
     game.UpdateCombat(app,.5f,false);
-    check(game.enemies_==groupPointers && Object3d::debugInitializationCount==reusedGpu,"group rewind refire/reuse");
+    check(game.enemies_==groupPointers && Object3d::DebugInitializationCount()==reusedGpu,"group rewind refire/reuse");
     game.OnExit(app);
     game.OnEnter(app); // The same scene lifecycle used by Restart Stage.
     check(game.spawnSystem_.Load(groupPath,game.enemyDefinitions_),"restart group reload");
@@ -389,7 +391,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(game.enemies_.size()==3 && game.spawnSystem_.Points()[1].spawned==2,"trigger linked simultaneous scene wave");
     game.UpdateEnemySpawns(1);
     check(game.enemies_.size()==4 && game.spawnSystem_.Points()[2].spawned==1,"manual delay/capacity");
-    const auto independentGpu=Object3d::debugInitializationCount;
+    const auto independentGpu=Object3d::DebugInitializationCount();
     automatic->Die(); automatic->UpdateVisuals(10); game.RecycleEnemies();
     game.UpdateEnemySpawns(0);
     check(game.enemies_.size()==4 && game.enemies_.back()==automatic && automatic->GetSpawnId()!=automaticId,"independent pooled refill");
@@ -397,7 +399,7 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(manual->GetSpawnTriggerId()=="manual","manual source identity");
     manual->Die(); manual->UpdateVisuals(10); game.RecycleEnemies(); game.UpdateEnemySpawns(0);
     check(game.enemies_.size()==4 && game.spawnSystem_.Points()[2].spawned==2,"simultaneous remainder lost after death");
-    check(Object3d::debugInitializationCount==independentGpu,"independent refill initialized renderer");
+    check(Object3d::DebugInitializationCount()==independentGpu,"independent refill initialized renderer");
     game.RestoreDebug(app,preparedFrame);
     check(game.enemies_.size()==1 && game.spawnSystem_.Points()[0].spawned==1 && !game.spawnSystem_.Points()[2].activated,
         "independent rewind state");
@@ -421,14 +423,14 @@ inline void RunEnemyPoolTests(GameApp& app) {
     mixedPoint["enemyComposition"]=nlohmann::json::array({{{"enemy","normal_test"},{"count",3}},{{"enemy","fast"},{"count",2}}});
     std::ofstream(independentPath)<<mixed;
     check(game.spawnSystem_.Load(independentPath,game.enemyDefinitions_),"mixed counts scene fixture");
-    const auto mixedGpu=Object3d::debugInitializationCount;
+    const auto mixedGpu=Object3d::DebugInitializationCount();
     game.UpdateEnemySpawns(0,false);
     check(game.enemies_.size()==5,"mixed counts simultaneous total");
     for (size_t i=0;i<5;++i) check(game.enemies_[i]->Definition().id==(i<3 ? "normal_test" : "fast"),"mixed counts exact definition order");
-    check(Object3d::debugInitializationCount==mixedGpu,"mixed counts allocated a warmed renderer");
+    check(Object3d::DebugInitializationCount()==mixedGpu,"mixed counts allocated a warmed renderer");
     for (auto* enemy:game.enemies_) { enemy->Die(); enemy->UpdateVisuals(10); }
     game.RecycleEnemies(); game.spawnSystem_.Reset(); game.UpdateEnemySpawns(0,false);
-    check(game.enemies_.size()==5 && Object3d::debugInitializationCount==mixedGpu,"mixed counts reset/reuse");
+    check(game.enemies_.size()==5 && Object3d::DebugInitializationCount()==mixedGpu,"mixed counts reset/reuse");
     for (size_t i=0;i<5;++i) check(game.enemies_[i]->Definition().id==(i<3 ? "normal_test" : "fast"),"mixed counts reset order");
     game.OnExit(app);
 
@@ -439,10 +441,10 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(!showroomPointers.empty(),"showroom failed to load");
     for (auto* enemy:showroom.enemies_) enemy->Die();
     const auto deadFrame=showroom.CaptureDebug();
-    const auto gpuReset=Object3d::debugInitializationCount;
+    const auto gpuReset=Object3d::DebugInitializationCount();
     showroom.ResetShowroomEnemies(app);
     check(showroom.enemies_==showroomPointers,"F5 replaced instances");
-    check(Object3d::debugInitializationCount==gpuReset,"F5 created renderers");
+    check(Object3d::DebugInitializationCount()==gpuReset,"F5 created renderers");
     for (size_t i=0;i<showroom.enemies_.size();++i) verifyReset(showroom.enemies_[i],originalFrame.enemies[i]);
     showroom.RestoreDebug(app,deadFrame);
     size_t restoredFaces=0;

@@ -42,7 +42,7 @@ int main() {
     assert(state.stage.LoadGoals("../../resources/levels/fps_spawns.json"));
     WeaponSystem weapons; assert(weapons.Load("../../resources/Data/weapons.json","../../resources/levels/fps_spawns.json"));
     state.weapon.Equip(*weapons.InitialWeapon());
-    state.bullets.projectiles.push_back(MakeEnemyProjectile(*definitions.Find("ranged"),{0,1,0},{0,0,10}));
+    state.bullets.Spawn(MakeEnemyProjectile(*definitions.Find("ranged"),{0,1,0},{0,0,10}));
     state.fragment.Initialize({{0,0,0},{1,1,1}},{0,3,0},{},{1,1,1},{1,0,0},EnemyPartType::Head,{1,1,1},{});
     history.Push(state);
     const auto initialMagazine=state.weapon.Magazine();
@@ -58,13 +58,13 @@ int main() {
     const auto* back=history.Back(); assert(back && back->frame==0);
     assert(!EnemyPartsDead(back->parts) && back->stage.IsPlaying());
     assert(back->weapon.Magazine()==initialMagazine && back->fragment.age==0);
-    assert(back->bullets.projectiles[0].position.z==0 && !back->spawns.Triggers()[0].activated);
+    assert(back->bullets.Projectiles()[0].position.z==0 && !back->spawns.Triggers()[0].activated);
     assert(back->random==initialRandom && back->position.z==0);
     assert(history.Back()==nullptr);
     const auto* forward=history.Forward(); assert(forward && forward->frame==1 && EnemyPartsDead(forward->parts));
     assert(!forward->stage.IsPlaying() && forward->spawns.Triggers()[0].activated);
     assert(forward->weapon.Magazine()<initialMagazine && forward->fragment.age>0);
-    assert(forward->bullets.projectiles[0].position.z>0 && forward->position.z>0);
+    assert(forward->bullets.Projectiles()[0].position.z>0 && forward->position.z>0);
     assert(history.Forward()==nullptr);
     state=*history.Back(); state.frame=99; history.Push(state);
     assert(history.Size()==2 && history.Forward()==nullptr && history.Cursor()==1);

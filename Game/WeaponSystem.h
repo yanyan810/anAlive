@@ -106,7 +106,18 @@ struct WeaponDefinition {
 // Each player owns mutable ammo/timers; definitions are copied only on equip.
 class WeaponRuntime {
 public:
-    void Equip(const WeaponDefinition& definition) {
+    bool Equip(const WeaponDefinition& definition) {
+        // Definitions are public data. Validate again at the runtime boundary because
+        // editor/tests can construct them without going through the JSON loader.
+        const auto duration = [](float value) { return std::isfinite(value) && value >= 0; };
+        if (definition.id.empty() || definition.magazineSize <= 0 || definition.reserveAmmo < 0 ||
+            definition.maxReserveAmmo < 0 || definition.ammoPerShot <= 0 || definition.burstCount <= 0 || definition.burstCount > 64 ||
+            !duration(definition.fireInterval) || !duration(definition.burstInterval) ||
+            !duration(definition.reloadTime) || !duration(definition.reloadStartTime) ||
+            !duration(definition.reloadPerRoundTime) || !duration(definition.reloadEndTime) ||
+            definition.fireMode < WeaponFireMode::SemiAuto || definition.fireMode > WeaponFireMode::Burst ||
+            definition.reloadMode < WeaponReloadMode::Magazine || definition.reloadMode > WeaponReloadMode::PerRound)
+            return false;
         definition_ = definition;
         magazine_ = definition.magazineSize;
         reserve_ = std::min(definition.reserveAmmo, definition.maxReserveAmmo);
@@ -115,6 +126,7 @@ public:
         burstShotsRemaining_ = 0;
         burstTimer_ = 0;
         infiniteAmmo_ = false;
+        return true;
     }
     const WeaponDefinition& Definition() const { return definition_; }
     bool InfiniteAmmo() const { return infiniteAmmo_; }
@@ -300,7 +312,7 @@ public:
         auto& pickup = pickups_[*index];
         const auto* definition = Find(pickup.weaponId);
         if (!definition) return false;
-        weapon.Equip(*definition);
+        if (!weapon.Equip(*definition)) return false;
         pickup.pickedUp = true;
         pickup.visible = false;
         return true;

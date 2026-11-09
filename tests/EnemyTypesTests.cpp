@@ -114,12 +114,21 @@ int main() {
         const auto& d=*definitions.Find(id);
         EnemyAI ai; ai.settings={d.detectionRange,d.attackRange,d.moveSpeed,d.attackDamage,d.attackInterval,d.IsRanged(),d.minRange,d.maxRange};
         ai.settings.senses={d.detectionRange,360,0};
+        ai.settings.preferredRange=d.preferredRange;
         Vector3 pos{}, rot{};
         ai.Update(pos,rot,{0,0,d.maxRange+2},.1f,false); assert(pos.z>0 && ai.attacksThisUpdate==0);
-        pos={}; ai.Update(pos,rot,{0,0,d.minRange-2},.1f,false); assert(pos.z<0 && ai.attacksThisUpdate==0);
-        pos={}; ai.Update(pos,rot,{0,0,d.preferredRange},.1f,false); assert(pos.z==0 && ai.attacksThisUpdate==1);
-        ai.Update(pos,rot,{0,0,d.preferredRange},.01f,false); assert(ai.attacksThisUpdate==0);
-        ai.Update(pos,rot,{0,0,d.preferredRange},10,true); assert(ai.attacksThisUpdate==0 && ai.state==EnemyState::Dead);
+        const Vector3 target{0,0,d.minRange-.1f};
+        pos={}; ai.Update(pos,rot,target,.1f,false);
+        assert(ai.distance>d.minRange && ai.distance<d.preferredRange && ai.attacksThisUpdate==0);
+        for (int i=0;i<100 && ai.distance<d.preferredRange-.001f;++i) {
+            ai.Update(pos,rot,target,.1f,false);
+            assert(ai.attacksThisUpdate==0);
+        }
+        assert(Near(ai.distance,d.preferredRange));
+        const auto stopped=pos;
+        ai.Update(pos,rot,target,.1f,false); assert(pos.z==stopped.z && ai.attacksThisUpdate==1);
+        ai.Update(pos,rot,target,.01f,false); assert(ai.attacksThisUpdate==0);
+        ai.Update(pos,rot,target,10,true); assert(ai.attacksThisUpdate==0 && ai.state==EnemyState::Dead);
     }
     // Bomber now uses normal pursuit, including inside its former retreat range.
     const auto& bomber=*definitions.Find("bomber");

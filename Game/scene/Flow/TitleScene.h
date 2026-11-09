@@ -40,7 +40,7 @@ private:
     void PrepareDemoText(GameApp& app);
     std::optional<BulletHit> TraceDemoText(const Vector3& origin,const Vector3& direction,float distance) const;
     void BeginGameOverDemo(GameApp& app);
-    Mode mode_=Mode::GameOver;
+    Mode mode_=Mode::GameStart;
     Object3d demoText_;
     EnemyParts demoTextParts_;
     bool pendingDemoTransition_=false;

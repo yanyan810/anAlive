@@ -10,7 +10,7 @@ inline void Validate(StageLoader& level) {
     auto& system=level.shutters;
     Check(system.shutters.size()==1,"Hotel requires one shutter");
     const auto def=system.shutters[0].definition;
-    Check(def.openDuration==30 && Near(def.openDistance,3.2f) && Near(def.interactionDistance,2),"Shutter defaults");
+    Check(def.openDuration==60 && def.enemyWaveInterval==10 && Near(def.openDistance,3.2f) && Near(def.interactionDistance,2),"Shutter defaults");
     const Vector3 atButton=def.buttonPosition-Vector3{0,1.25f,0};
     for (const int fps : {30,60,144}) {
         system.Reset(level.collision);
@@ -20,13 +20,13 @@ inline void Validate(StageLoader& level) {
         Check(system.TryInteract(atButton) && !system.TryInteract(atButton),"E starts only once");
         auto events=system.TakeEvents();
         Check(events.size()==1 && events[0].type==ShutterEventType::Started,"One start event");
-        size_t progressEvents=0,completed=0;
+        size_t progressEvents=0,completed=0,waves=0;
         const float dt=1.0f/static_cast<float>(fps);
-        for (int frame=1;frame<=fps*30;++frame) {
+        for (int frame=1;frame<=fps*static_cast<int>(def.openDuration);++frame) {
             system.Update(dt,level.collision);
             const auto& shutter=system.shutters[0];
             const auto& collider=level.collision.colliders[def.colliderIndex];
-            const float expected=def.closedPosition.y+def.openDistance*(static_cast<float>(frame)/static_cast<float>(fps*30));
+            const float expected=def.closedPosition.y+def.openDistance*(static_cast<float>(frame)/static_cast<float>(fps*static_cast<int>(def.openDuration)));
             Check(Near(shutter.Position().y,expected),"Constant linear speed / FPS");
             Check(Near(collider.position.y,shutter.Position().y+def.collider.position.y),"Moving collider position");
             const auto origin=StagePoint(shutter.Position(),collider.inverse);
@@ -34,10 +34,15 @@ inline void Validate(StageLoader& level) {
             for (const auto& event : system.TakeEvents()) {
                 if (event.type==ShutterEventType::Progress) ++progressEvents;
                 if (event.type==ShutterEventType::Completed) ++completed;
+                if (event.type==ShutterEventType::EnemyWave) {
+                    ++waves;
+                    Check(Near(event.progress*static_cast<float>(def.openDuration),static_cast<float>(waves*10)),"Wave interval/order");
+                    Check(static_cast<float>(frame)/fps+.001f>=static_cast<float>(waves*10),"Wave emitted before its ten-second boundary");
+                }
             }
-            if (frame<fps*30) Check(shutter.state==ShutterState::Opening,"Opened too early");
+            if (frame<fps*static_cast<int>(def.openDuration)) Check(shutter.state==ShutterState::Opening,"Opened too early");
         }
-        Check(system.shutters[0].state==ShutterState::Open && completed==1 && progressEvents==def.progressEvents.size(),"30-second completion/events");
+        Check(system.shutters[0].state==ShutterState::Open && completed==1 && progressEvents==def.progressEvents.size() && waves==6,"Configured opening completion/events/six waves");
         const auto open=system.shutters[0].Position();
         system.Update(100,level.collision);
         Check(!system.TryInteract(atButton) && Near(system.shutters[0].Position().y,open.y) && system.TakeEvents().empty(),"Remain open / no repeated events");
@@ -56,10 +61,10 @@ inline void Validate(StageLoader& level) {
     StepStageProjectile(projectile,1,{0,0,0},barrier);
     Check(!projectile.active && projectile.position.x>12,"Closed blocks enemy projectile");
     Check(system.TryInteract(atButton),"Restart allows new operation");
-    system.Update(15,level.collision); refresh();
+    system.Update(static_cast<float>(def.openDuration*.5),level.collision); refresh();
     Check(barrier.Move(from,to,.4f,1.8f,true).x>12.6f,"1.6 m gap blocks standing player");
     Check(!barrier.Raycast({14,1.2f,18},{-1,0,0},4,hit) && barrier.Raycast({14,2,18},{-1,0,0},4,hit),"Partial gap ray occlusion follows geometry");
-    system.Update(4,level.collision); refresh();
+    system.Update(static_cast<float>(def.openDuration*4/30),level.collision); refresh();
     Check(Near(barrier.Move(from,to,.4f,1.8f,true).x,10),"2 m gap passes player");
     Check(barrier.Move(from,to,.55f,2.4f).x>12.7f,"Taller enemy still blocked");
     Check(barrier.Raycast({14,2.8f,18},{-1,0,0},4,hit,.05f),"Moving upper panel still blocks bullets");
@@ -70,6 +75,6 @@ inline void Validate(StageLoader& level) {
     Check(Near(barrier.Move(from,to,.55f,2.4f).x,10),"Open passes tall enemy");
     system.Reset(level.collision); refresh();
     Check(barrier.Raycast({14,1.4f,18},{-1,0,0},4,hit),"Reset restores blocking matrices");
-    system.TryInteract(atButton); system.Update(30,level.collision); system.TakeEvents(); // Existing route tests traverse the opened exit.
+    system.TryInteract(atButton); system.Update(static_cast<float>(def.openDuration),level.collision); system.TakeEvents(); // Existing route tests traverse the opened exit.
 }
 }

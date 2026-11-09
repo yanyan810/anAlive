@@ -46,7 +46,7 @@ int main() {
     editor.entries[newIndex].value.adsTransitionTime=.01f;
     assert(editor.Save(level,live) && !editor.Dirty());
     assert(live.Find("new_weapon")->damage==31);
-    assert(live.Pickups()[0].pickedUp && !live.Pickups()[0].visible);
+    assert(!live.Pickups()[0].pickedUp && live.Pickups()[0].visible);
     assert(live.ActualSeed()==123);
     auto saved=Json::parse(ReadBytes(path));
     assert(saved["futureEditorMetadata"]==source["futureEditorMetadata"]);

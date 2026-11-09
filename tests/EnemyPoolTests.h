@@ -461,6 +461,42 @@ inline void RunEnemyPoolTests(GameApp& app) {
     check(showroom.enemies_.empty() && showroom.enemyPool_.Active()==0,"scene recycle");
     showroom.ResetShowroomEnemies(app);
     check(showroom.enemies_==showroomPointers,"reset after recycle");
+#ifdef USE_IMGUI
+    const auto testEnemy=[&]() -> Enemy& {
+        for (auto* enemy:showroom.enemies_) if (enemy->Definition().id=="normal_test") return *enemy;
+        throw std::runtime_error("Showroom Normal Test is missing");
+    };
+    const auto testAssetPath=std::filesystem::path(u8"generated/enemy-pool-tests/差し替え.enemy.json");
+    auto testAsset=read("resources/enemy/boss/normal.enemy.json");
+    testAsset["parts"][0]["localHp"]=75;
+    std::ofstream(testAssetPath)<<testAsset;
+    const auto normalAsset=showroom.enemies_.front()->Definition().partAsset;
+    const auto capacity=showroom.enemyPool_.Capacity();
+    showroom.pendingShowroomTestAsset_=testAssetPath;
+    showroom.Update(app,0);
+    check(showroom.showroomTestAsset_==testAssetPath && testEnemy().CaptureDebug().parts.front().hp==75,"Showroom switch ignored selected asset");
+    check(showroom.enemies_.front()==showroomPointers.front() && showroom.enemies_.front()->Definition().partAsset==normalAsset,
+        "Showroom switch replaced the regular enemy definition or pool slot");
+    const auto firstGeometry=testEnemy().CaptureDebug().parts.front().geometry;
+    testAsset["parts"][0]["localHp"]=90;
+    for (auto& triangle:testAsset["parts"][0]["triangles"]) for (auto& vertex:triangle["vertices"])
+        vertex["p"][0]=vertex["p"][0].get<float>()+.25f;
+    std::ofstream(testAssetPath)<<testAsset;
+    showroom.pendingShowroomTestAsset_=testAssetPath;
+    showroom.Update(app,0);
+    const auto loaded=testEnemy().CaptureDebug();
+    check(loaded.parts.front().hp==90 && loaded.parts.front().geometry!=firstGeometry,
+        "Showroom reload used the previous asset from cache");
+    const auto* reloaded=&testEnemy();
+    showroom.ResetShowroomEnemies(app);
+    check(&testEnemy()==reloaded && testEnemy().CaptureDebug().parts.front().hp==90 && showroom.enemyPool_.Capacity()==capacity,
+        "Showroom reset lost the selected asset or grew the pool");
+    std::ofstream(testAssetPath)<<"invalid JSON";
+    showroom.pendingShowroomTestAsset_=testAssetPath;
+    showroom.Update(app,0);
+    check(!showroom.showroomTestAssetError_.empty() && &testEnemy()==reloaded && testEnemy().CaptureDebug().parts.front().hp==90,
+        "invalid Showroom JSON replaced the current enemy");
+#endif
     showroom.OnExit(app);
     std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Showroom reset, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
 }

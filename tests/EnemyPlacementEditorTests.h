@@ -131,6 +131,9 @@ inline void RunEnemyPlacementEditorTests(GameApp& app) {
     editor->camera_.SetTranslate(cameraBefore.translate); editor->camera_.SetRotate(cameraBefore.rotate);
     editor->floor_=floorBefore; editor->ApplyVisibility(); editor->camera_.Update();
     const auto editedPosition=EnemyPlacements::WorldPosition(*selected,spawn->position,spawn->rotation);
+    // Use the exported fixture for deterministic camera gestures; a user-owned
+    // camera sidecar may place the same point outside the fixture's test view.
+    editor->cameraDrafts_=editor->blenderCameraDrafts_;
     // Exercise the existing F7 scene's camera tools with the real viewport and renderer.
     editor->SetCameraSequenceMode(true);
     check(editor->SelectedCameraSequence() && editor->selectedCameraSequence_=="start","camera mode did not select start");
@@ -149,7 +152,7 @@ inline void RunEnemyPlacementEditorTests(GameApp& app) {
     editor->DeleteCameraPoint();
     editor->selectedCameraPoint_=editor->SelectedCameraSequence()->points[2].id;
     editor->SwitchCamera(EnemyPlacementEditorScene::CameraMode::Top);
-    editor->camera_.SetTranslate({33,40,20}); editor->zoom_=12; editor->camera_.SetOrthographic(true,12); editor->camera_.Update();
+    editor->camera_.SetTranslate(editor->SelectedCameraPoint()->position+Vector3{0,26,0}); editor->zoom_=12; editor->camera_.SetOrthographic(true,12); editor->camera_.Update();
     app.GetInput()->SetCameraControlEnabled(false); frame();
     RECT cameraRect{}; check(app.ImGui()->GetSceneImageRect(cameraRect),"camera viewport missing");
     const auto pixel=[&](Vector3 position) {
@@ -164,6 +167,15 @@ inline void RunEnemyPlacementEditorTests(GameApp& app) {
     const auto handle=pixel(beforeMove+Vector3{1,0,0});
     mouseFrame(handle,false); mouseFrame(handle,false); mouseFrame(handle,true);
     mouseFrame({handle.x+25,handle.y},true); mouseFrame({handle.x+25,handle.y},false);
+    if (!(editor->SelectedCameraPoint()->position.x>beforeMove.x+.05f)) {
+        captureEditor(L"generated/placement-tests/camera-drag-failure.png");
+        std::ofstream trace("generated/placement-tests/input-failure.txt");
+        trace<<"rect="<<cameraRect.left<<","<<cameraRect.top<<","<<cameraRect.right<<","<<cameraRect.bottom
+            <<" handle="<<handle.x<<","<<handle.y<<" before="<<beforeMove.x<<","<<beforeMove.y<<","<<beforeMove.z
+            <<" after="<<editor->SelectedCameraPoint()->position.x<<" selected="<<editor->selectedCameraPoint_
+            <<" mouse="<<ImGui::GetIO().MousePos.x<<","<<ImGui::GetIO().MousePos.y<<" drag="<<editor->cameraDragAxis_
+            <<" capture="<<app.GetInput()->IsCameraControlEnabled()<<" hover="<<app.ImGui()->IsSceneImageHovered()<<" flags="<<ImGui::GetIO().ConfigFlags;
+    }
     check(editor->SelectedCameraPoint()->position.x>beforeMove.x+.05f,"real viewport XYZ mouse drag failed");
     const auto moved=editor->SelectedCameraPoint()->position;
     editor->cameraGizmo_=1; editor->cameraRotationAxis_=1;
@@ -207,6 +219,7 @@ inline void RunEnemyPlacementEditorTests(GameApp& app) {
     std::filesystem::remove(cameraSidecar);
     { std::ofstream file(cameraFixture,std::ios::binary); file<<stageBytes; }
     editor->LoadCameraSequences(cameraFixture);
+    editor->SelectedCameraSequence()->enabled=true;
     editor->selectedCameraPoint_=editor->SelectedCameraSequence()->points[2].id;
     editor->SelectedCameraPoint()->position=moved; editor->SelectedCameraPoint()->fov=72;
     editor->SelectedCameraPoint()->rotation={.13f,.9f,-.08f};
@@ -248,6 +261,67 @@ inline void RunEnemyPlacementEditorTests(GameApp& app) {
     for (const auto& [_,preview]:editor->previews_) check(preview.enemy->AI().paused && !preview.enemy->AI().hasLastSeen,"return from test retained AI history");
     check(editor->Dirty(),"return from test lost unsaved edit");
     RunCameraPathEditorTests(app,captureEditor);
+    // Exercise F7 placement drafts through production loaders, gameplay and safe saves.
+    const auto placementStage=editor->stageDraft_,placementBase=editor->stageBaseline_;
+    const auto placementBytes=editor->stageSettingsBytes_,visualBytes=editor->originalStageBytes_;
+    const auto pointId=editor->NewStageObjectId("testManual.");
+    const auto weaponId=editor->NewStageObjectId("testWeapon.");
+    const auto location=editor->level_.playerPosition+Vector3{2,0,2};
+    editor->stageDraft_["spawnPoints"].push_back({{"id",pointId},{"position",{location.x,location.y,location.z}},
+        {"rotation",{0,0,0}},{"activation","Manual"},{"enemy","normal"},{"spawnCount",1},
+        {"maxAlive",2},{"initialDelay",.2},{"spawnInterval",.4},{"mode","Sequential"}});
+    editor->stageDraft_["weaponSpawnPoints"].push_back({{"id",weaponId},{"position",{location.x,location.y,location.z}},
+        {"rotation",{0,.6,0}},{"weaponPool",{{{"id","pistol"},{"weight",3}}}},
+        {"filter",{{"slot","Sub"},{"minRarity",1},{"maxRarity",5}}}});
+    check(editor->RefreshStageSettings() && editor->StageSettingsDirty(),"valid stage placement draft rejected");
+    check(editor->spawns_.FindPoint(pointId)->activation==SpawnActivation::Manual && editor->spawns_.FindPoint(pointId)->maxAlive==2,"enemy timing/activation preview missing");
+    editor->weaponPlacementMode_=true; editor->cameraSequenceMode_=false; editor->selectedWeapon_=weaponId;
+    editor->mode_=EnemyPlacementEditorScene::CameraMode::Top;
+    editor->floor_=editor->metadata_.FloorAt(location.y); editor->ApplyVisibility();
+    editor->camera_.SetTranslate(location+Vector3{0,15,0}); editor->camera_.SetRotate({1.57079632679f,0,0});
+    editor->camera_.SetOrthographic(true,12); editor->camera_.Update();
+    captureEditor(L"generated/placement-tests/weapon-placement-editor.png");
+    check(app.ImGui()->GetSceneImageRect(cameraRect),"weapon viewport missing");
+    const auto beforeWeapon=editor->stageDraft_["weaponSpawnPoints"].back()["position"][0].get<float>();
+    const auto weaponPixel=pixel(location+Vector3{1.5f,.2f,0});
+    mouseFrame(weaponPixel,false); mouseFrame(weaponPixel,false); mouseFrame(weaponPixel,true);
+    mouseFrame({weaponPixel.x+25,weaponPixel.y},true); mouseFrame({weaponPixel.x+25,weaponPixel.y},false);
+    check(editor->stageDraft_["weaponSpawnPoints"].back()["position"][0].get<float>()>beforeWeapon+.05f,"weapon XYZ viewport drag failed");
+    editor->SetCameraSequenceMode(true);
+    check(StageLength(editor->SelectedPosition()-editor->CameraPointPose(static_cast<size_t>(editor->SelectedCameraPoint()-editor->SelectedCameraSequence()->points.data())).position)<.0001f,"weapon selection leaked into camera mode focus");
+    editor->SetCameraSequenceMode(false);
+    editor->StartTest(app); check(editor->test_ && editor->test_->stageLoaded_,"unsaved weapon/enemy stage test failed to load");
+    bool weaponMatched=false;
+    for (const auto& pickup:editor->test_->weapons_.Pickups()) if (pickup.spawnPointId==weaponId) {
+        weaponMatched=pickup.weaponId=="pistol" && std::abs(pickup.rotation.y-.6f)<.0001f;
+    }
+    check(weaponMatched,"unsaved weapon filter/pool/rotation missing from real GameScene");
+    check(editor->test_->ActivateEnemySpawn(pointId),"unsaved Manual point missing from test play");
+    check(editor->test_->spawnSystem_.FindPoint(pointId)->initialDelay==.2,"unsaved timing missing from GameScene");
+    editor->StopTest(app);
+    check(EnemyPlacements::ReadBytes(editor->StagePath())==stageBytes,"unsaved test modified source stage");
+    const std::string settingsFixture="generated/placement-tests/stage-settings.json";
+    { std::ofstream f(settingsFixture,std::ios::binary); f<<placementBytes; }
+    check(editor->SaveStageSettings(settingsFixture),"stage placement settings save failed");
+    const auto savedSettings=nlohmann::json::parse(PlayerVisualSettings::ReadBytes(settingsFixture));
+    check(savedSettings["weaponSpawnPoints"].back()["id"]==weaponId && !editor->StageSettingsDirty(),"saved weapon spawn/baseline missing");
+    for (const auto* key:{"stage","playerSpawn","colliders","cameraSequences","playerVisual"})
+        check(savedSettings.value(key,nlohmann::json{})==placementStage.value(key,nlohmann::json{}),"stage placement save modified unrelated fields");
+    check(EnemyPlacements::ReadBytes(settingsFixture+".placement-backup")==placementBytes,"placement save backup differs from old bytes");
+    const auto goodSettings=editor->stageDraft_;
+    editor->stageDraft_["weaponSpawnPoints"].back()["filter"]["minRarity"]=5;
+    editor->stageDraft_["weaponSpawnPoints"].back()["filter"]["maxRarity"]=1;
+    const auto goodBytes=PlayerVisualSettings::ReadBytes(settingsFixture);
+    check(!editor->SaveStageSettings(settingsFixture) && PlayerVisualSettings::ReadBytes(settingsFixture)==goodBytes,"invalid filter replaced stage");
+    editor->stageDraft_=goodSettings;
+    { std::ofstream f(settingsFixture,std::ios::app); f<<" "; }
+    const auto externalBytes=PlayerVisualSettings::ReadBytes(settingsFixture);
+    check(!editor->SaveStageSettings(settingsFixture) && PlayerVisualSettings::ReadBytes(settingsFixture)==externalBytes,"external stage update overwritten");
+    editor->stageDraft_=placementStage; editor->stageBaseline_=placementBase;
+    editor->stageSettingsBytes_=placementBytes; editor->originalStageBytes_=visualBytes;
+    editor->stagePreview_=nullptr; check(editor->RefreshStageSettings(),"failed to restore placement draft");
+    editor->weaponPlacementMode_=false;
+    std::ofstream("generated/placement-tests/stage-settings-result.txt")<<"PASS: weapon catalog/filter/weight draft, actual viewport XYZ drag, unsaved weapon and Manual enemy settings in production GameScene, stage save roundtrip, unrelated fields retained, backup, invalid filter rejection, external update protection.\n";
     editor->RequestAction("title"); check(editor->discardModal_ && editor->pendingAction_.empty(),"unsaved exit did not request confirmation");
     editor->discardModal_=false; editor->confirmAction_.clear();
     check(EnemyPlacements::ReadBytes(editor->StagePath())==stageBytes && EnemyPlacements::ReadBytes(editor->PlacementPath())==sidecarBytes,"editor test wrote exported stage or sidecar");

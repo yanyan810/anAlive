@@ -43,11 +43,13 @@ public:
     void Draw(GameApp&) override {}
     void DrawImGui(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
+    bool ShowTransitionDebugUI() const override { return !showroom_; }
     // Future event -> SpawnGroup wiring belongs here; it never gates shutter motion.
     void SetShutterEventHandler(std::function<void(const ShutterEvent&)> handler) { shutterEventHandler_=std::move(handler); }
     // Event-facing API, independent of any specific switch/shutter implementation.
     bool ActivateEnemySpawn(const std::string& id) { return spawnSystem_.ActivateSpawn(id); }
     void ConfigurePlacementTest(const EnemyPlacements& placements) { placementTest_=placements; }
+    void ConfigureStagePlacementTest(const nlohmann::json& stage) { placementTestStage_=stage; }
     void SetStartSequenceEnabled(bool enabled) { startSequenceEnabled_=enabled; }
     bool PlacementTestFinished() const { return player_.IsDead() || !stage_.IsPlaying(); }
 private:
@@ -73,10 +75,13 @@ private:
     int sequenceDebugCommand_=0; // queued by ImGui, applied before the next simulation frame
     friend void RunEnemyPlacementEditorTests(GameApp&);
     std::optional<EnemyPlacements> placementTest_;
+    std::optional<nlohmann::json> placementTestStage_;
     friend class TemporarySceneTransitionCheck;
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
     friend void RunScreenTransitionTests(GameApp& app);
     friend void RunHotelStageRuntimeTests(GameApp& app);
+    friend void RunHotelCombatPlacementTests(GameApp& app);
+    friend void RunHotelEnemyStairTests(GameApp& app);
     friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunEnemyPoolTests(GameApp& app);
@@ -84,6 +89,7 @@ private:
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
+    void ShareEnemyAlerts();
     bool HandleInteraction(bool pressed,bool allowPickup);
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void OnStageClear(GameApp& app);
@@ -91,6 +97,7 @@ private:
     bool ReturnToTitle(GameApp& app);
 
     void SyncProjectileVisuals(GameApp& app);
+    void SyncWeaponVisuals(GameApp& app);
     const char* SceneName() const { return showroom_ ? "Showroom" : stageId_=="stage03" ? "Stage03" : "Game"; }
     std::string LevelPath() const { return showroom_ ? "resources/levels/showroom/showroom.json" :
         stageLoaded_ ? StagePath() : "resources/levels/fps_spawns.json"; }
@@ -132,6 +139,13 @@ private:
     std::unique_ptr<Object3d> weaponPreview_;
     std::optional<WeaponRuntime> beforeWeaponTest_;
     float weaponPreviewAspect_=1.0f;
+    bool showTestAssetPanel_=false;
+    std::filesystem::path showroomTestAsset_;
+    std::optional<std::filesystem::path> pendingShowroomTestAsset_;
+    std::vector<std::filesystem::path> showroomTestAssets_;
+    std::string showroomTestAssetError_;
+    bool ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path& path);
+    void DrawShowroomTestAssetControls();
     void DrawWeaponWorkspace(GameApp& app);
     void UpdateWeaponPreview();
 #endif

@@ -24,7 +24,7 @@ int main() try {
         const auto count=ai.memory.count; const auto last=ai.memory.samples[count-1]; const auto direction=ai.memory.escapeDirection;
         ai.Update(p,r,hidden,1,false);
         Check(ai.memory.count==count && ai.memory.samples[count-1].time==last.time && StageLength(ai.memory.samples[count-1].position-last.position)==0,"hidden coordinates appended");
-        Check(StageLength(ai.memory.escapeDirection-direction)==0 && ai.lastSeen.x==2.5f,"hidden movement changed memory/direction");
+        Check(StageLength(ai.memory.escapeDirection-direction)==0 && ai.pursuitOrdered && StageLength(ai.lastSeen-hidden)==0,"hidden pursuit changed visual direction or lost current target");
         const auto copy=ai;
         Check(copy.memory.count==count && copy.memory.clock==ai.memory.clock && StageLength(copy.memory.escapeDirection-direction)==0,"snapshot lost memory/direction");
         ai.settings.senses.memoryRetentionTime=.2f;

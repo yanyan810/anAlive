@@ -174,9 +174,10 @@ void Enemy::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera
 }
 
 
-void Enemy::PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition) {
+void Enemy::PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition,
+    const std::shared_ptr<const EnemyRenderAsset>& renderAsset) {
     Initialize(common,dx,camera,true);
-    ApplyDefinition(definition);
+    ApplyDefinition(definition,renderAsset);
     spawnDefinition_=definition_; spawnParts_=parts_; spawnAI_=ai_;
     spawnModels_.clear(); spawnModels_.reserve(visuals_.size());
     for (const auto& visual:visuals_) spawnModels_.push_back(visual.object ? visual.object->GetModel() : nullptr);
@@ -213,15 +214,16 @@ void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vect
     }
     UpdateVisuals(0);
 }
-void Enemy::ApplyDefinition(const EnemyDefinition& definition) {
+void Enemy::ApplyDefinition(const EnemyDefinition& definition,const std::shared_ptr<const EnemyRenderAsset>& renderAsset) {
     definition_=definition;
     animation_.Reset();
     ai_={}; exploded_=false;
     ai_.settings={definition.detectionRange,definition.attackRange,definition.moveSpeed,
         definition.attackDamage,definition.attackInterval,definition.IsRanged(),definition.minRange,definition.maxRange};
     ai_.settings.senses=definition.senses;
+    ai_.settings.preferredRange=definition.preferredRange;
     if (definition.partAsset) {
-        asset_=PrepareAssetModels(definition.partAsset);
+        asset_=renderAsset ? renderAsset : PrepareAssetModels(definition.partAsset);
         parts_=asset_->source->Instantiate(definition.hpMultiplier);
         splitVisuals_=true; hasHitBox_=true;
         visuals_.clear(); visuals_.resize(parts_.size());
@@ -1012,8 +1014,14 @@ void Enemy::PrepareFaceBatch() {
 
 std::shared_ptr<const EnemyRenderAsset> Enemy::PrepareAssetModels(std::shared_ptr<const EnemyAsset> asset) {
     if (const auto found=assetModels_.find(asset->path);found!=assetModels_.end()) return found->second;
+    auto result=BuildAssetModels(asset);
+    assetModels_[asset->path]=result;
+    return result;
+}
+
+std::shared_ptr<const EnemyRenderAsset> Enemy::BuildAssetModels(std::shared_ptr<const EnemyAsset> asset) {
     auto result=std::make_shared<EnemyRenderAsset>(); result->source=asset;
-    const auto build=[&](const std::string& key,const std::vector<std::array<EnemyPartVertex,3>>& triangles) {
+    const auto build=[&](const std::vector<std::array<EnemyPartVertex,3>>& triangles) {
         Model::ModelData geometry; geometry.materials.push_back({asset->texture});
         Model::MeshData mesh;
         for (const auto& tri:triangles) for (const auto& v:tri) {
@@ -1022,18 +1030,17 @@ std::shared_ptr<const EnemyRenderAsset> Enemy::PrepareAssetModels(std::shared_pt
         }
         mesh.indexCount=static_cast<uint32_t>(geometry.indices.size());
         geometry.meshes.push_back(std::move(mesh)); geometry.rootNode.meshIndices.push_back(0);
-        return ModelManager::GetInstance()->CreatePrimitiveModel(key,geometry);
+        result->ownedModels.push_back(ModelManager::GetInstance()->CreateOwnedPrimitiveModel(geometry));
+        return result->ownedModels.back().get();
     };
     for (size_t i=0;i<asset->defaults.size();++i) {
         const auto& part=asset->defaults[i];
-        const std::string key="EnemyAsset/"+asset->path+"/"+std::to_string(i);
-        result->models.push_back(build(key,part.geometry->triangles));
+        result->models.push_back(build(part.geometry->triangles));
         // Offline-equivalent octant chunks, shared by all instances of this asset.
         const auto buckets=PartitionEnemyChunks(*part.geometry,part.bounds);
         std::vector<Model*> chunks;
-        for (size_t j=0;j<buckets.size();++j) if (!buckets[j].empty()) chunks.push_back(build(key+"/chunk"+std::to_string(j),buckets[j]));
+        for (const auto& bucket:buckets) if (!bucket.empty()) chunks.push_back(build(bucket));
         result->chunks.push_back(std::move(chunks));
     }
-    assetModels_[asset->path]=result;
     return result;
 }

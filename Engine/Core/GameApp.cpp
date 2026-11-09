@@ -5,6 +5,8 @@
 #include "../../tests/GameOverSequenceRuntimeTests.h"
 #include "../../tests/TitleGameOverDemoTests.h"
 #include "../../tests/HotelStageRuntimeTests.h"
+#include "../../tests/HotelCombatPlacementTests.h"
+#include "../../tests/HotelEnemyStairTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
@@ -108,6 +110,22 @@ int GameApp::Run() {
         try { RunEnemyAITestSceneTests(*this); }
         catch (const std::exception& error) {
             std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
+    }
+    if (HasLaunchArgument(L"--hotel-enemy-stairs-test")) {
+        int result=0; std::filesystem::create_directories("generated/enemy-stairs-tests");
+        try { RunHotelEnemyStairTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/enemy-stairs-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
+    }
+    if (HasLaunchArgument(L"--hotel-combat-placement-test")) {
+        int result=0; std::filesystem::create_directories("generated/hotel-combat-tests");
+        try { RunHotelCombatPlacementTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/hotel-combat-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
         }
         Finalize_(); return result;
     }

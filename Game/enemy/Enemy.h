@@ -10,6 +10,7 @@
 
 struct EnemyRenderAsset {
     std::shared_ptr<const EnemyAsset> source;
+    std::vector<std::unique_ptr<Model>> ownedModels;
     std::vector<Model*> models;
     std::vector<std::vector<Model*>> chunks;
 };
@@ -41,7 +42,8 @@ public:
     static void ReleasePreloadedAssets();
     ~Enemy();
     void Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera, bool useSplitAssets = false);
-    void PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition);
+    void PrepareForPool(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition,
+        const std::shared_ptr<const EnemyRenderAsset>& renderAsset={});
     // Owns instance constants only; meshes are shared through the existing asset cache.
     // This object is never registered in EnemyPool or advanced through Enemy::Update.
     void PreparePlacementPreview(Object3dCommon* common,DirectXCommon* dx,Camera* camera,const EnemyDefinition& definition) {
@@ -115,6 +117,7 @@ public:
         return true;
     }
     void SetAIPaused(bool paused) { ai_.paused=paused; ai_.attacksThisUpdate=0; }
+    void PursuePlayer(const Vector3& target) { if (!IsDead()) ai_.OrderPursuit(target); }
     void ResetAI() {
         const auto settings=ai_.settings; ai_={}; ai_.settings=settings;
         ai_.random=static_cast<uint32_t>(spawnId_)^0x9e3779b9u;
@@ -138,7 +141,7 @@ public:
     void SetPartVisible(EnemyPartType type, bool visible);
     void SetPartVisible(size_t index,bool visible) { if (index<visuals_.size()) visuals_[index].visible=visible; }
 private:
-    void ApplyDefinition(const EnemyDefinition& definition);
+    void ApplyDefinition(const EnemyDefinition& definition,const std::shared_ptr<const EnemyRenderAsset>& renderAsset={});
     void SetSpawnIdentity(uint64_t id, const std::string& trigger) {
         spawnId_ = id;
         id_ = "Enemy_" + std::string(id < 10 ? 2 : id < 100 ? 1 : 0, '0') + std::to_string(id);
@@ -158,6 +161,8 @@ private:
     void PrepareExplosionVisual();
     void PrepareFaceBatch();
     static std::shared_ptr<const EnemyRenderAsset> PrepareAssetModels(std::shared_ptr<const EnemyAsset> asset);
+    static std::shared_ptr<const EnemyRenderAsset> BuildAssetModels(std::shared_ptr<const EnemyAsset> asset);
+    friend class EnemyPool;
     inline static std::map<std::string,std::shared_ptr<const EnemyRenderAsset>> assetModels_;
     std::shared_ptr<const EnemyRenderAsset> asset_;
     size_t FindLegacyPart(EnemyPartType type) const {

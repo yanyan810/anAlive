@@ -19,7 +19,9 @@ public:
         auto request=testRequest_; testRequest_.reset(); return request;
     }
     // A value signals a successful save; nonempty value requests the shared Debug Equip path.
-    std::optional<std::string> Draw(WeaponSystem& live,const std::string& level,bool canEquip, const std::function<void()>& preview={}, const std::function<void()>& showroomControls={}) {
+    std::optional<std::string> Draw(WeaponSystem& live,const std::string& level,bool canEquip,
+        const std::function<void()>& preview={},const std::function<void()>& showroomControls={},
+        const std::function<void()>& showroomSidebar={}) {
         if (!visible || mode==WeaponEditorMode::Test) return std::nullopt;
         std::optional<std::string> result;
         ImGuiWindowFlags flags=0;
@@ -77,6 +79,7 @@ public:
             ImGui::TableHeadersRow();
             ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0);
             ImGui::BeginChild("List",{0,0});
+            if (showroomSidebar) { showroomSidebar(); ImGui::Separator(); }
             search_.Draw("Search",-1);
             if (ImGui::Button("New Weapon")) { duplicate_=-1; newId_.clear(); newName_.clear(); ImGui::OpenPopup("Create Weapon"); }
             const bool hasSelection=selected_>=0 && static_cast<size_t>(selected_)<model_.entries.size();
@@ -137,7 +140,8 @@ public:
             ImGui::Separator();
             if (ImGui::CollapsingHeader("Game Start Settings")) {
                 ImGui::TextWrapped("Initial Weapon sets the starting loadout. Select the weapon to edit in the Weapon List.");
-                if (ImGui::BeginCombo("Initial Weapon",model_.initialWeapon.c_str())) {
+                if (ImGui::BeginCombo("Initial Weapon",model_.initialWeapon.empty() ? "None (unarmed)" : model_.initialWeapon.c_str())) {
+                    if (ImGui::Selectable("None (unarmed)",model_.initialWeapon.empty())) model_.initialWeapon.clear();
                     for (const auto& entry:model_.entries)
                         if (ImGui::Selectable(entry.value.id.c_str(),model_.initialWeapon==entry.value.id)) model_.initialWeapon=entry.value.id;
                     ImGui::EndCombo();
@@ -193,6 +197,7 @@ private:
         }
         if (ImGui::BeginTabItem("Ammo")) {
             ImGui::PushID(selection);
+            ImGui::Checkbox("Infinite Reserve (reload required)",&w.infiniteReserveAmmo);
             ImGui::InputInt("Magazine Size",&w.magazineSize); ImGui::InputInt("Reserve Ammo",&w.reserveAmmo);
             ImGui::InputInt("Max Reserve Ammo",&w.maxReserveAmmo); ImGui::InputInt("Ammo Per Shot",&w.ammoPerShot);
             ImGui::PopID(); ImGui::EndTabItem();
@@ -232,7 +237,8 @@ private:
         ImGui::Text("Pellet Count: %d",w.pelletCount); ImGui::Text("Damage / Pellet: %.2f",w.damage);
         ImGui::Text("All Pellets Damage: %.2f",static_cast<double>(w.damage)*w.pelletCount);
         ImGui::Text("Shots / Magazine: %d",w.ammoPerShot>0?w.magazineSize/w.ammoPerShot:0);
-        ImGui::Text("Initial Total Ammo: %lld",static_cast<long long>(w.magazineSize)+std::min(w.reserveAmmo,w.maxReserveAmmo));
+        if (w.infiniteReserveAmmo) ImGui::TextUnformatted("Total Ammo: INF (finite magazine / reload required)");
+        else ImGui::Text("Initial Total Ammo: %lld",static_cast<long long>(w.magazineSize)+std::min(w.reserveAmmo,w.maxReserveAmmo));
         ImGui::Separator();
         ImGui::TextWrapped("Test Weapon in Showroom uses unsaved parameters. ESC returns to the editor.");
         ImGui::TextWrapped("Save preserves current pickups. Spawn Filter changes affect future stage starts.");

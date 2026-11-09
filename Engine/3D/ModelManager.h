@@ -43,6 +43,7 @@ public:
 	/// <param name="modelData"></param>
 	/// <returns></returns>
 	Model* CreatePrimitiveModel(const std::string& key, const Model::ModelData& modelData);
+	std::unique_ptr<Model> CreateOwnedPrimitiveModel(const Model::ModelData& modelData) const;
 
 private:
 	static ModelManager* instance;

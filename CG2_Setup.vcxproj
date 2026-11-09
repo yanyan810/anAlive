@@ -21,6 +21,7 @@
     <ClInclude Include="Game\scene\Debug\EnemyAITestScene.h" />
     <ClCompile Include="Game\scene\Debug\EnemyAITestScene.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.cpp" />
+    <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Placement.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Camera.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Path.cpp" />
     <ClInclude Include="Game\scene\Debug\EnemyPlacementEditorScene.h" />

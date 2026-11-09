@@ -72,6 +72,16 @@ public:
             slot.enemy->RetireFromPool(); slot.active=false;
         }
     }
+    // Caller waits for GPU and rebuilds its borrowed pointers after replacement.
+    void ReplaceDefinition(const EnemyDefinition& definition) {
+        auto& current=buckets_.at(definition.id);
+        Bucket next;
+        next.definition=definition;
+        if (definition.partAsset) next.renderAsset=Enemy::BuildAssetModels(definition.partAsset);
+        next.slots.reserve(current.slots.size());
+        for (size_t i=0;i<current.slots.size();++i) Add(next,false);
+        current=std::move(next);
+    }
     void Clear() { buckets_.clear(); runtimeAllocations_=0; }
     size_t Active() const {
         size_t count=0;
@@ -83,10 +93,14 @@ public:
     size_t RuntimeAllocations() const { return runtimeAllocations_; }
 private:
     struct Slot { std::unique_ptr<Enemy> enemy; bool active=false; };
-    struct Bucket { EnemyDefinition definition; std::vector<Slot> slots; };
+    struct Bucket {
+        EnemyDefinition definition;
+        std::shared_ptr<const EnemyRenderAsset> renderAsset;
+        std::vector<Slot> slots;
+    };
     Slot& Add(Bucket& bucket,bool runtime) {
         auto enemy=std::make_unique<Enemy>();
-        enemy->PrepareForPool(common_,dx_,camera_,bucket.definition);
+        enemy->PrepareForPool(common_,dx_,camera_,bucket.definition,bucket.renderAsset);
         bucket.slots.push_back({std::move(enemy),false});
         if (runtime) {
             ++runtimeAllocations_;

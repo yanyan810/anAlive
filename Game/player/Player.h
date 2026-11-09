@@ -34,7 +34,7 @@ public:
     void UnequipWeapon() { currentWeapon_ = WeaponRuntime{}; }
     void CancelWeaponBurst() { currentWeapon_.CancelBurst(); }
     void SetInfiniteAmmo(bool enabled) { currentWeapon_.SetInfiniteAmmo(enabled); }
-    bool TryPickupWeapon(WeaponSystem& weapons) { return weapons.TryPickup(transform_.translate, currentWeapon_); }
+    bool TryPickupWeapon(WeaponSystem& weapons) { return weapons.TryPickup(transform_.translate,currentWeapon_,stageWorld_,transform_.rotate.y); }
     // Editor/test snapshots are copies of an already valid runtime, including its timers.
     void RestoreWeaponForDebug(const WeaponRuntime& weapon) { currentWeapon_ = weapon; }
     void ApplyDamage(float damage,const Vector3& direction={}) {

@@ -165,7 +165,7 @@ int main() {
     far.settings.senses.detectionTime=0; far.settings.senses.fieldOfView=360;
     assert(far.Update(zero,rotate,{},.01f,false)==10);
     assert(std::isfinite(rotate.y));
-    assert(far.Update(zero,rotate,{0,0,30},.1f,false)==0 && far.state==EnemyState::Chase && far.lastSeen.z==0);
+    assert(far.Update(zero,rotate,{0,0,30},.1f,false)==0 && far.state==EnemyState::Chase && far.pursuitOrdered && far.lastSeen.z==30);
     assert(far.Update(zero,rotate,{},.1f,false)==0); // range reentry cannot reset cooldown
     EnemyAI moving;
     moving.settings.senses.detectionTime=0; moving.settings.senses.fieldOfView=360;

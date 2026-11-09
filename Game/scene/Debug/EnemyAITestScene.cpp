@@ -277,8 +277,9 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
             ImGui::Text("現在: %s / 距離: %.2f",StateName(enemy.GetState()),a.distance);
             ImGui::Text("視野角内: %s / 遮蔽物: %s",a.inFov ? "はい" : "いいえ",a.occluded ? "あり" : "なし");
             ImGui::Text("視認中: %s / 徘徊中: %s",a.visible ? "はい" : "いいえ",a.state==EnemyState::Wander ? "はい" : "いいえ");
-            ImGui::ProgressBar(s.detectionTime>0 ? std::clamp(a.detection/s.detectionTime,0.0f,1.0f) : (a.visible ? 1.0f : 0.0f),ImVec2(-1,0),"発見進捗");
-            if (a.hasLastSeen) ImGui::Text("最終目撃: %.2f, %.2f, %.2f",a.lastSeen.x,a.lastSeen.y,a.lastSeen.z);
+            ImGui::TextUnformatted(a.pursuitOrdered ? "認識状態: 発見済み（追跡継続）" : "認識状態: 未発見");
+            ImGui::ProgressBar(a.pursuitOrdered ? 1.0f : s.detectionTime>0 ? std::clamp(a.detection/s.detectionTime,0.0f,1.0f) : (a.visible ? 1.0f : 0.0f),ImVec2(-1,0),"発見進捗");
+            if (a.hasLastSeen) ImGui::Text(a.pursuitOrdered ? "追跡対象: %.2f, %.2f, %.2f" : "最終目撃: %.2f, %.2f, %.2f",a.lastSeen.x,a.lastSeen.y,a.lastSeen.z);
             else ImGui::TextUnformatted("最終目撃: まだ発見していません");
             ImGui::Text("移動目標: %.2f, %.2f, %.2f",a.moveTarget.x,a.moveTarget.y,a.moveTarget.z);
             ImGui::Text("見失ってから: %.2f 秒 / 現在速度: %.2f",a.lostTime,pauseAll_ || a.paused ? 0.0f : a.currentSpeed);
@@ -318,7 +319,7 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
         ImGui::Checkbox("視認した移動履歴を表示",&showMemory_); ImGui::Checkbox("推定逃走方向の矢印を表示",&showEscapeDirection_);
         ImGui::TextWrapped("橙: 最終目撃地点　紫: 追跡・最終目撃地点への移動先　水色: 周辺探索の移動先　緑: 現在の経路");
         ImGui::TextWrapped("青: 視認した座標履歴　赤の矢印: 最終視認時の推定逃走方向。履歴・方向推定には未視認の現在位置を使いません。");
-        ImGui::TextWrapped("変更はこの場の選択した敵だけに反映されます。JSON保存は行いません。再出現で定義の値に戻ります。\n経路探索は同じ高さの床のみ対応。段差・階段・上下階は未対応です。");
+        ImGui::TextWrapped("変更はこの場の選択した敵だけに反映されます。JSON保存は行いません。再出現で定義の値に戻ります。\n一度発見すると壁で視線が切れても追跡を継続します。リセット／再出現で未発見に戻ります。");
         ImGui::EndChild(); ImGui::EndTable();
     }
     ImGui::End(); DrawDiagnostics(app);
@@ -370,12 +371,12 @@ void EnemyAITestScene::DrawDiagnostics(GameApp& app) {
             line(origin,tip,color); line(tip,tip-a.memory.escapeDirection*.6f+side,color); line(tip,tip-a.memory.escapeDirection*.6f-side,color);
             label(tip+Vector3{0,.4f,0},color,"推定逃走方向");
         }
-        if (showLast_ && a.hasLastSeen) { marker(a.lastSeen,IM_COL32(255,160,60,255)); label(a.lastSeen+Vector3{-.7f,2.2f,0},IM_COL32(255,160,60,255),"最終目撃地点"); }
+        if (showLast_ && a.hasLastSeen) { marker(a.lastSeen,IM_COL32(255,160,60,255)); label(a.lastSeen+Vector3{-.7f,2.2f,0},IM_COL32(255,160,60,255),a.pursuitOrdered ? "追跡対象" : "最終目撃地点"); }
         if (showGoal_ && a.hasLastSeen) {
             const bool searching=a.state==EnemyState::Search;
             const auto color=searching ? IM_COL32(70,210,255,255) : IM_COL32(220,100,255,255);
             marker(a.moveTarget+Vector3{0,.25f,0},color);
-            label(a.moveTarget+Vector3{.5f,2.7f,0},color,searching ? "周辺探索の移動先" : a.state==EnemyState::Wander ? "徘徊の移動先" : "最終目撃地点への移動先");
+            label(a.moveTarget+Vector3{.5f,2.7f,0},color,searching ? "周辺探索の移動先" : a.state==EnemyState::Wander ? "徘徊の移動先" : a.pursuitOrdered ? "プレイヤーへの移動先" : "最終目撃地点への移動先");
         }
         if (showPath_) { auto p=pos; for (size_t i=a.navigation.next;i<a.navigation.path.size();++i) { line(p+Vector3{0,.15f,0},a.navigation.path[i]+Vector3{0,.15f,0},IM_COL32(40,255,200,255)); p=a.navigation.path[i]; } }
         if (showState_) { ImVec2 p; if (project(pos+Vector3{0,e.Definition().collisionHeight+.5f,0},p)) draw->AddText(p,IM_COL32(255,255,255,255),StateName(e.GetState())); }

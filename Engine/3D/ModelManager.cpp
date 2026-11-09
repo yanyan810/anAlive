@@ -114,10 +114,15 @@ Model* ModelManager::CreatePrimitiveModel(const std::string& key, const Model::M
 	}
 
 	// 新規作成
-	std::unique_ptr<Model> model = std::make_unique<Model>();
-	model->InitializeFromModelData(modelCommon, modelData);
+	auto model = CreateOwnedPrimitiveModel(modelData);
 
 	Model* result = model.get();
 	models.insert(std::make_pair(key, std::move(model)));
 	return result;
+}
+
+std::unique_ptr<Model> ModelManager::CreateOwnedPrimitiveModel(const Model::ModelData& modelData) const {
+	auto model = std::make_unique<Model>();
+	model->InitializeFromModelData(modelCommon, modelData);
+	return model;
 }

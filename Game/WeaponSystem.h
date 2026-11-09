@@ -1,5 +1,6 @@
 #pragma once
 #include "Vector3.h"
+#include <nlohmann/json_fwd.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -7,6 +8,7 @@
 #include <random>
 #include <string>
 #include <vector>
+class StageWorld;
 
 enum class WeaponFireMode {
     SemiAuto,
@@ -80,6 +82,7 @@ struct WeaponDefinition {
     int magazineSize = 0;
     int reserveAmmo = 0;
     int maxReserveAmmo = 0;
+    bool infiniteReserveAmmo = false; // Magazine consumption and reload timing remain finite.
 
     float reloadTime = 0;
     WeaponReloadMode reloadMode = WeaponReloadMode::Magazine;
@@ -140,6 +143,7 @@ public:
     }
     int Magazine() const { return magazine_; }
     int Reserve() const { return reserve_; }
+    bool InfiniteReserveAmmo() const { return definition_.infiniteReserveAmmo; }
     bool Reloading() const { return reloadState_ != WeaponReloadState::None; }
     WeaponReloadState ReloadState() const { return reloadState_; }
     int BurstRemaining() const { return burstShotsRemaining_; }
@@ -196,7 +200,7 @@ public:
         return true;
     }
     bool StartReload() {
-        if (infiniteAmmo_ || definition_.id.empty() || Reloading() || magazine_ >= definition_.magazineSize || reserve_ <= 0) return false;
+        if (infiniteAmmo_ || definition_.id.empty() || Reloading() || magazine_ >= definition_.magazineSize || (!InfiniteReserveAmmo() && reserve_ <= 0)) return false;
         CancelBurst();
         reloadState_ = WeaponReloadState::Starting;
         reloadRemaining_ = definition_.reloadMode == WeaponReloadMode::Magazine ? definition_.reloadTime : definition_.reloadStartTime;
@@ -208,6 +212,12 @@ public:
         burstShotsRemaining_ = 0;
         burstTimer_ = 0;
     }
+    // Dropping interrupts actions without refilling ammunition or clearing cadence.
+    void PrepareForDrop() {
+        CancelBurst();
+        reloadState_=WeaponReloadState::None;
+        reloadRemaining_=0;
+    }
 private:
     bool HasAmmo() const { return infiniteAmmo_ || magazine_ >= definition_.ammoPerShot; }
     void UpdateReload(double elapsed) {
@@ -216,15 +226,15 @@ private:
         // Every iteration inserts one round or exits a phase; zero timings are bounded by ammo.
         while (Reloading() && reloadRemaining_ <= 1e-7) {
             if (definition_.reloadMode == WeaponReloadMode::Magazine) {
-                const int amount = std::min(definition_.magazineSize-magazine_,reserve_);
+                const int amount = InfiniteReserveAmmo() ? definition_.magazineSize-magazine_ : std::min(definition_.magazineSize-magazine_,reserve_);
                 magazine_ += amount;
-                reserve_ -= amount;
+                if (!InfiniteReserveAmmo()) reserve_ -= amount;
                 reloadState_ = WeaponReloadState::None;
             } else if (reloadState_ == WeaponReloadState::Finishing) {
                 reloadState_ = WeaponReloadState::None;
             } else {
-                if (reserve_ > 0 && magazine_ < definition_.magazineSize) { ++magazine_; --reserve_; }
-                if (magazine_ == definition_.magazineSize || reserve_ == 0) {
+                if ((InfiniteReserveAmmo() || reserve_ > 0) && magazine_ < definition_.magazineSize) { ++magazine_; if (!InfiniteReserveAmmo()) --reserve_; }
+                if (magazine_ == definition_.magazineSize || (!InfiniteReserveAmmo() && reserve_ == 0)) {
                     reloadState_ = WeaponReloadState::Finishing;
                     reloadRemaining_ += definition_.reloadEndTime;
                 } else {
@@ -271,6 +281,7 @@ struct WeaponPickup {
     Vector3 rotation{};
     bool visible = true;
     bool pickedUp = false;
+    std::optional<WeaponRuntime> savedWeapon; // Empty: reusable stage source. Value: individual dropped weapon.
 };
 struct WeaponRandomSettings { bool useFixedSeed = false; uint32_t seed = 12345; };
 
@@ -278,7 +289,7 @@ class WeaponSystem {
 public:
     // All definition/point validation and lottery happen once at stage initialization.
     bool Load(const std::string& definitionsPath, const std::string& levelPath,
-        std::optional<WeaponRandomSettings> settingsOverride = std::nullopt);
+        std::optional<WeaponRandomSettings> settingsOverride = std::nullopt, const nlohmann::json* draft = nullptr);
     // Editor reload is transactional and does not reroll or respawn existing pickups.
     bool ReloadForEditor(const std::string& definitionsPath, const std::string& levelPath);
     const WeaponDefinition* Find(const std::string& id) const {
@@ -289,6 +300,9 @@ public:
     const std::vector<WeaponDefinition>& Definitions() const { return definitions_; }
     const std::vector<WeaponSpawnPoint>& Points() const { return points_; }
     const std::vector<WeaponPickup>& Pickups() const { return pickups_; }
+    const WeaponDefinition* PickupDefinition(const WeaponPickup& pickup) const {
+        return pickup.savedWeapon ? &pickup.savedWeapon->Definition() : Find(pickup.weaponId);
+    }
     const std::string& Error() const { return error_; }
     WeaponRandomSettings Settings() const { return settings_; }
     uint32_t ActualSeed() const { return actualSeed_; }
@@ -305,18 +319,12 @@ public:
         }
         return nearest; // ties use JSON order
     }
-    void ResetPickups() { for (auto& pickup : pickups_) { pickup.pickedUp=false; pickup.visible=true; } }
-    bool TryPickup(const Vector3& player, WeaponRuntime& weapon) {
-        const auto index = Nearest(player);
-        if (!index) return false;
-        auto& pickup = pickups_[*index];
-        const auto* definition = Find(pickup.weaponId);
-        if (!definition) return false;
-        if (!weapon.Equip(*definition)) return false;
-        pickup.pickedUp = true;
-        pickup.visible = false;
-        return true;
+    void ResetPickups() {
+        pickups_.resize(points_.size());
+        for (auto& pickup : pickups_) { pickup.pickedUp=false; pickup.visible=true; }
+        nextDropId_=0;
     }
+    bool TryPickup(const Vector3& player, WeaponRuntime& weapon,const StageWorld* world=nullptr,float yaw=0);
 private:
     std::vector<WeaponDefinition> definitions_;
     std::vector<WeaponSpawnPoint> points_;
@@ -325,6 +333,7 @@ private:
     std::string error_;
     WeaponRandomSettings settings_;
     uint32_t actualSeed_ = 0;
+    uint64_t nextDropId_ = 0;
 };
 
 // Camera basis avoids world-up singularities when aiming vertically.

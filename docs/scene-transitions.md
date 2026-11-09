@@ -90,7 +90,7 @@ fade.Reset();
 
 GAME STARTへの初回命中 → 既存の破壊・破片・カメラ演出 → TitleStartSequenceの0.45秒待機 → 黒Linearの0.75秒FadeOut → Stage01初期化 → 0.75秒FadeIn。既存のBeginとtransitionRequestedで連続命中を防ぎ、SceneManagerでも要求を二重に受理しません。GameSceneの開始射撃抑制も維持します。
 
-Debug/Developmentの共通 **Screen Transition** ウィンドウを使用します。タイトル、Showroomなどどのシーンでも利用可能です。Escでマウスを解放してください。
+Debug/Developmentのタイトルや本編では、**Screen Transition** ウィンドウからフェードを試せます。Escでマウスを解放してください。
 
 - Fade Out / Fade In / Fade Out -> Fade In / Reset。
 - Fade Duration、Fade Color、Fade Easing（単体フェード中も変更可能）。

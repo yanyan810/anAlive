@@ -464,7 +464,7 @@ bool TitleScene::LoadLayout() {
 }
 
 void TitleScene::OnEnter(GameApp& app) {
-    mode_=Mode::GameOver; pendingDemoTransition_=false;
+    mode_=Mode::GameStart; pendingDemoTransition_=false;
     app.Render()->ResetDeathPostEffect(); app.Render()->ResetViewPostPreview();
     savedClearColor_ = app.Render()->GetOffscreen()->GetClearColor();
     app.Render()->GetOffscreen()->SetClearColor({.008f,.01f,.016f,1});
@@ -566,7 +566,7 @@ void TitleScene::OnBulletImpact(const BulletEnemyImpact& impact) {
     ApplyLighting();
 }
 void TitleScene::OnExit(GameApp& app) {
-    pendingDemoTransition_=false; mode_=Mode::GameOver;
+    pendingDemoTransition_=false; mode_=Mode::GameStart;
     app.Render()->ResetDeathPostEffect(); app.Render()->ResetViewPostPreview();
     app.Render()->GetOffscreen()->SetClearColor(savedClearColor_);
     app.GetInput()->SetCameraControlEnabled(false);
@@ -583,6 +583,11 @@ void TitleScene::Update(GameApp& app, float dt) {
     if (!ready_ || !NextScene().empty()) return;
     if (mode_==Mode::GameOver && transitionRequested_) return;
     auto& input = *app.GetInput();
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    if (input.HasFocus() && input.IsKeyTrigger(DIK_F3) && !start_.Starting() && !explosionPreview_) {
+        app.Scenes().TransitionTo("Showroom"); return;
+    }
+#endif
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F7) && !start_.Starting() && !explosionPreview_) {
         app.Scenes().TransitionTo("EnemyPlacementEditor"); return;
     }
@@ -740,6 +745,9 @@ void TitleScene::DrawImGui(GameApp& app) {
         ImGui::BeginDisabled(start_.Starting() || explosionPreview_ || app.Scenes().IsTransitioning());
         if (ImGui::Button("Enemy AI Test（敵AIテスト） F6")) app.Scenes().TransitionTo("EnemyAITest");
         if (ImGui::Button("Enemy Placement Editor（敵配置編集） F7")) app.Scenes().TransitionTo("EnemyPlacementEditor");
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+        if (ImGui::Button("Showroom F3")) app.Scenes().TransitionTo("Showroom");
+#endif
         ImGui::EndDisabled();
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");

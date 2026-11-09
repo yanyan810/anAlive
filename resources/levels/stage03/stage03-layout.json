@@ -414,8 +414,7 @@
       ],
       "connections": [
         "WestStair",
-        "Foyer",
-        "Ballroom"
+        "Foyer"
       ],
       "access": "player"
     },
@@ -478,7 +477,6 @@
       ],
       "connections": [
         "Foyer",
-        "StairLobby",
         "Preparation",
         "BanquetStore",
         "EastGallery"

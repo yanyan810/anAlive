@@ -216,6 +216,61 @@
         0.41499999165534973,
         0.41499999165534973
       ]
+    },
+    {
+      "attackDamage": 20,
+      "attackInterval": 1.6,
+      "attackRange": 1.8,
+      "collisionHeight": 2.7,
+      "collisionRadius": 0.44999998807907104,
+      "detectionRange": 22,
+      "senses": {
+        "viewDistance": 22,
+        "fieldOfView": 110,
+        "detectionTime": 0.35,
+        "loseSightTime": 2.0,
+        "arrivalDistance": 0.6,
+        "wanderRadius": 6,
+        "wanderSpeedMultiplier": 0.45,
+        "wanderWaitTime": 1.5,
+        "investigateSpeedMultiplier": 1.0,
+        "searchDuration": 4.0,
+        "searchRadius": 5.0,
+        "searchSpeedMultiplier": 0.85,
+        "investigateUnreachableTime": 6.0,
+        "memoryRetentionTime": 6.0,
+        "memoryRecordInterval": 0.25,
+        "memoryRecordDistance": 0.5,
+        "searchDirectionPriority": 0.85
+      },
+      "displayName": "Tank (Hotel Room)",
+      "hpMultiplier": 2.5,
+      "id": "hotel_tank",
+      "moveSpeed": 1.2,
+      "type": "Tank",
+      "typeMarker": {
+        "color": [
+          0.6,
+          0.2,
+          1
+        ],
+        "enabled": true,
+        "offset": [
+          -0.12,
+          2.25,
+          0.65
+        ],
+        "scale": [
+          0.2,
+          0.2,
+          0.2
+        ]
+      },
+      "visualScale": [
+        0.5350000262260437,
+        0.35491400734282336,
+        0.5350000262260437
+      ]
     }
   ]
 }

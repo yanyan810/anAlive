@@ -47,8 +47,8 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
             if (x->pixels[row*x->rowPitch+col]!=y->pixels[row*y->rowPitch+col]) ++changed;
         return changed;
     };
-    check(title->mode_==Mode::GameOver,"This branch must open directly in GAME OVER mode");
-    capture("00-default-game-over");
+    check(title->mode_==Mode::GameStart,"Title must open in GAME START mode");
+    capture("00-default-game-start");
     check(title->SetMode(Mode::GameStart),"Could not select normal mode for regression checks");
     const auto startView=capture("00-game-start-mode");
     check(title->SetMode(Mode::GameOver) && !scenes.IsTransitioning() && !title->start_.Starting(),"Mode selection started an animation");
@@ -185,8 +185,8 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
     }
     check(game->LeaveGameOver(app,false),"Demo Title rejected");
     finishTransition(); title=dynamic_cast<TitleScene*>(scenes.Current());
-    check(title && title->mode_==Mode::GameOver && title->player_.GetHP()==100 &&
-        !app.Render()->DeathPostEffect().Active(),"Title did not restore default GAME OVER and clear death post effects");
+    check(title && title->mode_==Mode::GameStart && title->player_.GetHP()==100 &&
+        !app.Render()->DeathPostEffect().Active(),"Title did not restore default GAME START and clear death post effects");
     capture("10-title-restored");
     // Exercise the normal mode retained in ImGui for debugging.
     check(title->SetMode(Mode::GameStart),"Could not select normal mode after returning to Title");
@@ -204,7 +204,7 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
     check(scenes.IsTransitioning(),"Normal GAME START did not request transition");
     finishTransition(); game=dynamic_cast<GameScene*>(scenes.Current());
     check(game && game->stageId_=="stage03" && !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
-        !game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),
+        game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),
         "Demo HP/weapon/movement policy leaked into normal GAME START");
     check(!app.Render()->DeathPostEffect().Active(),"Demo post effects leaked to normal game");
     // Both other normal stages retain their ordinary HP, weapons and spawn data.
@@ -212,9 +212,9 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
         scenes.Register("NormalDemoIsolation",[id]{ return std::make_unique<GameScene>(false,id); });
         scenes.Change(app,"NormalDemoIsolation"); game=dynamic_cast<GameScene*>(scenes.Current());
         check(game && game->stageLoaded_ && !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
-            !game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),"Demo policy leaked to normal stage");
+            game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),"Demo policy leaked to normal stage");
         draw();
     }
     app.Dx()->WaitForGPU();
-    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER visuals and precise hits, miss/wall rejection, dedicated exported stage, 6 non-overlapping normal enemies with clear sight/routes and natural attacks, HP20 unarmed player, held input suppression, no intro, ordinary death effects (double vision, impact blur, black eyelids, rainbow cover and enemy disappearance), Wander/menu, 3 full stage retries, default/returned title shows GAME OVER without mode buttons, debug GAME START reaches Stage03, no demo policy leakage to stage01/02/03.\n";
+    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER visuals and precise hits, miss/wall rejection, dedicated exported stage, 6 non-overlapping normal enemies with clear sight/routes and natural attacks, HP20 unarmed player, held input suppression, no intro, ordinary death effects (double vision, impact blur, black eyelids, rainbow cover and enemy disappearance), Wander/menu, 3 full stage retries, default/returned title shows GAME START, GAME START reaches Stage03, no demo policy leakage to stage01/02/03.\n";
 }

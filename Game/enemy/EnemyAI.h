@@ -41,6 +41,7 @@ struct EnemyAISettings {
     bool ranged = false;
     float minRange = 7, maxRange = 16;
     EnemySenses senses{};
+    float preferredRange = 12;
 };
 struct EnemyAI {
     EnemyState state = EnemyState::Idle;
@@ -48,6 +49,8 @@ struct EnemyAI {
     float distance = 0;
     float cooldown = 0;
     unsigned int attacksThisUpdate = 0;
+    bool pursuitOrdered=false; // Latched by recognition or an alert; cleared only on AI reset/respawn.
+    bool rangedRetreating=false;
     bool paused=false, hasLastSeen=false, inFov=false, occluded=false, visible=false;
     float detection=0, lostTime=0, wanderWait=0;
     float searchElapsed=0, searchRetry=0, investigateBlockedTime=0, currentSpeed=0;
@@ -66,6 +69,21 @@ struct EnemyAI {
     uint32_t random=0x9e3779b9u;
     float RandomUnit() { random=random*1664525u+1013904223u; return static_cast<float>(random>>8)/16777216.0f; }
     float SearchRemaining() const { return state==EnemyState::Search ? std::max(0.0f,settings.senses.searchDuration-searchElapsed) : 0; }
+    bool CanShareAlert(const Vector3& position,float height,const Vector3& ally,float allyHeight,const StageWorld* world) const {
+        if (StageLength(ally-position)>settings.senses.viewDistance) return false;
+        const auto origin=position+Vector3{0,height*.85f,0};
+        for (float fraction:{.85f,.5f}) {
+            const auto target=ally+Vector3{0,allyHeight*fraction,0};
+            StageHit hit;
+            if (!world || !world->Raycast(origin,target-origin,StageLength(target-origin),hit,0,true)) return true;
+        }
+        return false;
+    }
+    void OrderPursuit(const Vector3& target) {
+        if (!pursuitOrdered) { navigation={}; state=EnemyState::Chase; }
+        pursuitOrdered=true; hasLastSeen=true; lastSeen=moveTarget=target; lostTime=0;
+        lastSeenReached=false; investigateUnreachable=false; investigateBlockedTime=0;
+    }
     void BeginSearch(const Vector3& position,bool unreachable) {
         state=EnemyState::Search; searchElapsed=0; searchRetry=0; searchPointsVisited=0; searchFinishing=false;
         lastSeenReached=!unreachable; investigateUnreachable=unreachable;
@@ -132,7 +150,8 @@ struct EnemyAI {
         navigation.failure=searchFailure==EnemyPathFailure::None ? EnemyPathFailure::NoCandidate : searchFailure;
         return false;
     }
-    // Reads the physical target only here. Hidden target coordinates never reach movement or memory.
+    // First recognition requires sight. Once acquired, keep the live movement target
+    // even after occlusion/range loss; visual history and attack LOS stay independent.
     float Update(Vector3& position,Vector3& rotation,const Vector3& target,float dt,bool dead,
         const StageWorld* world=nullptr,float radius=.4f,float height=1.8f,float playerEyeHeight=1.65f) {
         attacksThisUpdate=0;
@@ -161,7 +180,9 @@ struct EnemyAI {
         memory.Update(dt,visible,target,senses);
         detection=visible ? std::min(senses.detectionTime,detection+dt) : 0;
         const bool recognized=visible && (hasLastSeen || detection>=senses.detectionTime);
-        if (recognized) {
+        if (recognized && !pursuitOrdered) OrderPursuit(target);
+        const bool tracking=recognized || pursuitOrdered;
+        if (tracking) {
             lastSeen=target; hasLastSeen=true; lostTime=0;
             lastSeenReached=false; investigateUnreachable=false; investigateBlockedTime=0; investigateFailure=EnemyPathState::None;
             investigateFailureReason=EnemyPathFailure::None;
@@ -176,23 +197,32 @@ struct EnemyAI {
             }
         }
         if (!hasLastSeen) { state=EnemyState::Idle; cooldown=std::max(0.0f,cooldown-dt); return 0; }
-        if (recognized) {
+        if (tracking) {
             moveTarget=lastSeen;
+            if (pursuitOrdered && occluded) {
+                // Retained discovery grants pursuit, never attacks or projectiles through walls.
+                rangedRetreating=false;
+                navigation.Move(position,rotation,moveTarget,settings.moveSpeed,dt,world,radius,height);
+                cooldown=std::max(0.0f,cooldown-dt); return finish(0);
+            }
             // Keep the original attack cadence/ranges. Movement/attacks require a clear body route;
             // LOS additionally gates projectile emission, including while within the lost-sight grace period.
-            if (EnemyNavigation::Clear(world,position,lastSeen,radius,height)) {
+            if (std::abs(position.y-lastSeen.y)<=.35f && EnemyNavigation::Clear(world,position,lastSeen,radius,height)) {
                 navigation.path.clear(); navigation.next=0; navigation.state=EnemyPathState::Direct;
                 navigation.failure=EnemyPathFailure::None;
                 auto desired=position;
                 const float damage=Combat(desired,rotation,lastSeen,dt,false);
                 // Ranged retreat goes away from the observed target. Check that segment too,
                 // so backing into a wall or off the floor cannot bypass navigation.
-                if (!EnemyNavigation::Clear(world,position,desired,radius,height)) {
+                Vector3 projected;
+                if (!EnemyNavigation::FollowSurface(world,position,desired,radius,height,projected)) {
                     navigation.state=EnemyPathState::NoPath; navigation.failure=EnemyPathFailure::BlockedSegment;
+                    rangedRetreating=false;
                     attacksThisUpdate=0; state=EnemyState::Chase; return 0;
                 }
-                position=desired; return finish(damage);
+                position=projected; return finish(damage);
             }
+            rangedRetreating=false;
             navigation.Move(position,rotation,moveTarget,settings.moveSpeed,dt,world,radius,height);
         } else if (state==EnemyState::Chase || state==EnemyState::Investigate) {
             moveTarget=lastSeen;
@@ -289,11 +319,15 @@ struct EnemyAI {
         if (settings.ranged) {
             const float minimum=std::max(0.0f,settings.minRange);
             const float maximum=std::max(minimum,settings.maxRange);
-            if (distance<minimum || distance>maximum) {
-                const float desired=distance<minimum ? minimum : maximum;
-                const float travel=std::min(std::max(settings.moveSpeed,0.0f)*dt,std::abs(distance-desired));
+            const float retreatRange=std::clamp(settings.preferredRange,minimum,maximum);
+            rangedRetreating=distance<minimum || (rangedRetreating && distance<retreatRange);
+            if (rangedRetreating || distance>maximum) {
+                const float desired=rangedRetreating ? retreatRange : maximum;
+                const float remaining=std::abs(distance-desired);
+                const float travel=std::min(std::max(settings.moveSpeed,0.0f)*dt,remaining);
                 const Vector3 direction=distance>1e-6f ? delta*(1.0f/distance) : Vector3{0,0,1};
-                position+=direction*(distance<minimum ? -travel : travel);
+                position+=direction*(rangedRetreating ? -travel : travel);
+                rangedRetreating=rangedRetreating && travel<remaining;
                 distance=std::hypot(target.x-position.x,target.z-position.z);
                 state=EnemyState::Chase; cooldown=std::max(0.0f,cooldown-dt); return 0;
             }

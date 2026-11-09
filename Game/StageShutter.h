@@ -3,7 +3,7 @@
 #include <optional>
 
 enum class ShutterState { Closed, Opening, Open };
-enum class ShutterEventType { Started, Progress, Completed };
+enum class ShutterEventType { Started, Progress, Completed, EnemyWave };
 struct ShutterProgressEvent { float progress=0; std::string event; };
 struct ShutterDefinition {
     std::string id, model;
@@ -11,6 +11,8 @@ struct ShutterDefinition {
     StageCollider collider; // Position is relative to the lower-edge origin.
     size_t colliderIndex=0;
     double openDuration=30;
+    std::string enemyWaveGroup;
+    double enemyWaveInterval=10;
     float openDistance=3.2f, interactionDistance=2;
     std::string switchSound, startSound, motorSound, completeSound;
     std::vector<ShutterProgressEvent> progressEvents;
@@ -25,6 +27,7 @@ struct StageShutter {
     ShutterState state=ShutterState::Closed;
     double elapsedTime=0;
     size_t nextProgressEvent=0;
+    size_t nextEnemyWave=1;
     float Progress() const { return static_cast<float>(std::clamp(elapsedTime/definition.openDuration,0.0,1.0)); }
     Vector3 Position() const { return definition.closedPosition+Vector3{0,definition.openDistance*Progress(),0}; }
 };
@@ -36,7 +39,7 @@ public:
     void Reset(StageWorld& world) {
         events_.clear();
         for (auto& shutter : shutters) {
-            shutter.state=ShutterState::Closed; shutter.elapsedTime=0; shutter.nextProgressEvent=0;
+            shutter.state=ShutterState::Closed; shutter.elapsedTime=0; shutter.nextProgressEvent=0; shutter.nextEnemyWave=1;
         }
         Sync(world);
     }
@@ -72,7 +75,14 @@ public:
                 const auto& marker=shutter.definition.progressEvents[shutter.nextProgressEvent++];
                 events_.push_back({ShutterEventType::Progress,shutter.definition.id,marker.event,marker.progress});
             }
-            if (shutter.Progress()>=1) {
+            // Catch up every due wave before completion, including the wave at full open.
+            while (!shutter.definition.enemyWaveGroup.empty() &&
+                shutter.nextEnemyWave*shutter.definition.enemyWaveInterval<=shutter.elapsedTime+1e-7) {
+                events_.push_back({ShutterEventType::EnemyWave,shutter.definition.id,shutter.definition.enemyWaveGroup,
+                    static_cast<float>(shutter.nextEnemyWave*shutter.definition.enemyWaveInterval/shutter.definition.openDuration)});
+                ++shutter.nextEnemyWave;
+            }
+            if (shutter.elapsedTime>=shutter.definition.openDuration) {
                 shutter.state=ShutterState::Open;
                 events_.push_back({ShutterEventType::Completed,shutter.definition.id,"fullyOpened",1});
             }

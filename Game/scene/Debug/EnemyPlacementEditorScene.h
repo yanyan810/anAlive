@@ -34,6 +34,16 @@ private:
     void FocusSelection();
     void DrawViewportTools(GameApp&);
     void DrawControls(GameApp&);
+    void DrawStagePlacementControls(GameApp&);
+    void DrawStagePlacementMarkers(GameApp&);
+    bool RefreshStageSettings();
+    bool SaveStageSettings(const std::string& path);
+    std::string NewStageObjectId(const std::string& prefix) const;
+    nlohmann::json stageDraft_,stageBaseline_,stagePreview_;
+    std::string stageSettingsBytes_,stageSettingsStatus_,selectedWeapon_,selectedTrigger_,selectedWave_;
+    WeaponSystem placementWeapons_;
+    bool stageSettingsValid_=false,weaponPlacementMode_=false,showWeapons_=true;
+    bool StageSettingsDirty() const { return stageDraft_!=stageBaseline_; }
     void LoadPlayerVisual(const std::string& path);
     bool SavePlayerVisual(const std::string& path);
     void SyncPlayerVisual();
@@ -79,7 +89,7 @@ private:
     bool PlacementsDirty() const { return placements_.Json()!=baseline_; }
     bool PlayerVisualDirty() const { return playerVisualSettings_.yawOffsetDegrees!=playerVisualBaseline_.yawOffsetDegrees; }
     bool CameraSequencesDirty() const { return CameraSequence::ToJson(cameraDrafts_)!=cameraBaseline_; }
-    bool Dirty() const { return PlacementsDirty() || PlayerVisualDirty() || CameraSequencesDirty() || !drawPathPoints_.empty(); }
+    bool Dirty() const { return StageSettingsDirty() || PlacementsDirty() || PlayerVisualDirty() || CameraSequencesDirty() || !drawPathPoints_.empty(); }
     const EnemySpawnPoint* SelectedSpawn() const { return spawns_.FindPoint(selectedSpawn_); }
     EnemyPlacement* SelectedEnemy();
     Vector3 SelectedPosition() const;

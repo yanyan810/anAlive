@@ -2104,7 +2104,7 @@
       "id": "F2_Ballroom_West_Lintel01",
       "position": [
         12.0,
-        10.425000190734863,
+        8.825,
         10.0
       ],
       "rotation": [
@@ -2114,7 +2114,7 @@
       ],
       "scale": [
         0.15000000596046448,
-        1.225000023841858,
+        2.825,
         1.600000023841858
       ],
       "localBounds": {
@@ -7349,335 +7349,400 @@
   },
   "spawnPoints": [
     {
-      "id": "SP_F1_Lower_01",
-      "position": [
-        16.0,
-        0.0,
-        33.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "SP_F1_Lower_02",
-      "position": [
-        22.5,
-        0.0,
-        33.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "SP_F1_Lower_03",
-      "position": [
-        29.0,
-        0.0,
-        33.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "SP_F1_Upper_01",
-      "position": [
-        16.0,
-        0.0,
-        3.0
-      ],
-      "rotation": [
-        0.0,
-        -0.0,
-        0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "SP_F1_Upper_02",
-      "position": [
-        22.5,
-        0.0,
-        3.0
-      ],
-      "rotation": [
-        0.0,
-        -0.0,
-        0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "SP_F1_Upper_03",
-      "position": [
-        29.0,
-        0.0,
-        3.0
-      ],
-      "rotation": [
-        0.0,
-        -0.0,
-        0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "id": "enemySpawn",
-      "position": [
-        28.096866607666016,
-        12.0,
-        19.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
-      "enemyComposition": [
-        {
-          "enemy": "normal",
-          "count": 3
-        }
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
-    },
-    {
-      "id": "enemySpawn.001",
-      "position": [
-        19.984594345092773,
-        12.0,
-        19.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
-      "enemyComposition": [
-        {
-          "enemy": "normal",
-          "count": 3
-        }
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
-    },
-    {
-      "id": "enemySpawn.002",
-      "position": [
-        13.179086685180664,
-        12.0,
-        19.0
-      ],
-      "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
-      ],
-      "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
-      "enemyComposition": [
-        {
-          "enemy": "normal",
-          "count": 3
-        }
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
-    },
-    {
       "id": "enemySpawn.003",
       "position": [
-        9.50265121459961,
-        12.0,
-        4.790093421936035
+        9.5,
+        12,
+        4.8
       ],
       "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
+        0,
+        1.7607846147136124,
+        0
       ],
       "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
       "enemyComposition": [
         {
           "enemy": "normal",
-          "count": 3
+          "count": 1
         }
       ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
     },
     {
       "id": "enemySpawn.004",
       "position": [
-        16.17721939086914,
-        12.0,
-        4.790093421936035
+        16.2,
+        12,
+        4.8
       ],
       "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
+        0,
+        1.7234456551901618,
+        0
       ],
       "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
       "enemyComposition": [
         {
           "enemy": "normal",
-          "count": 3
+          "count": 1
         }
       ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
     },
     {
       "id": "enemySpawn.005",
       "position": [
-        22.96554183959961,
-        12.0,
-        4.790093421936035
+        22.95,
+        12,
+        4.8
       ],
       "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
+        0,
+        1.6761737659838392,
+        0
       ],
       "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
       "enemyComposition": [
         {
           "enemy": "normal",
-          "count": 3
+          "count": 1
         }
       ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 3
-        }
-      ]
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
     },
     {
       "id": "enemySpawn.006",
       "position": [
-        29.74382209777832,
-        12.0,
-        4.790093421936035
+        29.7,
+        12,
+        4.8
       ],
       "rotation": [
-        -0.0,
-        -3.141592502593994,
-        -0.0
+        0,
+        1.6284247542723707,
+        0
       ],
       "activation": "StageStart",
-      "spawnCount": 3,
-      "maxAlive": 5,
-      "mode": "Simultaneous",
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
       "enemyComposition": [
         {
           "enemy": "normal",
-          "count": 3
+          "count": 1
         }
       ],
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "enemySpawn.002",
+      "position": [
+        13.2,
+        12,
+        19
+      ],
+      "rotation": [
+        0,
+        4.662430584662747,
+        0
+      ],
+      "activation": "StageStart",
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 1
+        }
+      ],
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "enemySpawn.001",
+      "position": [
+        20,
+        12,
+        19
+      ],
+      "rotation": [
+        0,
+        4.588033985837928,
+        0
+      ],
+      "activation": "StageStart",
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 1
+        }
+      ],
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "enemySpawn",
+      "position": [
+        28.1,
+        12,
+        19
+      ],
+      "rotation": [
+        0,
+        -1.5541312030809555,
+        0
+      ],
+      "activation": "StageStart",
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 1
+        }
+      ],
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "SP_F3_Room304_Tank",
+      "position": [
+        28,
+        12,
+        2
+      ],
+      "rotation": [
+        0,
+        1.8157749899217608,
+        0
+      ],
+      "activation": "StageStart",
+      "enemyComposition": [
+        {
+          "enemy": "hotel_tank",
+          "count": 1
+        }
+      ],
+      "spawnCount": 1,
+      "maxAlive": 1,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "SP_F2_Ballroom",
+      "position": [
+        22,
+        6,
+        18
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "StageStart",
+      "enemyComposition": [
+        {
+          "enemy": "normal",
+          "count": 7
+        }
+      ],
+      "spawnCount": 7,
+      "maxAlive": 7,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0.5
+    },
+    {
+      "id": "SP_F1_ShutterWave_1",
+      "position": [
+        16,
+        0,
+        33
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_2",
+      "position": [
+        22.5,
+        0,
+        33
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_3",
+      "position": [
+        29,
+        0,
+        33
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_4",
+      "position": [
+        16,
+        0,
+        3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_5",
+      "position": [
+        22.5,
+        0,
+        3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_6",
+      "position": [
+        29,
+        0,
+        3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
+      "enemy": "normal",
+      "pursueOnSpawn": true
+    },
+    {
+      "id": "SP_F1_ShutterWave_7",
+      "position": [
+        35,
+        0,
+        22
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "activation": "Manual",
+      "groupId": "hotel_shutter_wave",
+      "spawnCount": 1,
+      "maxAlive": 6,
+      "mode": "Simultaneous",
+      "initialDelay": 0,
+      "spawnInterval": 0,
       "enemyPool": [
         {
-          "id": "normal",
-          "weight": 3
+          "id": "fast",
+          "weight": 1
+        },
+        {
+          "id": "ranged",
+          "weight": 1
+        },
+        {
+          "id": "tank",
+          "weight": 1
+        },
+        {
+          "id": "bomber",
+          "weight": 1
         }
-      ]
+      ],
+      "pursueOnSpawn": true
     }
   ],
   "spawnTriggers": [],
@@ -7686,7 +7751,98 @@
     "useFixedSeed": true,
     "seed": 12345
   },
-  "weaponSpawnPoints": [],
+  "weaponSpawnPoints": [
+    {
+      "id": "WP_F3_308_Sub",
+      "position": [
+        35.5,
+        12.25,
+        18
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "filter": {
+        "slot": "Sub",
+        "minRarity": 1,
+        "maxRarity": 2
+      }
+    },
+    {
+      "id": "WP_F1_Shutter_Main_1",
+      "position": [
+        15,
+        0.25,
+        16
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "filter": {
+        "slot": "Main",
+        "minRarity": 3,
+        "maxRarity": 4
+      }
+    },
+    {
+      "id": "WP_F2_Foyer_Main_2",
+      "position": [
+        9,
+        6.25,
+        18
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "filter": {
+        "slot": "Main",
+        "minRarity": 2,
+        "maxRarity": 4
+      }
+    },
+    {
+      "id": "WP_F1_Shutter_Main_2",
+      "position": [
+        15,
+        0.25,
+        18
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "filter": {
+        "slot": "Main",
+        "minRarity": 3,
+        "maxRarity": 4
+      }
+    },
+    {
+      "id": "WP_F1_Shutter_Main_3",
+      "position": [
+        15,
+        0.25,
+        20
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "filter": {
+        "slot": "Main",
+        "minRarity": 3,
+        "maxRarity": 4
+      }
+    }
+  ],
   "goalTriggers": [
     {
       "id": "Goal_Outdoor_CityConnection",
@@ -7745,7 +7901,7 @@
           ]
         }
       },
-      "openDuration": 30.0,
+      "openDuration": 60,
       "openDistance": 3.200000047683716,
       "interactionDistance": 2.0,
       "sounds": {
@@ -7759,7 +7915,11 @@
           "progress": 0.5,
           "event": "halfOpened"
         }
-      ]
+      ],
+      "enemyWaves": {
+        "groupId": "hotel_shutter_wave",
+        "interval": 10
+      }
     }
   ],
   "cameraSequences": [

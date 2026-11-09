@@ -8,7 +8,7 @@
 
 // Resource references are game-root relative. Walking source ancestors also supports
 // tools/tests opening the same asset from a generated working directory.
-inline std::string ResolveEnemyResource(const std::string& reference,const std::string& source) {
+inline std::string ResolveEnemyResource(const std::string& reference,const std::filesystem::path& source) {
     const std::filesystem::path requested(reference);
     if (std::filesystem::is_regular_file(requested)) return std::filesystem::relative(std::filesystem::weakly_canonical(requested)).generic_string();
     auto base=std::filesystem::absolute(source).parent_path();
@@ -31,13 +31,15 @@ struct EnemyAsset {
         for (auto& group:result.hpGroups) group.hp=group.maxHp*=multiplier;
         return result;
     }
-    static std::shared_ptr<const EnemyAsset> Load(const std::string& path) {
+    static std::shared_ptr<const EnemyAsset> Load(const std::filesystem::path& path) {
+        const auto utf8Path=path.generic_u8string();
+        const std::string pathText(utf8Path.begin(),utf8Path.end());
         std::ifstream input(path);
-        if (!input) throw std::runtime_error("Cannot open EnemyAsset: "+path);
+        if (!input) throw std::runtime_error("Cannot open EnemyAsset: "+pathText);
         nlohmann::json data; input>>data;
-        auto asset=std::make_shared<EnemyAsset>(); asset->path=path;
+        auto asset=std::make_shared<EnemyAsset>(); asset->path=pathText;
         if (data.at("version")!=1 || data.at("coordinateSystem")!="yanengine")
-            throw std::runtime_error("Unsupported EnemyAsset format: "+path);
+            throw std::runtime_error("Unsupported EnemyAsset format: "+pathText);
         asset->texture=ResolveEnemyResource(data.value("texture",asset->texture),path);
         if (!std::filesystem::is_regular_file(asset->texture)) throw std::runtime_error("Missing EnemyAsset texture: "+asset->texture);
         const auto number=[](const nlohmann::json& value,bool positive) {

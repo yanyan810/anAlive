@@ -1,6 +1,7 @@
 #include "WeaponSystem.h"
 #include "StageProgress.h"
 #include "EnemyParts.h"
+#include "StageWorld.h"
 #include <nlohmann/json.hpp>
 #include <cassert>
 #include <fstream>
@@ -12,6 +13,93 @@ static json Read(const char* path) { std::ifstream file(path); return json::pars
 static void Save(const json& weapons, const json& level) {
     std::ofstream("weapon-test.json") << weapons;
     std::ofstream("weapon-level-test.json") << level;
+}
+static void TestReusableDrops(const json& definitions) {
+    const json level={{"weaponSpawnPoints",json::array({
+        {{"id","source"},{"position",{0,.25f,0}},{"weaponPool",{"smg"}}}})}};
+    Save(definitions,level); WeaponSystem system;
+    assert(system.Load("weapon-test.json","weapon-level-test.json",WeaponRandomSettings{true,42}));
+    StageWorld world; world.playerGravity=true;
+    StageCollider floor; floor.local={{-10,-.5f,-10},{10,0,10}}; floor.UpdateMatrices(); world.colliders.push_back(floor);
+    WeaponRuntime held; assert(held.Equip(*system.Find("rifle")));
+    for (int i=0;i<5;++i) { assert(held.TryFire()); held.Update(1); }
+    assert(held.StartReload()); held.Update(100);
+    for (int i=0;i<3;++i) { assert(held.TryFire()); held.Update(1); }
+    assert(held.StartReload()); held.Update(.01f);
+    const int magazine=held.Magazine(),reserve=held.Reserve();
+    assert(system.TryPickup({},held,&world));
+    assert(held.Definition().id=="smg" && system.Pickups().size()==2);
+    const auto dropped=system.Pickups()[1];
+    assert(dropped.savedWeapon && dropped.weaponId=="rifle" && dropped.savedWeapon->Magazine()==magazine && dropped.savedWeapon->Reserve()==reserve);
+    assert(!dropped.savedWeapon->Reloading() && dropped.savedWeapon->ReloadRemaining()==0);
+    for (int i=0;i<12;++i) {
+        assert(system.Nearest({})==0 && system.TryPickup({},held,&world));
+        assert(system.Pickups()[0].visible && !system.Pickups()[0].pickedUp && !system.Pickups()[0].savedWeapon);
+        assert(system.Pickups()[0].weaponId=="smg" && held.Magazine()==held.Definition().magazineSize);
+    }
+    const auto count=system.Pickups().size();
+    const auto feet=Vector3{dropped.position.x,0,dropped.position.z};
+    assert(system.Nearest(feet)==1 && system.TryPickup(feet,held,&world));
+    assert(held.Definition().id=="rifle" && held.Magazine()==magazine && held.Reserve()==reserve);
+    assert(system.Pickups().size()==count && system.Pickups()[1].savedWeapon->Definition().id=="smg");
+    assert(held.Update(100)==0 && held.Magazine()==magazine && held.Reserve()==reserve);
+    auto snapshot=system;
+    assert(system.ReloadForEditor("weapon-test.json","weapon-level-test.json"));
+    assert(system.Pickups().size()==count && system.Pickups()[1].spawnPointId==snapshot.Pickups()[1].spawnPointId);
+    held={}; const auto loose=system.Pickups()[1];
+    assert(system.TryPickup({loose.position.x,0,loose.position.z},held,&world));
+    assert(!system.Pickups()[1].visible && system.Pickups()[1].pickedUp && snapshot.Pickups()[1].visible);
+    const auto size=system.Pickups().size();
+    assert(system.TryPickup({},held,&world) && system.Pickups().size()==size && system.Pickups()[1].visible);
+    system.ResetPickups(); assert(system.Pickups().size()==1 && system.Pickups()[0].visible && system.ActualSeed()==42);
+    for (const char* id:{"burst_rifle","pump_shotgun","pistol"}) {
+        system.ResetPickups(); assert(held.Equip(*system.Find(id)) && held.TryFire());
+        if (held.Definition().reloadMode==WeaponReloadMode::PerRound) {
+            held.Update(1); assert(held.StartReload()); held.Update(held.Definition().reloadStartTime*.5f);
+        }
+        const auto ammo=held.Magazine(),stock=held.Reserve();
+        assert(system.TryPickup({},held,&world));
+        auto droppedWeapon=*system.Pickups()[1].savedWeapon;
+        assert(droppedWeapon.BurstRemaining()==0 && !droppedWeapon.Reloading());
+        assert(droppedWeapon.Update(100)==0 && droppedWeapon.Magazine()==ammo && droppedWeapon.Reserve()==stock);
+        assert(droppedWeapon.InfiniteReserveAmmo()==system.Find(id)->infiniteReserveAmmo);
+    }
+    system.ResetPickups(); auto empty=*system.Find("rifle"); empty.magazineSize=empty.ammoPerShot; empty.reserveAmmo=0;
+    assert(held.Equip(empty) && held.TryFire() && held.Magazine()==0);
+    assert(system.TryPickup({},held,&world));
+    assert(system.Pickups()[1].savedWeapon->Magazine()==0 && system.Pickups()[1].savedWeapon->Reserve()==0);
+    // Nearby wall: a preferred drop must stay in front of it, on this floor.
+    StageCollider wall; wall.local={{.6f,0,-3},{.8f,3,3}}; wall.UpdateMatrices(); world.colliders.push_back(wall);
+    system.ResetPickups(); assert(system.TryPickup({},held,&world));
+    assert(system.Pickups()[1].position.x+held.Definition().pickupScale.x<.6f);
+    // Unsafe floorless exchange is atomic and retains the equipped ammunition.
+    system.ResetPickups(); StageWorld voidWorld; voidWorld.playerGravity=true;
+    const auto before=held; assert(!system.TryPickup({},held,&voidWorld));
+    assert(system.Pickups().size()==1 && held.Definition().id==before.Definition().id && held.Magazine()==before.Magazine());
+    std::cout<<"Reusable pickup/drop tests passed: unlimited sources, same-ID exchange, exact magazine/reserve, empty weapon, infinite reserve, cancelled reload/burst, slot reuse, reset/editor/snapshot, floor/wall safety and atomic failure.\n";
+}
+static void TestInfiniteReserve(const WeaponSystem& system) {
+    for (const auto& source:system.Definitions()) if (source.slot==WeaponSlot::Sub) {
+        assert(source.infiniteReserveAmmo);
+        auto definition=source; definition.reserveAmmo=definition.maxReserveAmmo=0;
+        WeaponRuntime weapon; assert(weapon.Equip(definition));
+        assert(weapon.InfiniteReserveAmmo() && !weapon.InfiniteAmmo());
+        for (int cycle=0;cycle<4;++cycle) {
+            int shots=0;
+            while (weapon.Magazine()>=definition.ammoPerShot) {
+                assert(weapon.TryFire()); ++shots; shots+=weapon.Update(10);
+            }
+            assert(shots==definition.magazineSize/definition.ammoPerShot && !weapon.TryFire());
+            assert(weapon.StartReload());
+            if (definition.reloadMode==WeaponReloadMode::Magazine && definition.reloadTime>.01f) {
+                weapon.Update(.001f); assert(weapon.Magazine()==0 && weapon.Reloading());
+            }
+            weapon.Update(10000);
+            assert(!weapon.Reloading() && weapon.Magazine()==definition.magazineSize && weapon.Reserve()==0);
+        }
+        assert(weapon.Equip(*system.Find("smg")) && !weapon.InfiniteReserveAmmo());
+    }
+    std::cout<<"Infinite reserve passed: all Sub weapons, finite magazines/dry fire, timed magazine/per-round reloads, zero reserves, repeated refills and finite Main equip.\n";
 }
 static void TestInfiniteAmmo(const WeaponSystem& system) {
     WeaponRuntime weapon;
@@ -257,9 +345,13 @@ int main() {
     const auto level=Read("../../resources/levels/fps_spawns.json");
     WeaponSystem system;
     assert(system.Load("../../resources/Data/weapons.json","../../resources/levels/fps_spawns.json",WeaponRandomSettings{true,12345}));
-    assert(system.Points().size()==3 && system.InitialWeapon()->id==definitions.at("initialWeapon").get<std::string>());
+    assert(system.Points().size()==3 && system.InitialWeapon()==nullptr && definitions.at("initialWeapon")=="");
+    WeaponRuntime unarmed;
+    assert(unarmed.Step(1,true,true,true)==0 && !unarmed.StartReload() && unarmed.Definition().id.empty());
+    TestInfiniteReserve(system);
     TestExtendedModes(system);
     TestInfiniteAmmo(system);
+    TestReusableDrops(definitions);
     // Filter assertions use a fixed seven-weapon catalog; editor-created weapons
     // must not change the number or identity of random candidates in this fixture.
     auto filterDefinitions=definitions;
@@ -270,7 +362,8 @@ int main() {
     }),filterWeapons.end());
     filterDefinitions["initialWeapon"]="pistol";
     TestSpawnFilters(filterDefinitions,level);
-    const auto pistol = *system.Find("pistol");
+    auto pistol = *system.Find("pistol");
+    pistol.infiniteReserveAmmo=false; // Keep legacy finite-ammo checks explicit.
     const auto smg = *system.Find("smg");
     const auto rifle = *system.Find("rifle");
     const auto shotgun = *system.Find("shotgun");
@@ -377,8 +470,8 @@ int main() {
             assert(system.Nearest(selection[i].position)==i);
             assert(system.TryPickup(selection[i].position,weapon));
             assert(weapon.Definition().id==selection[i].weaponId);
-            assert(!system.Pickups()[i].visible && system.Pickups()[i].pickedUp);
-            assert(!system.TryPickup(selection[i].position,weapon));
+            assert(system.Pickups()[i].visible && !system.Pickups()[i].pickedUp);
+            assert(system.TryPickup(selection[i].position,weapon));
         }
         assert(system.Load("../../resources/Data/weapons.json","../../resources/levels/fps_spawns.json",WeaponRandomSettings{true,12345}));
         for (size_t i=0;i<selection.size();++i) {
@@ -399,7 +492,7 @@ int main() {
         assert(system.Pickups()[0].weaponId=="smg");
         assert(system.Nearest({0,0,0})==1); // nearest, stable tie resolution
         WeaponRuntime weapon; assert(system.TryPickup({0,0,0},weapon));
-        assert(system.Nearest({0,0,0})==2);
+        assert(system.Nearest({0,0,0})==1); // The reusable source remains available.
         map.erase("weaponSpawnPoints"); Save(definitions,map);
         assert(system.Load("weapon-test.json","weapon-level-test.json") && system.Pickups().empty());
     }
@@ -501,5 +594,5 @@ int main() {
         map=level; map["weaponSpawnPoints"][1]["id"]="WeaponSpawn_01"; reject(definitions,map);
         map=level; map["weaponRandom"]["seed"]=-1; reject(definitions,map);
     }
-    std::cout << "Weapon tests passed: ammo, dry fire, cooldown, reload/partial/empty reserve, equip cancellation, independent state, nearest/ties, consumed pickup, fixed-seed restart, weighted pools, legacy level, pellets/cone, fire modes, ADS config, weapon damage/range through part raycasts, cleared-stage freeze, invalid data.\n";
+    std::cout << "Weapon tests passed: ammo, dry fire, cooldown, reload/partial/empty reserve, equip cancellation, independent state, nearest/ties, reusable sources and saved-ammo drops, fixed-seed restart, weighted pools, legacy level, pellets/cone, fire modes, ADS config, weapon damage/range through part raycasts, cleared-stage freeze, invalid data.\n";
 }

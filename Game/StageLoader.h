@@ -23,11 +23,15 @@ public:
     PlayerVisualSettings playerVisual;
     std::string playerVisualWarning;
     const std::string& Error() const { return error_; }
-    bool Load(const std::string& path) {
+    bool Load(const std::string& path, const nlohmann::json* draft = nullptr) {
         try {
-            std::ifstream input(path);
-            if (!input) throw std::runtime_error("Cannot open stage: "+path);
-            const auto data=nlohmann::json::parse(input);
+            nlohmann::json data;
+            if (draft) data=*draft;
+            else {
+                std::ifstream input(path);
+                if (!input) throw std::runtime_error("Cannot open stage: "+path);
+                data=nlohmann::json::parse(input);
+            }
             if (data.at("version")!=1) throw std::runtime_error("Unsupported stage version");
             StageLoader next;
             try { next.playerVisual=PlayerVisualSettings::FromStage(data); }
@@ -118,6 +122,19 @@ public:
                     const auto sounds=item.value("sounds",nlohmann::json::object());
                     s.switchSound=sounds.value("switch",""); s.startSound=sounds.value("start","");
                     s.motorSound=sounds.value("motor",""); s.completeSound=sounds.value("complete","");
+                    if (item.contains("enemyWaves")) {
+                        const auto& waves=item.at("enemyWaves");
+                        s.enemyWaveGroup=waves.at("groupId").get<std::string>();
+                        s.enemyWaveInterval=waves.at("interval").get<double>();
+                        if (s.enemyWaveGroup.find_first_not_of(" \t\r\n")==std::string::npos ||
+                            !std::isfinite(s.enemyWaveInterval) || s.enemyWaveInterval<=0 ||
+                            s.openDuration/s.enemyWaveInterval>1000)
+                            throw std::runtime_error("Invalid shutter enemy wave group/interval");
+                        const bool groupExists=std::any_of(data.at("spawnPoints").begin(),data.at("spawnPoints").end(),[&](const auto& point) {
+                            return point.value("activation",std::string{})=="Manual" && point.value("groupId",std::string{})==s.enemyWaveGroup;
+                        });
+                        if (!groupExists) throw std::runtime_error("Shutter enemy wave group has no Manual spawn points");
+                    }
                     const auto markers=item.value("progressEvents",nlohmann::json::array());
                     if (!markers.is_array()) throw std::runtime_error("Shutter progressEvents must be an array");
                     for (const auto& marker : markers) {

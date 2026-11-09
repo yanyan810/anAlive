@@ -4,6 +4,8 @@ Debugビルドの **Weapon System → Weapon Editor** から開きます。FPS�
 
 ## 操作
 
+Ammoタブの **Infinite Reserve (reload required)** は予備弾だけを無限にします。装弾数・射撃間隔・リロード時間は維持します。現在のSub武器はONです。
+
 1. 左ペインで武器を検索・選択します。New WeaponはIDとDisplay Nameを入力して作成、Duplicateは選択武器の性能をコピーします。作成・削除を含む変更はSaveまで下書きです。
 2. 中央（ショウルームでは右）の「Editing: ID / 名前」が左の選択武器と一致していることを確認し、General / Fire / Ammo / Reload / ADS・Accuracyで編集します。武器を選び直すと編集対象も切り替わり、開いているタブは維持されます。Typeは自由な文字列です。BurstおよびPerRoundの専用項目は対応モードのときだけ表示します。
 3. 右ペインでRPM（60 / fireInterval）、Pellet数、PelletあたりDamage、全Pellet命中時のDamage、Magazine内の発射回数、初期総弾数を確認します。Burstの内部間隔はRPMとは別表示です。
@@ -39,3 +41,5 @@ Initial Weaponは設定欄の「Game Start Settings」を開いて選択でき�
 - `tools/test-weapon-editor.ps1`：作成・複製、保存と検証、外部更新／I/O失敗、既存JSON保持、削除安全性、装備初期化、ImGui描画
 
 テストはgenerated配下のコピーを使用し、本番のweapons.jsonは変更しません。
+
+Game Start SettingsのInitial Weaponで **None (unarmed)** を選ぶと、開始時は武器を持ちません。保存値は `initialWeapon: ""`、現在の初期設定はこれです。床の配置武器は通常どおりEで拾えます。武器IDを指定した場合は、その武器を初期装備します。

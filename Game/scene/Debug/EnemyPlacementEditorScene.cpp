@@ -62,6 +62,10 @@ void EnemyPlacementEditorScene::LoadStage(GameApp& app,const std::string& id) {
     app.Dx()->WaitForGPU(); previews_.clear(); shutters_.clear();
     stageId_=id; level_=std::move(level); spawns_=std::move(spawns);
     LoadPlayerVisual(path);
+    stageSettingsBytes_=PlayerVisualSettings::ReadBytes(path);
+    stageDraft_=stageBaseline_=nlohmann::json::parse(stageSettingsBytes_);
+    stagePreview_=nullptr; selectedWeapon_.clear(); selectedTrigger_.clear(); selectedWave_.clear();
+    RefreshStageSettings();
     LoadCameraSequences(path);
     metadata_.Load(path,level_.model);
     for (const auto& warning:metadata_.warnings) warnings_.push_back(warning);
@@ -102,6 +106,13 @@ void EnemyPlacementEditorScene::LoadPlayerVisual(const std::string& path) {
         const auto data=nlohmann::json::parse(bytes);
         if (data.at("stage").at("id")!=stageId_) throw std::runtime_error("Player Visual stage ID mismatch");
         const auto settings=PlayerVisualSettings::FromStage(data);
+        if (stageDraft_.is_object() && stageDraft_.at("stage").at("id")==stageId_) {
+            auto previous=nlohmann::json::parse(stageSettingsBytes_),current=data;
+            previous.erase("playerVisual"); current.erase("playerVisual");
+            if (previous==current) stageSettingsBytes_=bytes;
+            if (data.contains("playerVisual")) stageDraft_["playerVisual"]=stageBaseline_["playerVisual"]=data.at("playerVisual");
+            else { stageDraft_.erase("playerVisual"); stageBaseline_.erase("playerVisual"); }
+        }
         originalStageBytes_=bytes; playerVisualSettings_=playerVisualBaseline_=settings;
         playerVisualLoadError_=false; playerVisualStatus_="読み込み完了。見た目だけに適用します。";
         SyncPlayerVisual();
@@ -115,10 +126,15 @@ void EnemyPlacementEditorScene::LoadPlayerVisual(const std::string& path) {
 bool EnemyPlacementEditorScene::SavePlayerVisual(const std::string& path) {
     if (playerVisualLoadError_ || !ready_) return false;
     std::string error;
+    const bool placementRevisionMatches=stageSettingsBytes_==originalStageBytes_;
     if (!playerVisualSettings_.SaveStage(path,stageId_,originalStageBytes_,error)) {
         playerVisualStatus_="保存失敗: "+error; return false;
     }
     originalStageBytes_=PlayerVisualSettings::ReadBytes(path); playerVisualBaseline_=playerVisualSettings_;
+    // Keep placement drafts while advancing the shared stage-file revision.
+    const auto saved=nlohmann::json::parse(originalStageBytes_);
+    stageDraft_["playerVisual"]=stageBaseline_["playerVisual"]=saved.at("playerVisual");
+    if (placementRevisionMatches) stageSettingsBytes_=originalStageBytes_;
     playerVisualStatus_="Player Visualのみ保存しました。敵配置は変更していません。";
     return true;
 }
@@ -238,6 +254,9 @@ EnemyPlacement* EnemyPlacementEditorScene::SelectedEnemy() {
     return nullptr;
 }
 Vector3 EnemyPlacementEditorScene::SelectedPosition() const {
+    if (!cameraSequenceMode_ && weaponPlacementMode_ && stageDraft_.is_object()) for (const auto& row:stageDraft_.at("weaponSpawnPoints")) if (row.at("id")==selectedWeapon_) {
+        const auto& p=row.at("position"); return {p[0].get<float>(),p[1].get<float>(),p[2].get<float>()};
+    }
     if (cameraSequenceMode_) {
         for (const auto& d:cameraDrafts_) if (d.id==selectedCameraSequence_)
             for (size_t i=0;i<d.points.size();++i) if (d.points[i].id==selectedCameraPoint_) return CameraPointPose(i).position;
@@ -282,9 +301,10 @@ void EnemyPlacementEditorScene::SwitchCamera(CameraMode mode) {
 }
 void EnemyPlacementEditorScene::StartTest(GameApp& app) {
     StopCameraPreview();
-    if (loadError_ || !ready_) return;
+    if (loadError_ || !ready_ || !RefreshStageSettings()) return;
     savedCameraPosition_=camera_.GetTranslate(); savedCameraRotation_=camera_.GetRotate(); beforeTestMode_=mode_;
     test_=std::make_unique<GameScene>(false,stageId_); test_->ConfigurePlacementTest(placements_);
+    test_->ConfigureStagePlacementTest(stageDraft_);
     test_->OnEnter(app);
     if (!test_->IsReadyForTransition()) { status_=test_->InitializationError(); StopTest(app); return; }
     status_="テスト中。F8 または「編集へ戻る」で終了します。未保存の編集内容を使用しています。";
@@ -312,6 +332,7 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
         if (action=="test") StartTest(app);
         else if (HandleCameraAction(action)) {}
         else if (action=="stop") StopTest(app);
+        else if (action=="saveStageSettings") SaveStageSettings(StagePath());
         else if (action=="savePlayerVisual") SavePlayerVisual(StagePath());
         else if (action=="reloadPlayerVisual") LoadPlayerVisual(StagePath());
         else if (action=="focusPlayerVisual") FocusPlayerVisual();
@@ -325,6 +346,7 @@ void EnemyPlacementEditorScene::Update(GameApp& app,float dt) {
         test_->Update(app,dt); test_->ClearNextScene_(); return;
     }
     if (!ready_) return;
+    if (stagePreview_!=stageDraft_) RefreshStageSettings();
     if (cameraPreviewActive_) {
         input.SetCameraControlEnabled(false);
 #ifdef USE_IMGUI
@@ -454,7 +476,7 @@ void EnemyPlacementEditorScene::DrawImGui(GameApp& app) {
 
 void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
 #ifdef USE_IMGUI
-    ImGui::TextUnformatted("Enemy Placement Editor");
+    ImGui::TextUnformatted("Stage Editor (F7)");
     ImGui::TextUnformatted(Dirty() ? "● 未保存の変更あり" : "読み込み・保存時の状態");
     ImGui::BeginDisabled(cameraPreviewActive_);
     if (ImGui::BeginCombo("ステージ",stageId_.c_str())) {
@@ -465,11 +487,13 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
         }
         ImGui::EndCombo();
     }
-    if (ImGui::RadioButton("Enemy Placement",!cameraSequenceMode_)) pendingAction_="enemyMode";
+    if (ImGui::RadioButton("敵配置",!cameraSequenceMode_ && !weaponPlacementMode_)) { weaponPlacementMode_=false; pendingAction_="enemyMode"; }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("武器配置",!cameraSequenceMode_ && weaponPlacementMode_)) { weaponPlacementMode_=true; pendingAction_="enemyMode"; }
     ImGui::SameLine();
     if (ImGui::RadioButton("Camera Sequence",cameraSequenceMode_)) pendingAction_="cameraMode";
     ImGui::EndDisabled();
-    if (!cameraSequenceMode_ && ImGui::CollapsingHeader("Player Visual",ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (!cameraSequenceMode_ && ImGui::CollapsingHeader("Player Visual")) {
         ImGui::Checkbox("仮プレイヤーモデルを表示",&showPlayerVisual_);
         ImGui::Checkbox("プレイヤーとモデルの正面矢印",&showPlayerDirections_);
         ImGui::BeginDisabled(!ready_ || playerVisualLoadError_ || cameraPreviewActive_);
@@ -492,9 +516,9 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
         ImGui::TextWrapped("%s",playerVisualStatus_.c_str());
     }
     if (cameraSequenceMode_) { DrawCameraSequenceControls(app); return; }
-    ImGui::TextWrapped("Tab: UI／カメラ操作　Esc: カーソル解放\nWASD: 移動　Q/E: 上下　Shift: 高速\nF: 選択へ移動　Alt＋視点操作: 選択を中心に回転\n俯瞰: ホイールでズーム・中ドラッグで平行移動\nCtrl＋クリック: 複数選択　Shift＋ドラッグ: 範囲選択\nF6: タイトル　F8: テスト終了");
+    if (ImGui::CollapsingHeader("操作ガイド")) ImGui::TextWrapped("Tab: UI／カメラ操作　Esc: カーソル解放\nWASD: 移動　Q/E: 上下　Shift: 高速\nF: 選択へ移動　Alt＋視点操作: 選択を中心に回転\n俯瞰: ホイールでズーム・中ドラッグで平行移動\nCtrl＋クリック: 複数選択　Shift＋ドラッグ: 範囲選択\nF6: タイトル　F8: テスト終了");
     ImGui::Text("操作: %s",app.GetInput()->IsCameraControlEnabled() ? "カメラ" : "UI・配置選択");
-    ImGui::SeparatorText("カメラ");
+    if (ImGui::CollapsingHeader("カメラ・階層")) {
     if (ImGui::RadioButton("自由",mode_==CameraMode::Free)) SwitchCamera(CameraMode::Free);
     ImGui::SameLine(); if (ImGui::RadioButton("FPS",mode_==CameraMode::FPS)) SwitchCamera(CameraMode::FPS);
     ImGui::SameLine(); if (ImGui::RadioButton("俯瞰",mode_==CameraMode::Top)) SwitchCamera(CameraMode::Top);
@@ -516,8 +540,9 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
         }
     }
     ImGui::SameLine(); if (ImGui::RadioButton("全階",floor_==0)) { floor_=0; ApplyVisibility(); }
+    }
     ImGui::BeginDisabled(loadError_ || !ready_);
-    if (ImGui::Button("保存")) saveModal_=true;
+    if (ImGui::Button("敵の個別配置を保存")) saveModal_=true;
     ImGui::EndDisabled(); ImGui::SameLine();
     if (ImGui::Button("再読み込み・編集前へ戻す")) RequestAction("reload");
     ImGui::BeginDisabled(loadError_ || !ready_);
@@ -526,6 +551,8 @@ void EnemyPlacementEditorScene::DrawControls(GameApp& app) {
     if (ImGui::Button("タイトルへ戻る")) RequestAction("title");
     ImGui::TextWrapped("%s",status_.c_str());
     if (!ready_) return;
+    DrawStagePlacementControls(app);
+    if (weaponPlacementMode_) return;
     if (ImGui::CollapsingHeader("ステージ表示設定")) {
         bool changed=false;
         changed=ImGui::Checkbox("屋根を表示",&showRoof_) || changed;
@@ -711,6 +738,7 @@ void EnemyPlacementEditorScene::DrawViewportTools(GameApp& app) {
         }
     }
     draw->PushClipRect(lo,hi,true);
+    DrawStagePlacementMarkers(app);
     if (showPlayerDirections_ && VisibleFloor(metadata_.FloorAt(level_.playerPosition.y))) {
         const auto arrow=[&](const Vector3& origin,const Vector3& direction,ImU32 color,const char* label) {
             const auto tip=origin+direction*1.8f;
@@ -735,6 +763,7 @@ void EnemyPlacementEditorScene::DrawViewportTools(GameApp& app) {
             line({x-30*size,y,z+step},{x+30*size,y,z+step},IM_COL32(110,160,170,80));
         }
     }
+    if (weaponPlacementMode_) { draw->PopClipRect(); return; }
     struct Marker { std::string spawn,id; Vector3 position; };
     std::vector<Marker> markers;
     for (const auto& point:spawns_.Points()) {

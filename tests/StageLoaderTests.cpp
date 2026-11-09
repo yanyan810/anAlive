@@ -24,11 +24,34 @@ int main() {
         json hotel; std::ifstream(hotelPath)>>hotel;
         StageLoader shutterLoader;
         assert(shutterLoader.Load(hotelPath) && shutterLoader.ValidateAssets("../../resources"));
+        for (int fps:{30,60,144}) {
+            auto timed=shutterLoader;
+            const auto& def=timed.shutters.shutters[0].definition;
+            assert(timed.shutters.TryInteract(def.buttonPosition-Vector3{0,1.25f,0})); timed.shutters.TakeEvents();
+            int waves=0,completed=0;
+            const int frames=static_cast<int>(def.openDuration)*fps;
+            for (int frame=1;frame<=frames;++frame) {
+                timed.shutters.Update(1.f/fps,timed.collision);
+                for (const auto& e:timed.shutters.TakeEvents()) {
+                    if (e.type==ShutterEventType::EnemyWave) {
+                        ++waves; assert(e.event=="hotel_shutter_wave");
+                        assert(std::abs(frame/static_cast<double>(fps)-waves*10)<.05);
+                    }
+                    if (e.type==ShutterEventType::Completed) ++completed;
+                }
+            }
+            assert(waves==6 && completed==1 && timed.shutters.shutters[0].state==ShutterState::Open);
+            timed.shutters.Update(100,timed.collision); assert(timed.shutters.TakeEvents().empty());
+            timed.shutters.Reset(timed.collision); assert(timed.shutters.shutters[0].nextEnemyWave==1);
+        }
         const auto rejectShutter=[&](const json& data) {
             Save(data); assert(!shutterLoader.Load("stage-loader-test.json"));
-            assert(shutterLoader.shutters.shutters.size()==1 && shutterLoader.shutters.shutters[0].definition.openDuration==30);
+            assert(shutterLoader.shutters.shutters.size()==1 && shutterLoader.shutters.shutters[0].definition.openDuration==hotel["shutters"][0]["openDuration"].get<double>());
         };
         auto invalid=hotel; invalid["shutters"][0]["openDuration"]=0; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["enemyWaves"]["interval"]=0; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["enemyWaves"]["interval"]=.000001; rejectShutter(invalid);
+        invalid=hotel; invalid["shutters"][0]["enemyWaves"]["groupId"]="missing"; rejectShutter(invalid);
         invalid=hotel; invalid["shutters"][0]["openDistance"]=-1; rejectShutter(invalid);
         invalid=hotel; invalid["shutters"][0]["interactionDistance"]=0; rejectShutter(invalid);
         invalid=hotel; invalid["shutters"][0]["collider"]["scale"]={0,1,1}; rejectShutter(invalid);

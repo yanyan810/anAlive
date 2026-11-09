@@ -2,7 +2,7 @@
 
 敵の死亡時は、残っている全部位が面の破片になって外側へ飛び散り、重力で落下します。死亡演出はBreak Modeの設定によらずFace方式を使用します。Local HP・Shared HPによる死亡とBomberの起爆は通常ゲームと共通の死亡処理を使用します。Sharedのみ／破壊不可の部位も死亡時には崩れ、すでに飛んだ部位は再生成しません。Freeze Enemies中でも死亡演出は動き、F5のリセットで全身が復元されます。
 
-Debug x64で起動し、F1またはESCでマウスを出して **FPS Controls → Open Showroom** を押します。Showroomは独立したシーンとして登録し、射撃・武器・敵の実装はGameSceneと共用しています。ReleaseではShowroomを登録せず、移動ボタンや専用ImGuiも表示しません。本編の起動先はGameのままです。
+Debug／Developmentのタイトルで **F3** または **Showroom F3** を押します。本編では **FPS Controls → Open Showroom** からも入れます。Showroomは独立したシーンとして登録し、射撃・武器・敵の実装はGameSceneと共用しています。ReleaseではShowroomを登録せず、移動ボタンや専用ImGuiも表示しません。本編の起動先はGameのままです。
 
 ## 配置
 
@@ -13,6 +13,8 @@ Debug x64で起動し、F1またはESCでマウスを出して **FPS Controls �
 敵は左からNormal / Ranged / Fast / Tank / Bomber。中心間隔4m、足元Y=0、初期向きはプレイヤー側です。EnemySpawnの配置データを直接読み、入場時に全員を生成します。ShowroomではTriggerの更新・Goal判定を実行しません。
 
 別個体の **Normal Test**（ID: `normal_test`）を左奥の **(-14, 0, 24)** に配置しています。`resources/enemy/boss/normal.test.enemy.json` を使うNormal型で、既存5体の列から離してあります。
+
+武器エディター左の **Normal Test (.enemy.json)** で `resources/enemy` 以下の部位アセットを選べます。試射中は **Tab** で同じ欄を開閉できます。欄を開いている間は試射を一時停止し、マウスを解放します。Blenderで同じファイルへ上書きした場合は **Reload JSON** を押します。切り替えや再読込の成功時にショウルームをリセットし、選んだ部位アセットは入場中のNormal Testに適用します。
 
 現在のWeapon Editor画面には **Reset Showroom (F5)** と **Freeze Enemies** を表示します。試射中も **F5** でリセットできます。敵を元の位置・HP・部位で再生成し、プレイヤーHP・現在の武器の弾薬・Pickupを回復、飛翔中の弾と射撃／命中記録を消去します。現在位置、AI静止設定、未保存の武器編集内容は維持します。敵データは入場時に読み込んだ内容で復元します。
 

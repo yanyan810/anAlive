@@ -11,6 +11,8 @@ inline void RunCameraPathEditorTests(GameApp& app,const std::function<void(const
     const auto oldCamera=editor->camera_; const auto oldMode=editor->mode_; const auto oldDraft=editor->cameraDrafts_;
     const auto originalStage=CameraSequenceOverrides::Read(editor->StagePath()),originalEnemies=CameraSequenceOverrides::Read(editor->PlacementPath());
     const auto oldPlacements=editor->placements_.Json(); const auto oldVisual=editor->playerVisualSettings_.yawOffsetDegrees;
+    // The Hold regression uses the exported fixture, independent of user overrides.
+    editor->cameraDrafts_=editor->blenderCameraDrafts_;
     editor->SetCameraSequenceMode(true); editor->SetPathTool(EnemyPlacementEditorScene::PathTool::Draw);
     editor->drawHeight_=14; editor->zoom_=18; editor->camera_.SetOrthographic(true,18); editor->camera_.SetTranslate({31,42,17}); editor->camera_.Update(); frame();
     const auto pixel=[&](Vector3 position) {

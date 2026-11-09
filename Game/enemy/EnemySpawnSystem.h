@@ -22,6 +22,7 @@ struct EnemySpawnPoint {
     // Missing activation in old maps means location/lottery only; never auto-spawn.
     SpawnActivation activation = SpawnActivation::Legacy;
     std::string enemyId, groupId;
+    bool pursueOnSpawn=false;
     std::vector<EnemySpawnCount> enemyComposition; // ordered, exact counts (not weights)
     int spawnCount = 1, maxAlive = 1;
     SpawnMode mode = SpawnMode::Sequential;
@@ -80,7 +81,7 @@ public:
     using SpawnEnemy = std::function<uint64_t(const EnemySpawnPoint&, const std::string&, const std::string&)>;
     using IsAlive = std::function<bool(uint64_t)>;
     // Transactional validation: bad data never leaves a partially configured map.
-    bool Load(const std::string& path, const EnemyDefinitions& definitions = EnemyDefinitions{});
+    bool Load(const std::string& path, const EnemyDefinitions& definitions = EnemyDefinitions{}, const nlohmann::json* draft = nullptr);
     // Replaces placement policy, never activation, timing, maximum-alive or triggers.
     void SetPlacements(const EnemyPlacements& placements) {
         placements_=placements; points_=basePoints_; placementWarnings_.clear();
@@ -129,6 +130,11 @@ public:
     bool ActivateSpawn(const std::string& id) {
         for (auto& point : points_) if (point.id == id) return Activate(point, elapsedTime_);
         return false;
+    }
+    size_t ActivateManualGroup(const std::string& id) {
+        size_t count=0;
+        for (auto& point:points_) if (point.activation==SpawnActivation::Manual && point.groupId==id && Activate(point,elapsedTime_)) ++count;
+        return count;
     }
     size_t ActivateGroup(const std::string& id) {
         return ActivateGroupAt(id, elapsedTime_);

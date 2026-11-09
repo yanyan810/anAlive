@@ -1,5 +1,5 @@
 {
-  "initialWeapon": "LMG",
+  "initialWeapon": "",
   "weapons": [
     {
       "adsFov": 50.0,
@@ -35,7 +35,8 @@
       "reserveAmmo": 60,
       "slot": "Sub",
       "type": "Pistol",
-      "weight": 1
+      "weight": 1,
+      "infiniteReserveAmmo": true
     },
     {
       "adsFov": 45.0,
@@ -298,7 +299,8 @@
       "reserveAmmo": 45,
       "slot": "Sub",
       "type": "Pistol",
-      "weight": 1.0
+      "weight": 1.0,
+      "infiniteReserveAmmo": true
     },
     {
       "adsFov": 10.0,
@@ -382,7 +384,8 @@
       "reserveAmmo": 60,
       "slot": "Sub",
       "type": "Pistol",
-      "weight": 1.0
+      "weight": 1.0,
+      "infiniteReserveAmmo": true
     },
     {
       "adsFov": 60.0,
@@ -424,7 +427,8 @@
       "reserveAmmo": 20,
       "slot": "Sub",
       "type": "Shotgun",
-      "weight": 1.0
+      "weight": 1.0,
+      "infiniteReserveAmmo": true
     },
     {
       "adsFov": 60.0,
@@ -466,7 +470,8 @@
       "reserveAmmo": 60,
       "slot": "Sub",
       "type": "Pistol",
-      "weight": 1.0
+      "weight": 1.0,
+      "infiniteReserveAmmo": true
     },
     {
       "adsFov": 60.0,

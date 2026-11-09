@@ -25,10 +25,12 @@ public:
             std::string_view{"NO WEAPON"} : std::string_view{weapon.Definition().displayName};
         font_.DrawText(name, x, height - 136 * scale,
             std::min(20.0f, 440.0f / static_cast<float>(name.size())) * scale, {1, 1, 1, 1});
-        font_.DrawText(std::to_string(weapon.Magazine()) + " / " + std::to_string(weapon.Reserve()),
-            x, height - 99 * scale, 22 * scale, {1, .85f, .35f, 1});
-        font_.DrawText(weapon.Reloading() ? "RELOADING" : "R : RELOAD",
-            x, height - 60 * scale, 16 * scale, {.75f, .85f, 1, 1});
+        if (!weapon.Definition().id.empty()) {
+            font_.DrawText(std::to_string(weapon.Magazine()) + " / " + (weapon.InfiniteReserveAmmo() ? std::to_string(weapon.Definition().magazineSize)+"  RES INF" : std::to_string(weapon.Reserve())),
+                x, height - 99 * scale, 22 * scale, {1, .85f, .35f, 1});
+            font_.DrawText(weapon.Reloading() ? "RELOADING" : "R : RELOAD",
+                x, height - 60 * scale, 16 * scale, {.75f, .85f, 1, 1});
+        }
         if (nearby) {
             const std::string_view prompt = "PRESS E TO PICK UP";
             font_.DrawText(prompt, width * .5f - static_cast<float>(prompt.size()) * 8 * scale,

@@ -353,6 +353,30 @@ inline void RunScreenTransitionTests(GameApp& app) {
     Check(!scenes.IsTransitioning() && scenes.Fade().Alpha()==0, "Clear title fade did not complete");
     CheckCompletedTransition(app, "Title");
 
+#if defined(USE_IMGUI) && (defined(_DEBUG) || defined(DEVELOPMENT_BUILD))
+    Check(scenes.TransitionTo("Showroom"), "Title to Showroom request rejected");
+    const auto drawShowroom= [&] {
+        app.ImGui()->Begin();
+        app.Draw();
+        if (scenes.CurrentName()=="Showroom") {
+            const auto* panel=ImGui::FindWindowByName("Screen Transition");
+            Check(!panel || !panel->Active, "Transition debug panel overlaps Showroom");
+        }
+    };
+    for (int i=0;i<24 && scenes.IsTransitioning();++i) {
+        scenes.Update(app,.25f);
+        drawShowroom();
+    }
+    auto* showroom=dynamic_cast<GameScene*>(scenes.Current());
+    Check(showroom && scenes.CurrentName()=="Showroom" && !scenes.IsTransitioning(), "Showroom fade did not complete");
+    const auto* editor=ImGui::FindWindowByName("Weapon Editor");
+    Check(editor && editor->Active, "Showroom weapon editor did not render");
+    showroom->weaponEditor_.mode=WeaponEditorMode::Test;
+    drawShowroom();
+    const auto* test=ImGui::FindWindowByName("Weapon Test");
+    Check(test && test->Active, "Showroom weapon test did not render");
+#endif
+
     const auto a = std::make_shared<Probe>(), b = std::make_shared<Probe>();
     b->readyAfter = 3; b->recursive = true;
     scenes.Register("TransitionProbeA", [a] { return std::make_unique<ProbeScene>(a); });

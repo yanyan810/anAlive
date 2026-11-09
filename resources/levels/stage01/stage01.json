@@ -1,24 +1,195 @@
 {
-  "version": 1,
-  "stage": {
-    "id": "stage01",
-    "model": "levels/stage01/stage01.gltf"
-  },
-  "playerSpawn": {
-    "position": [
-      3.0,
-      0.0,
-      -6.0
-    ],
-    "rotation": [
-      0.0,
-      -0.0,
-      0.0
-    ]
-  },
+  "cameraSequences": [
+    {
+      "enabled": true,
+      "id": "start",
+      "points": [
+        {
+          "duration": 0.5,
+          "fov": 60.0,
+          "id": "StartCamera_00",
+          "interpolation": "Hold",
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "order": 0,
+          "playerEye": false,
+          "position": [
+            5.800000190734863,
+            1.7999999523162842,
+            -2.5
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "LookAtPlayer"
+        },
+        {
+          "duration": 0.6499999761581421,
+          "fov": 60.0,
+          "id": "StartCamera_01",
+          "interpolation": "CatmullRom",
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "order": 1,
+          "playerEye": false,
+          "position": [
+            5.800000190734863,
+            1.7999999523162842,
+            -2.5
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "LookAtPlayer"
+        },
+        {
+          "duration": 0.699999988079071,
+          "fov": 60.0,
+          "id": "StartCamera_02",
+          "interpolation": "CatmullRom",
+          "lookAtOffset": [
+            0,
+            1.100000023841858,
+            0
+          ],
+          "order": 2,
+          "playerEye": false,
+          "position": [
+            6.0,
+            1.899999976158142,
+            -5.0
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "LookAtPlayer"
+        },
+        {
+          "duration": 0.6499999761581421,
+          "fov": 60.0,
+          "id": "StartCamera_03",
+          "interpolation": "CatmullRom",
+          "lookAtOffset": [
+            0,
+            1.2999999523162842,
+            0
+          ],
+          "order": 3,
+          "playerEye": false,
+          "position": [
+            5.199999809265137,
+            1.899999976158142,
+            -7.800000190734863
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "LookAtPlayer"
+        },
+        {
+          "duration": 1.0,
+          "fov": 60.0,
+          "id": "StartCamera_04",
+          "interpolation": "SmoothStep",
+          "lookAtOffset": [
+            0,
+            1.600000023841858,
+            0
+          ],
+          "order": 4,
+          "playerEye": false,
+          "position": [
+            3.4000000953674316,
+            1.75,
+            -8.199999809265137
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "LookAtPlayer"
+        },
+        {
+          "duration": 0.5,
+          "fov": 60.0,
+          "id": "StartCamera_05",
+          "interpolation": "SmoothStep",
+          "lookAtOffset": [
+            0,
+            1.600000023841858,
+            0
+          ],
+          "order": 5,
+          "playerEye": false,
+          "position": [
+            3.0,
+            1.600000023841858,
+            -6.949999809265137
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "Manual"
+        },
+        {
+          "duration": 0.0,
+          "fov": 60.0,
+          "id": "StartCamera_06",
+          "interpolation": "Linear",
+          "lookAtOffset": [
+            0,
+            1.600000023841858,
+            0
+          ],
+          "order": 6,
+          "playerEye": true,
+          "position": [
+            3.0,
+            1.600000023841858,
+            -6.0
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "rotationMode": "Manual"
+        }
+      ]
+    }
+  ],
   "colliders": [
     {
       "id": "COL_Building",
+      "localBounds": {
+        "max": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
+        ]
+      },
       "position": [
         -10.0,
         2.0,
@@ -33,22 +204,22 @@
         2.0,
         2.0,
         2.0
-      ],
+      ]
+    },
+    {
+      "id": "Floor",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Floor",
+      },
       "position": [
         3.0,
         -0.30000001192092896,
@@ -63,22 +234,22 @@
         17.0,
         0.30000001192092896,
         38.0
-      ],
+      ]
+    },
+    {
+      "id": "Wall_End",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_End",
+      },
       "position": [
         3.0,
         3.0,
@@ -93,22 +264,22 @@
         17.0,
         3.0,
         0.30000001192092896
-      ],
+      ]
+    },
+    {
+      "id": "Wall_Inner",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_Inner",
+      },
       "position": [
         12.0,
         3.0,
@@ -123,22 +294,22 @@
         4.0,
         3.0,
         0.30000001192092896
-      ],
+      ]
+    },
+    {
+      "id": "Wall_Left",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_Left",
+      },
       "position": [
         -14.300000190734863,
         3.0,
@@ -153,22 +324,22 @@
         0.30000001192092896,
         3.0,
         38.0
-      ],
+      ]
+    },
+    {
+      "id": "Wall_Right",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_Right",
+      },
       "position": [
         20.299999237060547,
         3.0,
@@ -183,22 +354,22 @@
         0.30000001192092896,
         3.0,
         38.0
-      ],
+      ]
+    },
+    {
+      "id": "Wall_Rotated",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_Rotated",
+      },
       "position": [
         -7.0,
         3.0,
@@ -213,22 +384,22 @@
         4.5,
         3.0,
         0.30000001192092896
-      ],
+      ]
+    },
+    {
+      "id": "Wall_Start",
       "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
         "max": [
           1.0,
           1.0,
           1.0
+        ],
+        "min": [
+          -1.0,
+          -1.0,
+          -1.0
         ]
-      }
-    },
-    {
-      "id": "Wall_Start",
+      },
       "position": [
         3.0,
         3.0,
@@ -243,27 +414,51 @@
         17.0,
         3.0,
         0.30000001192092896
-      ],
-      "localBounds": {
-        "min": [
-          -1.0,
-          -1.0,
-          -1.0
-        ],
-        "max": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      }
+      ]
     }
   ],
   "enemyRandom": {
-    "useFixedSeed": false,
-    "seed": 12345
+    "seed": 12345,
+    "useFixedSeed": false
+  },
+  "goalTriggers": [
+    {
+      "id": "Goal_Main",
+      "position": [
+        3.0,
+        1.0,
+        52.0
+      ],
+      "size": [
+        12.0,
+        4.0,
+        4.0
+      ]
+    }
+  ],
+  "playerSpawn": {
+    "position": [
+      3.0,
+      0.0,
+      -6.0
+    ],
+    "rotation": [
+      0.0,
+      -0.0,
+      0.0
+    ]
+  },
+  "playerVisual": {
+    "yawOffsetDegrees": 90
   },
   "spawnPoints": [
     {
+      "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 1.0
+        }
+      ],
       "id": "SP_A_01",
       "position": [
         -7.0,
@@ -272,17 +467,17 @@
       ],
       "rotation": [
         -0.0,
-        1.570796251296997,
+        -1.5707963705062866,
         0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 1.0
-        }
       ]
     },
     {
+      "enemyPool": [
+        {
+          "id": "ranged",
+          "weight": 1.0
+        }
+      ],
       "id": "SP_A_02",
       "position": [
         -2.0,
@@ -291,17 +486,17 @@
       ],
       "rotation": [
         -0.0,
-        1.570796251296997,
+        -1.5707963705062866,
         0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "ranged",
-          "weight": 1.0
-        }
       ]
     },
     {
+      "enemyPool": [
+        {
+          "id": "fast",
+          "weight": 1.0
+        }
+      ],
       "id": "SP_A_03",
       "position": [
         3.0,
@@ -310,17 +505,17 @@
       ],
       "rotation": [
         -0.0,
-        1.570796251296997,
+        -1.5707963705062866,
         0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "fast",
-          "weight": 1.0
-        }
       ]
     },
     {
+      "enemyPool": [
+        {
+          "id": "tank",
+          "weight": 1.0
+        }
+      ],
       "id": "SP_A_04",
       "position": [
         8.0,
@@ -329,17 +524,17 @@
       ],
       "rotation": [
         -0.0,
-        1.570796251296997,
+        -1.5707963705062866,
         0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "tank",
-          "weight": 1.0
-        }
       ]
     },
     {
+      "enemyPool": [
+        {
+          "id": "bomber",
+          "weight": 1.0
+        }
+      ],
       "id": "SP_A_05",
       "position": [
         13.0,
@@ -348,17 +543,33 @@
       ],
       "rotation": [
         -0.0,
-        1.570796251296997,
+        -1.5707963705062866,
         0.0
-      ],
+      ]
+    },
+    {
       "enemyPool": [
+        {
+          "id": "normal",
+          "weight": 5.0
+        },
+        {
+          "id": "ranged",
+          "weight": 2.0
+        },
+        {
+          "id": "fast",
+          "weight": 2.0
+        },
+        {
+          "id": "tank",
+          "weight": 1.0
+        },
         {
           "id": "bomber",
           "weight": 1.0
         }
-      ]
-    },
-    {
+      ],
       "id": "SP_B_01",
       "position": [
         -6.0,
@@ -369,7 +580,9 @@
         -0.0,
         1.570796251296997,
         0.0
-      ],
+      ]
+    },
+    {
       "enemyPool": [
         {
           "id": "normal",
@@ -391,9 +604,7 @@
           "id": "bomber",
           "weight": 1.0
         }
-      ]
-    },
-    {
+      ],
       "id": "SP_B_02",
       "position": [
         0.0,
@@ -404,7 +615,9 @@
         -0.0,
         1.570796251296997,
         0.0
-      ],
+      ]
+    },
+    {
       "enemyPool": [
         {
           "id": "normal",
@@ -426,9 +639,7 @@
           "id": "bomber",
           "weight": 1.0
         }
-      ]
-    },
-    {
+      ],
       "id": "SP_B_03",
       "position": [
         6.0,
@@ -439,7 +650,9 @@
         -0.0,
         1.570796251296997,
         0.0
-      ],
+      ]
+    },
+    {
       "enemyPool": [
         {
           "id": "normal",
@@ -461,9 +674,7 @@
           "id": "bomber",
           "weight": 1.0
         }
-      ]
-    },
-    {
+      ],
       "id": "SP_B_04",
       "position": [
         12.0,
@@ -474,87 +685,70 @@
         -0.0,
         1.570796251296997,
         0.0
-      ],
-      "enemyPool": [
-        {
-          "id": "normal",
-          "weight": 5.0
-        },
-        {
-          "id": "ranged",
-          "weight": 2.0
-        },
-        {
-          "id": "fast",
-          "weight": 2.0
-        },
-        {
-          "id": "tank",
-          "weight": 1.0
-        },
-        {
-          "id": "bomber",
-          "weight": 1.0
-        }
       ]
     }
   ],
   "spawnTriggers": [
     {
       "id": "Trigger_A",
+      "initialDelay": 0.0,
+      "maxAlive": 5,
+      "oneShot": true,
       "position": [
         3.0,
         1.0,
         4.0
       ],
+      "selection": "RoundRobin",
       "size": [
         24.0,
         4.0,
         4.0
       ],
+      "spawnCount": 5,
+      "spawnInterval": 0.5,
       "spawnPointIds": [
         "SP_A_01",
         "SP_A_02",
         "SP_A_03",
         "SP_A_04",
         "SP_A_05"
-      ],
-      "spawnCount": 5,
-      "spawnInterval": 0.5,
-      "initialDelay": 0.0,
-      "maxAlive": 5,
-      "selection": "RoundRobin",
-      "oneShot": true
+      ]
     },
     {
       "id": "Trigger_B",
+      "initialDelay": 2.0,
+      "maxAlive": 4,
+      "oneShot": true,
       "position": [
         3.0,
         1.0,
         26.0
       ],
+      "selection": "RoundRobin",
       "size": [
         24.0,
         4.0,
         4.0
       ],
+      "spawnCount": 8,
+      "spawnInterval": 0.5,
       "spawnPointIds": [
         "SP_B_01",
         "SP_B_02",
         "SP_B_03",
         "SP_B_04"
-      ],
-      "spawnCount": 8,
-      "spawnInterval": 0.5,
-      "initialDelay": 2.0,
-      "maxAlive": 4,
-      "selection": "RoundRobin",
-      "oneShot": true
+      ]
     }
   ],
+  "stage": {
+    "id": "stage01",
+    "model": "levels/stage01/stage01.gltf"
+  },
+  "version": 1,
   "weaponRandom": {
-    "useFixedSeed": false,
-    "seed": 12345
+    "seed": 12345,
+    "useFixedSeed": false
   },
   "weaponSpawnPoints": [
     {
@@ -650,197 +844,5 @@
         }
       ]
     }
-  ],
-  "goalTriggers": [
-    {
-      "id": "Goal_Main",
-      "position": [
-        3.0,
-        1.0,
-        52.0
-      ],
-      "size": [
-        12.0,
-        4.0,
-        4.0
-      ]
-    }
-  ],
-  "cameraSequences": [
-    {
-      "id": "start",
-      "enabled": true,
-      "points": [
-        {
-          "id": "StartCamera_00",
-          "order": 0,
-          "position": [
-            5.800000190734863,
-            1.7999999523162842,
-            -2.5
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.5,
-          "interpolation": "Hold",
-          "rotationMode": "LookAtPlayer",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.0,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_01",
-          "order": 1,
-          "position": [
-            5.800000190734863,
-            1.7999999523162842,
-            -2.5
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.6499999761581421,
-          "interpolation": "CatmullRom",
-          "rotationMode": "LookAtPlayer",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.0,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_02",
-          "order": 2,
-          "position": [
-            6.0,
-            1.899999976158142,
-            -5.0
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.699999988079071,
-          "interpolation": "CatmullRom",
-          "rotationMode": "LookAtPlayer",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.100000023841858,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_03",
-          "order": 3,
-          "position": [
-            5.199999809265137,
-            1.899999976158142,
-            -7.800000190734863
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.6499999761581421,
-          "interpolation": "CatmullRom",
-          "rotationMode": "LookAtPlayer",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.2999999523162842,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_04",
-          "order": 4,
-          "position": [
-            3.4000000953674316,
-            1.75,
-            -8.199999809265137
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 1.0,
-          "interpolation": "SmoothStep",
-          "rotationMode": "LookAtPlayer",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.600000023841858,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_05",
-          "order": 5,
-          "position": [
-            3.0,
-            1.600000023841858,
-            -6.949999809265137
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.5,
-          "interpolation": "SmoothStep",
-          "rotationMode": "Manual",
-          "fov": 60.0,
-          "playerEye": false,
-          "lookAtOffset": [
-            0,
-            1.600000023841858,
-            0
-          ]
-        },
-        {
-          "id": "StartCamera_06",
-          "order": 6,
-          "position": [
-            3.0,
-            1.600000023841858,
-            -6.0
-          ],
-          "rotation": [
-            0.0,
-            -0.0,
-            0.0
-          ],
-          "duration": 0.0,
-          "interpolation": "Linear",
-          "rotationMode": "Manual",
-          "fov": 60.0,
-          "playerEye": true,
-          "lookAtOffset": [
-            0,
-            1.600000023841858,
-            0
-          ]
-        }
-      ]
-    }
-  ],
-  "playerVisual": {"yawOffsetDegrees":90}
+  ]
 }

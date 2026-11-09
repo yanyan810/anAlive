@@ -41,7 +41,7 @@ int main() {
     assert(state.spawns.Load("../../resources/levels/fps_spawns.json",definitions));
     assert(state.stage.LoadGoals("../../resources/levels/fps_spawns.json"));
     WeaponSystem weapons; assert(weapons.Load("../../resources/Data/weapons.json","../../resources/levels/fps_spawns.json"));
-    state.weapon.Equip(*weapons.InitialWeapon());
+    state.weapon.Equip(*weapons.Find("pistol")); // This timeline test needs an explicitly armed fixture.
     state.bullets.Spawn(MakeEnemyProjectile(*definitions.Find("ranged"),{0,1,0},{0,0,10}));
     state.fragment.Initialize({{0,0,0},{1,1,1}},{0,3,0},{},{1,1,1},{1,0,0},EnemyPartType::Head,{1,1,1},{});
     history.Push(state);

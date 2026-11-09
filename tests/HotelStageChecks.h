@@ -95,10 +95,10 @@ inline void Validate(const std::string& resources,bool checkAllFrameRates=true) 
     WeaponSystem weapons;
     StageProgress progress;
     Check(spawns.Load(path,definitions) && weapons.Load(resources+"/Data/weapons.json",path) && progress.LoadGoals(path),"Existing systems cannot load hotel");
-    Check(spawns.Points().size()==6 && spawns.Triggers().empty() && spawns.Groups().empty(),"Six reserved spawns, no active schedule");
+    Check(spawns.Points().size()==16 && spawns.Triggers().empty(),"Hotel spawn points/triggers");
     int emitted=0;
     spawns.Update(300,{22.5f,0,18},[&](const EnemySpawnPoint&,const std::string&){++emitted; return uint64_t{1};},[](uint64_t){return false;});
-    Check(emitted==0,"Placeholder spawns activated");
+    Check(emitted==15,"Stage start must contain eight 3F and seven 2F enemies; manual waves must wait");
     Check(progress.Goals().size()==1,"Outdoor goal missing");
     // Starting room walls obscure the west staircase; long frame movement must
     // also stop at each guest partition, corridor wall and outer facade.
@@ -141,10 +141,14 @@ inline void Validate(const std::string& resources,bool checkAllFrameRates=true) 
         Check(Near(position.y,12),"Reverse route did not return to 3F");
         progress.Reset();
     }
-    // The second ballroom entrance is a usable alternate route.
+    // The stair-lobby entrance is closed; the foyer entrance is the route into the hall.
     StageWorld::PlayerMotion alternateMotion;
     Vector3 alternate{9,6,13};
     Walk(level.collision,alternate,{9,6,10},60,alternateMotion);
+    const auto sealed=level.collision.MovePlayer(alternate,{16,6,10},1,alternateMotion);
+    Check(sealed.x<11.5f,"Sealed stair-lobby entrance remained usable");
+    Walk(level.collision,alternate,{9,6,26},60,alternateMotion);
+    Walk(level.collision,alternate,{16,6,26},60,alternateMotion);
     Walk(level.collision,alternate,{16,6,10},60,alternateMotion);
     // Every accessible support space has a real doorway, rather than a named cavity.
     const std::vector<Vector3> supportRoute={{22.5f,6,10},{22.5f,6,3},{22.5f,6,10},
@@ -154,7 +158,8 @@ inline void Validate(const std::string& resources,bool checkAllFrameRates=true) 
     for (const auto& target : std::vector<Vector3>{{8,0,10},{8,0,18},{8,0,26},{8,0,18}})
         Walk(level.collision,alternate,target,60,alternateMotion);
     for (const auto& point : spawns.Points()) {
-        const bool upper=point.id.find("_Upper_")!=std::string::npos;
+        if (point.position.y!=0 || point.activation!=SpawnActivation::Manual || (point.position.z>=6 && point.position.z<=30)) continue;
+        const bool upper=point.position.z<6;
         const float doorway=upper ? 6.0f : 30.0f;
         const float sign=upper ? -1.0f : 1.0f;
         Vector3 start{point.position.x,0,doorway-sign*2};
@@ -183,7 +188,7 @@ inline void Validate(const std::string& resources,bool checkAllFrameRates=true) 
         const auto guarded=level.collision.MovePlayer(guard,{guard.x,guard.y,8},1,guardMotion);
         Check(guarded.z>10.5f && Near(guarded.y,guard.y),"Upper landing allowed fall into other flight");
     }
-    std::cout<<"Hotel PASS: assets, Room308 spawn, 8 guest rooms and bathrooms, linen/cleaning/lift hall, sealed lift, hidden stair, guest walls, 6 dormant spawns, down/up full route at 30/60/144 FPS, "
-        "alternate entrance, player-only gates/enemy exits, gravity, walls, shared slab ceilings, outdoor goal.\n";
+    std::cout<<"Hotel PASS: assets/mesh-collider agreement, Room308 spawn, 8 guest rooms and bathrooms, linen/cleaning/lift hall, sealed lift, hidden stair, guest walls, 15 initial enemies and manual reinforcements, down/up full route at 30/60/144 FPS, "
+        "sealed lobby/usable foyer entrance, player-only gates/enemy exits, gravity, walls, shared slab ceilings, outdoor goal.\n";
 }
 }

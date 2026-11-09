@@ -8,7 +8,7 @@
 - `resources/levels/fps_spawns.json`：各SpawnPointのenemyPool。初期重みはNormal 5 / Fast 2 / Ranged 2 / Tank 1 / Bomber 1です。pool省略時はnormal。明示された空poolや全weight=0は読み込みエラーです。
 - 任意のルート設定 `"enemyRandom": { "useFixedSeed": true, "seed": 12345 }` で敵スポーン乱数を固定できます。同一の更新・スポーン順序で再現します。武器の乱数とは独立しています。
 - 定義とスポーンのロードはそれぞれ検証完了後に置き換えます。失敗時は直前の有効状態を維持します。シーン初期化時に敵定義が不正なら敵スポーンを開始せず、デバッガへエラーを出力します。
-- preferredRangeは保持し、現在の移動制御はminRange/maxRangeで行います。
+- Rangedは `minRange` 未満で後退を始め、`preferredRange` まで距離を取ります。`maxRange` を超えると接近します。
 - 通常弾は水色、爆弾は大きめのオレンジ色Cubeです。通常弾は発射時の方向へ直進し、移動区間とプレイヤーの簡易球で衝突判定します。
 - 爆弾は発射時のプレイヤーXZ位置へ着地する初速を設定し、重力で落下します。地面Y=0で停止後、fuseTimeを消費して範囲ダメージを1回与え、消えます。直撃ダメージはありません。爆発パーティクル・SEは追加していません。
 - 弾の寿命は発射時から数えます。爆弾も寿命到達時には削除されるため、調整時は飛行時間＋fuseTimeより長いprojectileLifetimeを設定してください。

@@ -9,11 +9,16 @@ static StageCollider Box(Vector3 p,Vector3 half) {
     StageCollider c; c.position=p; c.scale=half; c.local={{-1,-1,-1},{1,1,1}}; c.UpdateMatrices(); return c;
 }
 static EnemyAI Ready() { EnemyAI ai; ai.settings.senses.detectionTime=0; ai.settings.senses.fieldOfView=360; return ai; }
+// Exercise retained diagnostic/non-combat memory states directly. Live recognition
+// now latches pursuit and must never enter this Search/Wander fallback.
+static void Remember(EnemyAI& ai,const Vector3& target) {
+    ai.hasLastSeen=true; ai.lastSeen=target; ai.state=EnemyState::Chase;
+}
 int main() try {
     const Vector3 hidden{100,0,100};
     {
         auto ai=Ready(); Vector3 p{},r{};
-        ai.Update(p,r,{0,0,1},.1f,false); p=ai.lastSeen;
+        Remember(ai,{0,0,1}); p=ai.lastSeen;
         ai.Update(p,r,hidden,.1f,false);
         Check(ai.state==EnemyState::Chase && ai.lastSeenReached && ai.searchElapsed==0,"nearby memory arrival skipped grace");
         for (int i=0;i<30 && ai.state!=EnemyState::Search;++i) ai.Update(p,r,hidden,.1f,false);
@@ -21,7 +26,7 @@ int main() try {
     }
     {
         auto ai=Ready(); Vector3 p{},r{}; const Vector3 last{0,0,12};
-        ai.Update(p,r,last,.1f,false);
+        Remember(ai,last);
         const auto before=p;
         ai.Update(p,r,hidden,.1f,false);
         Check(ai.state==EnemyState::Chase && Near(p.z-before.z,.25f) && Near(ai.currentSpeed,2.5f),"lost sight stopped/slow chase");
@@ -63,7 +68,7 @@ int main() try {
     {
         auto ai=Ready(); Vector3 p{},r{}; StageWorld world;
         ai.settings.senses.loseSightTime=.2f; ai.settings.senses.investigateUnreachableTime=2.5f;
-        ai.Update(p,r,{0,0,6},.1f,false,&world);
+        Remember(ai,{0,0,6});
         world.colliders.push_back(Box({0,3,6},{1,3,1})); const auto stopped=p;
         unsigned int attempts=0;
         for (int i=0;i<40 && ai.state!=EnemyState::Search;++i) {
@@ -79,7 +84,7 @@ int main() try {
     {
         auto ai=Ready(); Vector3 p{},r{}; StageWorld world;
         ai.settings.senses.loseSightTime=.2f;
-        ai.Update(p,r,{0,0,6},.1f,false,&world);
+        Remember(ai,{0,0,6});
         world.colliders.push_back(Box({0,3,6},{1,3,1}));
         for (int i=0;i<15;++i) ai.Update(p,r,hidden,.1f,false,&world);
         Check(ai.state==EnemyState::Investigate,"temporary obstruction abandoned too early");
@@ -136,6 +141,23 @@ int main() try {
         }
     }
     {
+        // A real discovery remains Chase even when its route is temporarily
+        // sealed longer than every old lose-sight/search/memory timeout.
+        auto ai=Ready(); Vector3 p{},r{}; StageWorld world;
+        ai.Update(p,r,{0,0,6},.1f,false,&world);
+        Check(ai.pursuitOrdered,"recognition did not latch pursuit");
+        world.colliders.push_back(Box({0,3,6},{1,3,1})); const auto stopped=p;
+        for (int i=0;i<200;++i) {
+            ai.Update(p,r,{0,0,6},.1f,false,&world);
+            Check(ai.state==EnemyState::Chase && ai.pursuitOrdered && ai.searchElapsed==0 &&
+                StageLength(p-stopped)<.001f && ai.attacksThisUpdate==0,"blocked discovery fell back to Search/Wander or crossed solid geometry");
+        }
+        Check(ai.navigation.planAttempts>=3,"persistent pursuit did not retry blocked route");
+        world.colliders.clear(); ai.settings.senses.viewDistance=0;
+        for (int i=0;i<60;++i) ai.Update(p,r,{0,0,6},.1f,false,&world);
+        Check(p.z>4 && ai.pursuitOrdered && !ai.visible,"opening route required a second discovery");
+    }
+    {
         EnemyDefinitions defs; nlohmann::json data; std::ifstream("../../resources/Data/enemies.json")>>data;
         for (auto& d:data["enemies"]) for (const char* key:{"loseSightTime","investigateSpeedMultiplier","searchDuration","searchRadius","searchSpeedMultiplier","investigateUnreachableTime"}) d["senses"].erase(key);
         std::ofstream("search-legacy.json")<<data;
@@ -143,6 +165,6 @@ int main() try {
         const auto& s=defs.Find("normal")->senses;
         Check(s.loseSightTime==2 && s.investigateSpeedMultiplier==1 && s.searchDuration==4 && s.searchRadius==5 && s.searchSpeedMultiplier==.85f,"new defaults not applied");
     }
-    std::cout<<"PASS: full-speed blind chase/investigate without xray, preserved A* route and waypoint speed, arrival-only Search timer, multiple reachable search goals, smooth expiry, Wander/reacquire/no spawn return, unreachable stop/retry/local fallback, reopening routes, melee/ranged search occlusion, optional JSON defaults.\n";
+    std::cout<<"PASS: real discovery never returns to Search/Wander, 20s sealed route retry and reopening without rediscovery, diagnostic remembered-location/search/wander helpers, waypoint speed, wall gating, optional JSON defaults.\n";
     return 0;
 } catch (const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<'\n'; return 1; }

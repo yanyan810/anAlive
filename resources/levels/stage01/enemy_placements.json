@@ -1,0 +1,197 @@
+{
+  "coordinates": "engine-spawn-local-radians",
+  "nextId": 10,
+  "spawns": [
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-1",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_A_01"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "ranged",
+          "id": "placement-2",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_A_02"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "fast",
+          "id": "placement-3",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_A_03"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "tank",
+          "id": "placement-4",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_A_04"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "bomber",
+          "id": "placement-5",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_A_05"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-6",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_B_01"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-7",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_B_02"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-8",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_B_03"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-9",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": false,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "SP_B_04"
+    }
+  ],
+  "stage": "stage01",
+  "version": 1
+}

@@ -21,6 +21,7 @@ public:
             {"ammoPerShot",w.ammoPerShot},{"pelletCount",w.pelletCount},
             {"burstCount",w.burstCount},{"burstInterval",w.burstInterval},
             {"magazineSize",w.magazineSize},{"reserveAmmo",w.reserveAmmo},{"maxReserveAmmo",w.maxReserveAmmo},
+            {"infiniteReserveAmmo",w.infiniteReserveAmmo},
             {"reloadMode",WeaponReloadModeName(w.reloadMode)},{"reloadTime",w.reloadTime},
             {"reloadStartTime",w.reloadStartTime},{"reloadPerRoundTime",w.reloadPerRoundTime},
             {"reloadEndTime",w.reloadEndTime},{"reloadCanInterrupt",w.reloadCanInterrupt},
@@ -41,7 +42,7 @@ public:
             next.push_back({w,file.document.at("weapons")[i],Encode(w)});
         }
         file_=std::move(file); entries=std::move(next); saved_=file_.document;
-        initialWeapon=loaded.InitialWeapon()->id; originalInitial_=initialWeapon;
+        initialWeapon=loaded.InitialWeapon() ? loaded.InitialWeapon()->id : std::string{}; originalInitial_=initialWeapon;
         error.clear(); return true;
     }
     Json Document() const {
@@ -116,7 +117,7 @@ public:
             for (float color:{w.pickupColor.x,w.pickupColor.y,w.pickupColor.z})
                 if (!std::isfinite(color) || color<0 || color>1) return prefix+"Pickup Color must be in [0, 1]";
         }
-        if (!ids.contains(initialWeapon)) return "Initial Weapon: select an existing weapon before saving";
+        if (!initialWeapon.empty() && !ids.contains(initialWeapon)) return "Initial Weapon: select None or an existing weapon before saving";
         return {};
     }
     bool Save(const std::string& level, WeaponSystem& live) {

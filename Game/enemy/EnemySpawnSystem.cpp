@@ -4,12 +4,15 @@
 #include <set>
 #include <stdexcept>
 
-bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& definitions) {
+bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& definitions, const nlohmann::json* draft) {
     try {
-        std::ifstream file(path);
-        if (!file) throw std::runtime_error("Cannot open " + path);
         nlohmann::json data;
-        file >> data;
+        if (draft) data=*draft;
+        else {
+            std::ifstream file(path);
+            if (!file) throw std::runtime_error("Cannot open " + path);
+            file >> data;
+        }
         const auto vector = [](const nlohmann::json& value) {
             if (!value.is_array() || value.size() != 3) throw std::runtime_error("Expected a 3-component vector");
             Vector3 result{value.at(0).get<float>(), value.at(1).get<float>(), value.at(2).get<float>()};
@@ -40,6 +43,7 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
             point.id = item.at("id").get<std::string>();
             if (point.id.empty() || !pointIds.insert(point.id).second) throw std::runtime_error("Empty/duplicate point ID: " + point.id);
             point.position = vector(item.at("position"));
+            point.pursueOnSpawn=item.value("pursueOnSpawn",false);
             if (item.contains("rotation")) point.rotation = vector(item.at("rotation"));
             if (item.contains("activation")) {
                 const auto activation = item.at("activation").get<std::string>();
@@ -62,10 +66,12 @@ bool EnemySpawnSystem::Load(const std::string& path, const EnemyDefinitions& def
                         row.endCount = compositionTotal;
                         point.enemyComposition.push_back(std::move(row));
                     }
-                } else {
+                } else if (item.contains("enemy")) {
                     point.enemyId = item.at("enemy").get<std::string>();
                     if (!definitions.Find(point.enemyId)) throw std::runtime_error("存在しない敵定義: " + point.enemyId);
                 }
+                if (point.enemyComposition.empty() && point.enemyId.empty() && !item.contains("enemyPool"))
+                    throw std::runtime_error("Enemy spawn requires an enemy, composition or weighted pool: " + point.id);
                 point.groupId = item.value("groupId", std::string{});
                 if (point.activation == SpawnActivation::OnTrigger && point.groupId.find_first_not_of(" \t\r\n") == std::string::npos)
                     throw std::runtime_error("トリガー起動にはグループIDが必要です: " + point.id);

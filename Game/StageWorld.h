@@ -81,7 +81,7 @@ public:
     // Upright cylinder projected into local OBB slabs (conservative at corners).
     // Swept motion avoids tunnelling even with long frames. Y remains controlled by FPS movement.
     Vector3 Move(const Vector3& start,const Vector3& desired,float radius=.4f,float height=1.8f,
-        bool player=false) const {
+        bool player=false,bool walkableSupport=false) const {
         Vector3 position=start;
         Vector3 remaining=desired-start; remaining.y=0;
         for (int iteration=0;iteration<6;++iteration) {
@@ -91,7 +91,7 @@ public:
             StageHit nearest{length,{}}; bool blocked=false;
             for (const auto& c : colliders) {
                 if (c.playerOnly && !player) continue;
-                if (c.walkable && player) continue;
+                if (c.walkable && (player || walkableSupport)) continue;
                 const auto bounds=TransformAABB(c.local,c.world);
                 if (bounds.max.y<=position.y+.01f || bounds.min.y>=position.y+height-.01f) continue;
                 float extent[3];

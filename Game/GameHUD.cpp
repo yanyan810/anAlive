@@ -33,7 +33,7 @@ void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float wi
     font_.DrawText(std::to_string(static_cast<int>(std::ceil(hp_))) + " / 100",
         x, height - 60 * scale, 20 * scale, {0, 0, 0, 1});
     const auto nearest = weapons.Nearest(player.GetTransform().translate);
-    const auto* nearby = showPickup && nearest ? weapons.Find(weapons.Pickups()[*nearest].weaponId) : nullptr;
+    const auto* nearby = showPickup && nearest ? weapons.PickupDefinition(weapons.Pickups()[*nearest]) : nullptr;
     weaponHUD_.Update(player.CurrentWeapon(), nearby, width, height);
 }
 

@@ -68,30 +68,23 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     for (int i=0;i<5;++i) corner->Update(.1f,observed+Vector3{static_cast<float>(i-4),0,0},&scene->world_);
     check(corner->AI().visible && corner->GetState()==EnemyState::Chase,"corner area cannot initially detect player");
     check(corner->AI().memory.count>=2 && corner->AI().memory.hasDirection && corner->AI().memory.escapeDirection.x>.9f,"lateral visible history did not infer east escape");
-    const double lastVisibleTime=corner->AI().memory.samples[corner->AI().memory.count-1].time;
-    bool investigated=false;
-    for (int i=0;i<200 && corner->GetState()!=EnemyState::Search;++i) {
-        corner->Update(.1f,hidden,&scene->world_);
+    double lastVisibleTime=corner->AI().memory.samples[corner->AI().memory.count-1].time;
+    const auto chaseStart=corner->GetPosition();
+    for (int i=0;i<600;++i) {
+        const auto damage=corner->Update(.1f,hidden,&scene->world_);
         const auto& ai=corner->AI();
-        check(!ai.visible && ai.occluded && StageLength(ai.lastSeen-observed)<.001f,"corner hiding leaked current player position");
+        check(ai.pursuitOrdered && StageLength(ai.lastSeen-hidden)<.001f &&
+            (corner->GetState()==EnemyState::Chase || corner->GetState()==EnemyState::Attack),"corner discovery returned to Search/Wander or lost live target");
+        if (i==0) check(!ai.visible && ai.occluded,"corner hiding fixture did not break sight");
+        if (ai.visible) lastVisibleTime=ai.memory.clock;
         for (size_t j=0;j<ai.memory.count;++j)
-            check(ai.memory.samples[j].time<=lastVisibleTime && ai.memory.samples[j].position.z==observed.z,"corner history recorded a hidden position");
-        if (corner->GetState()==EnemyState::Investigate) investigated=true;
-        check(ai.searchElapsed==0,"corner search clock advanced on approach");
+            check(ai.memory.samples[j].time<=lastVisibleTime,"corner history recorded a hidden position");
+        check(!ai.occluded || (damage==0 && corner->PendingAttackCount()==0),"persistent corner chase attacked through wall");
+        check(EnemyNavigation::Clear(&scene->world_,corner->GetPosition(),corner->GetPosition(),corner->Definition().collisionRadius,corner->Definition().collisionHeight),"persistent corner chase intersected wall");
     }
-    check(investigated && corner->GetState()==EnemyState::Search && corner->AI().lastSeenReached,"corner pursuit did not reach last seen location");
-    const auto searchStart=corner->GetPosition();
-    corner->Update(.1f,hidden,&scene->world_);
-    check(corner->GetState()==EnemyState::Search && corner->AI().moveTarget.x>searchStart.x+.5f &&
-        EnemyNavigation::Clear(&scene->world_,corner->AI().moveTarget,corner->AI().moveTarget,corner->Definition().collisionRadius,corner->Definition().collisionHeight),"corner search did not prefer a reachable east escape goal");
-    for (int i=0;i<100 && corner->GetState()==EnemyState::Search;++i) corner->Update(.1f,hidden,&scene->world_);
-    check(corner->GetState()==EnemyState::Wander && corner->AI().searchPointsVisited>=2,"corner search failed to inspect multiple locations then wander");
-    corner->Update(.1f,corner->GetPosition()+Vector3{0,0,-4},&scene->world_);
-    check(corner->GetState()==EnemyState::Chase,"corner reappearance did not resume pursuit");
-    const auto afterSearch=corner->AI().wanderCenter;
-    check(StageLength(afterSearch-searchStart)>.1f,"Wander did not center on post-search position");
+    check(StageLength(corner->GetPosition()-chaseStart)>5 && EnemyAI::distanceTo(corner->GetPosition(),hidden)<2,"persistent corner chase did not reach player around L wall");
     corner->ResetAI(); corner->ConfigureSenses(corner->Definition().senses);
-    check(corner->AI().memory.count==0 && !corner->AI().memory.hasDirection && corner->AI().memory.clock==0,"AI reset retained observed history");
+    check(!corner->AI().pursuitOrdered && corner->AI().memory.count==0 && !corner->AI().memory.hasDirection && corner->AI().memory.clock==0,"AI reset retained discovery/history");
     auto* enemy=scene->enemies_[0]; scene->selected_=0;
     const auto at=enemy->GetPosition();
     { auto senses=enemy->Senses(); enemy->ResetAI(); senses.viewDistance=0; enemy->ConfigureSenses(senses); }
@@ -103,31 +96,28 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     enemy->SetAIPaused(true); const auto stopped=enemy->GetPosition();
     enemy->Update(1,at+Vector3{0,0,6},&scene->world_);
     check(StageLength(enemy->GetPosition()-stopped)==0 && enemy->PendingAttackCount()==0,"selected AI pause failed");
-    const auto primeSearch=[&]() {
-        // This fixture isolates arrival/reset, not the grace clock.
-        { auto senses=enemy->Senses(); senses.detectionTime=0; senses.fieldOfView=360;
-          senses.loseSightTime=0; enemy->ConfigureSenses(senses); }
+    const auto primePursuit=[&]() {
+        { auto senses=enemy->Senses(); enemy->ResetAI(); senses.viewDistance=100;
+          senses.detectionTime=0; senses.fieldOfView=360; enemy->ConfigureSenses(senses); }
         enemy->SetAIPaused(false);
         enemy->Update(.1f,enemy->GetPosition()+Vector3{0,0,5},&scene->world_);
-        enemy->SetPosition(enemy->AI().lastSeen);
-        enemy->Update(.1f,{1000,0,1000},&scene->world_);
-        check(enemy->GetState()==EnemyState::Search,"search lifecycle fixture did not arrive");
-        { auto senses=enemy->Senses(); senses.searchSpeedMultiplier=.7f; enemy->ConfigureSenses(senses); }
-        enemy->Update(.1f,{1000,0,1000},&scene->world_);
-        check(std::abs(enemy->AI().currentSpeed-enemy->Definition().moveSpeed*.7f)<.01f,"live search speed multiplier ignored");
-        { auto senses=enemy->Senses(); senses.searchDuration=.05f; enemy->ConfigureSenses(senses); }
-        check(enemy->AI().SearchRemaining()==0,"live search duration ignored");
+        check(enemy->AI().pursuitOrdered,"pooled enemy did not latch its own discovery");
+        { auto senses=enemy->Senses(); senses.viewDistance=0; senses.loseSightTime=0;
+          senses.searchDuration=0; senses.memoryRetentionTime=.2f; enemy->ConfigureSenses(senses); }
+        for (int i=0;i<70;++i) enemy->Update(.1f,{1000,0,1000},&scene->world_);
+        check(enemy->GetState()==EnemyState::Chase && enemy->AI().pursuitOrdered && !enemy->AI().visible &&
+            enemy->AI().lastSeen.x==1000 && enemy->AI().lastSeen.z==1000,"live sense tuning or distance loss cleared discovery");
     };
-    primeSearch();
+    primePursuit();
     const auto beforeReset=enemy->GetPosition();
     enemy->ResetAI();
-    check(!enemy->AI().hasLastSeen && !enemy->AI().paused && enemy->AI().navigation.path.empty() &&
+    check(!enemy->AI().pursuitOrdered && !enemy->AI().hasLastSeen && !enemy->AI().paused && enemy->AI().navigation.path.empty() &&
         enemy->AI().searchElapsed==0 && enemy->AI().searchPointsVisited==0 && !enemy->AI().searchFinishing &&
         !enemy->AI().lastSeenReached && !enemy->AI().investigateUnreachable && enemy->AI().investigateBlockedTime==0 &&
         enemy->AI().memory.count==0 && !enemy->AI().memory.hasDirection && enemy->AI().memory.clock==0 &&
         StageLength(enemy->GetPosition()-beforeReset)==0,"AI reset teleported or retained search memory");
     enemy->ConfigureSenses(enemy->Definition().senses);
-    primeSearch(); // Recycle a slot while its search clock/path/live tuning are dirty.
+    primePursuit(); // Recycle a slot while discovery/path/live tuning are dirty.
     { auto senses=enemy->Senses(); senses.memoryRetentionTime=.3f; senses.memoryRecordInterval=0; senses.searchDirectionPriority=.2f; enemy->ConfigureSenses(senses); }
     const auto definition=enemy->Definition().id;
     const auto spawnId=enemy->GetSpawnId();
@@ -135,7 +125,7 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     scene->definition_=definition;
     scene->Spawn(app,{-24,0,2});
     auto* reused=scene->enemies_.back();
-    check(reused==enemy && reused->GetSpawnId()!=spawnId && !reused->AI().hasLastSeen &&
+    check(reused==enemy && reused->GetSpawnId()!=spawnId && !reused->AI().pursuitOrdered && !reused->AI().hasLastSeen &&
         reused->Senses().detectionTime==reused->Definition().senses.detectionTime && reused->AI().searchElapsed==0 &&
         reused->AI().searchPointsVisited==0 && reused->AI().SearchRemaining()==0 && !reused->AI().searchFinishing &&
         !reused->AI().investigateUnreachable && reused->AI().navigation.path.empty() &&
@@ -157,5 +147,5 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     check(scene->enemies_.empty() && !scene->status_.empty(),"spawn inside wall accepted");
     transition("Title");
     check(dynamic_cast<TitleScene*>(app.Scenes().Current())!=nullptr && !app.GetInput()->IsCameraControlEnabled(),"return to title/input cleanup failed");
-    std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"PASS: real D3D title fades/camera restoration, actual L-wall visible lateral history -> east escape estimate -> blind pursuit -> direction-prioritized reachable Search -> current-area Wander -> reacquire; no hidden samples/xray; live search tuning; pause/reset; same-slot pool reuse clears history/direction/search state; all definitions; wall spawn rejection.\n";
+    std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"PASS: real D3D title fades/camera restoration, actual pooled enemy independently latches sight, follows player around L wall for 60s without Search/Wander, no hidden visual samples or wall attacks; live sense tuning/distance loss retain pursuit; pause/reset and same-slot reuse clear discovery/history/path; all definitions; wall spawn rejection.\n";
 }

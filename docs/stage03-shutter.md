@@ -7,7 +7,7 @@
 
 Stage03を開始すると閉鎖。1階宴会ホール西側の既存ボタン **(12.25, 1.25, 21)** に近づき、
 画面中央下の **「E：シャッターを開く」** が出たらEを押す。操作距離2mはプレイヤーの足元+Y=1.25からの3次元距離。
-初期開放時間30秒、一定速度約0.106667m/sで上昇し、全開を維持する。再操作で停止・閉鎖しない。
+開放時間60秒、一定速度約0.053333m/sで上昇し、全開を維持する。再操作で停止・閉鎖しない。
 通行可能になった直後にGoalへ到達しても、開放は全開まで継続する。
 近くに武器があっても未操作スイッチがEを優先し、同じEでの拾得を防ぐ。左クリックの射撃経路は独立。
 操作済みスイッチの付近では次のEで通常の武器拾得ができる。
@@ -41,7 +41,7 @@ JSON内の専用ColliderをStageLoaderが通常のStageWorld配列へ1個追加�
 
 |項目|初期値|用途|
 |---|---|---|
-|openDuration|30|開放時間（秒、正数）|
+|openDuration|60|開放時間（秒、正数）|
 |openDistance|3.2|上昇距離（m、正数）|
 |closedPosition|[12,0,18]|閉鎖時の下端中心|
 |buttonPosition|[12.25,1.25,21]|操作判定・ランプ基準|
@@ -58,7 +58,9 @@ Switch Object、Open Duration、Open Distance、Interaction Distance、Progress 
 音は通常のPCM WAVを用意する。現在は4ファイルとも未用意で、存在しない場合は読み込みを呼ばず無音動作。
 motorのみループし、全開・デバッグ停止・シーン終了で停止する。
 
-## 次段階の敵イベント連携
+## 敵の増援イベント連携
+
+`shutters[].enemyWaves` に `{"groupId":"hotel_shutter_wave","interval":10}` を設定すると、開放中10秒ごと（60秒時点を含む）に `EnemyWave` イベントを発行します。GameSceneが同名グループのManual出現地点を起動し、既存EnemyPoolと抽選処理を使用します。各回Normal6体＋Fast / Ranged / Tank / Bomberから1体、全6回。配置詳細は [hotel-combat-placement.md](hotel-combat-placement.md) を参照してください。
 
 `StageShutterSystem::TakeEvents()` はシャッターID・イベント種別・名前・進行率を返す。
 Started（openingStarted）、設定した進行率のProgress、Completed（fullyOpened）が各一度だけ届く。

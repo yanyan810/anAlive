@@ -4,7 +4,11 @@
 
 enum class ShutterState { Closed, Opening, Open };
 enum class ShutterEventType { Started, Progress, Completed, EnemyWave };
-struct ShutterProgressEvent { float progress=0; std::string event; };
+struct ShutterProgressEvent {
+    float progress=0;
+    std::string event, spawnGroup;
+    std::optional<size_t> openCollider;
+};
 struct ShutterDefinition {
     std::string id, model;
     Vector3 closedPosition{}, buttonPosition{}; // Mesh origin is the closed lower edge.
@@ -14,6 +18,7 @@ struct ShutterDefinition {
     std::string enemyWaveGroup;
     double enemyWaveInterval=10;
     float openDistance=3.2f, interactionDistance=2;
+    bool defendBeforeOpening=false;
     std::string switchSound, startSound, motorSound, completeSound;
     std::vector<ShutterProgressEvent> progressEvents;
 };
@@ -21,6 +26,8 @@ struct ShutterEvent {
     ShutterEventType type;
     std::string shutterId, event;
     float progress;
+    std::string spawnGroup{};
+    std::optional<size_t> openCollider{};
 };
 struct StageShutter {
     ShutterDefinition definition;
@@ -29,7 +36,11 @@ struct StageShutter {
     size_t nextProgressEvent=0;
     size_t nextEnemyWave=1;
     float Progress() const { return static_cast<float>(std::clamp(elapsedTime/definition.openDuration,0.0,1.0)); }
-    Vector3 Position() const { return definition.closedPosition+Vector3{0,definition.openDistance*Progress(),0}; }
+    Vector3 Position() const {
+        // Defense shutters raise during the final tenth of the countdown.
+        const float lift=definition.defendBeforeOpening ? std::clamp((Progress()-.9f)*10,0.f,1.f) : Progress();
+        return definition.closedPosition+Vector3{0,definition.openDistance*lift,0};
+    }
 };
 
 // No input, rendering, audio or enemy dependencies. Consumers drain one-shot events.
@@ -40,6 +51,8 @@ public:
         events_.clear();
         for (auto& shutter : shutters) {
             shutter.state=ShutterState::Closed; shutter.elapsedTime=0; shutter.nextProgressEvent=0; shutter.nextEnemyWave=1;
+            for (const auto& marker : shutter.definition.progressEvents)
+                if (marker.openCollider) world.colliders.at(*marker.openCollider).enabled=true;
         }
         Sync(world);
     }
@@ -73,7 +86,9 @@ public:
             while (shutter.nextProgressEvent<shutter.definition.progressEvents.size() &&
                 shutter.Progress()>=shutter.definition.progressEvents[shutter.nextProgressEvent].progress) {
                 const auto& marker=shutter.definition.progressEvents[shutter.nextProgressEvent++];
-                events_.push_back({ShutterEventType::Progress,shutter.definition.id,marker.event,marker.progress});
+                if (marker.openCollider) world.colliders.at(*marker.openCollider).enabled=false;
+                events_.push_back({ShutterEventType::Progress,shutter.definition.id,marker.event,marker.progress,
+                    marker.spawnGroup,marker.openCollider});
             }
             // Catch up every due wave before completion, including the wave at full open.
             while (!shutter.definition.enemyWaveGroup.empty() &&
@@ -92,7 +107,8 @@ public:
     void Sync(StageWorld& world) const {
         for (const auto& shutter : shutters) {
             auto collider=shutter.definition.collider;
-            collider.position+=shutter.Position();
+            collider.position+=shutter.definition.defendBeforeOpening && shutter.state!=ShutterState::Open
+                ? shutter.definition.closedPosition : shutter.Position();
             collider.UpdateMatrices();
             world.colliders.at(shutter.definition.colliderIndex)=std::move(collider);
         }

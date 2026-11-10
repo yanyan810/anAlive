@@ -7,6 +7,7 @@
 #include "../../tests/HotelStageRuntimeTests.h"
 #include "../../tests/HotelCombatPlacementTests.h"
 #include "../../tests/HotelEnemyStairTests.h"
+#include "../../tests/UpperHotelRuntimeTests.h"
 #include "../Utility/AssetLoadProfile.h"
 #include "scene/Main/GameScene.h"
 #include "scene/Flow/TitleScene.h"
@@ -110,6 +111,14 @@ int GameApp::Run() {
         try { RunEnemyAITestSceneTests(*this); }
         catch (const std::exception& error) {
             std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
+        }
+        Finalize_(); return result;
+    }
+    if (HasLaunchArgument(L"--upper-hotel-test")) {
+        int result=0; std::filesystem::create_directories("generated/upper-hotel-tests");
+        try { RunUpperHotelRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/upper-hotel-tests/result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
         }
         Finalize_(); return result;
     }
@@ -346,6 +355,7 @@ bool GameApp::Initialize_() {
     sceneMgr_->Register("Game", [] { return std::make_unique<GameScene>(); });
     sceneMgr_->Register("GameOverDemo", [] { return std::make_unique<GameScene>(false,"gameover_demo"); });
     sceneMgr_->Register("Stage03", [] { return std::make_unique<GameScene>(false,"stage03"); });
+    sceneMgr_->Register("Stage04", [] { return std::make_unique<GameScene>(false,"stage04"); });
     #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     sceneMgr_->Register("Showroom", [] { return std::make_unique<ShowroomScene>(); });
     sceneMgr_->Register("ClothShowroom", [] { return std::make_unique<ClothShowroomScene>(); });
@@ -358,7 +368,8 @@ bool GameApp::Initialize_() {
         transitionCheck_ = std::make_unique<TemporarySceneTransitionCheck>();
         transitionCheck_->Initialize(*this);
     }
-    if (std::wstring(GetCommandLineW()).find(L"--hotel")!=std::wstring::npos)
+    if (HasLaunchArgument(L"--hotel-upper")) sceneMgr_->Change(*this,"Stage04");
+    else if (std::wstring(GetCommandLineW()).find(L"--hotel")!=std::wstring::npos)
         sceneMgr_->Change(*this, "Stage03");
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     if (std::wstring(GetCommandLineW()).find(L"--cloth-showroom")!=std::wstring::npos)

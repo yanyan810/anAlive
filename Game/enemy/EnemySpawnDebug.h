@@ -51,6 +51,7 @@ inline void DrawEnemySpawnDebug(const EnemySpawnSystem& system, const Matrix4x4&
     if (goals) for (const auto& goal : *goals)
         box(goal.position, goal.size, "GOAL: " + goal.id, IM_COL32(255,90,225,255));
     if (colliders) for (const auto& collider : *colliders) {
+        if (!collider.enabled) continue;
         Vector3 corners[8];
         for (int i=0;i<8;++i) corners[i]=StagePoint({(i&1) ? collider.local.max.x : collider.local.min.x,
             (i&2) ? collider.local.max.y : collider.local.min.y,(i&4) ? collider.local.max.z : collider.local.min.z},collider.world);

@@ -33,7 +33,7 @@ void GameScene::ApplySequenceCamera() {
 }
 
 void GameScene::RefreshSequenceVisuals() {
-    ground_.Update(0); SyncShutterVisuals();
+    ground_.Update(0); SyncShutterVisuals(); SyncDoorVisuals();
     for (auto& visual:weaponVisuals_) visual->Update(0);
     for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
     for (auto& visual:projectileVisuals_) visual->Update(0);
@@ -116,6 +116,69 @@ void GameScene::InitializeShutters(GameApp& app) {
     SyncShutterVisuals();
 }
 
+void GameScene::InitializeDoors(GameApp& app) {
+    doorVisuals_.clear();
+    for (const auto& door : level_.doors.doors) {
+        auto visual=std::make_unique<Object3d>();
+        visual->Initialize(app.ObjCom(),app.Dx());
+        visual->SetCamera(&camera_);
+        visual->SetModel("cube/cube.obj");
+        visual->SetTexture("resources/white1x1.png");
+        visual->SetScale(StageDoor::HalfSize(door.closed));
+        visual->SetMaterialColor({.36f,.21f,.12f,1});
+        visual->SetEnableLighting(2);
+        visual->SetDirection({.3f,-1,.5f});
+        visual->SetIntensity(1);
+        visual->SetPointLightIntensity(0);
+        visual->SetSpotLightIntensity(0);
+        doorVisuals_.push_back(std::move(visual));
+    }
+    SyncDoorVisuals();
+}
+
+void GameScene::UpdateDoors(float dt) {
+    level_.doors.Update(dt,level_.collision,[&](const StageCollider& box) {
+        if (StageDoor::Occupied(box,player_.GetTransform().translate,.4f,1.8f)) return true;
+        return std::any_of(enemies_.begin(),enemies_.end(),[&](const Enemy* enemy) {
+            const auto& definition=enemy->Definition();
+            return !enemy->IsDead() && StageDoor::Occupied(box,enemy->GetPosition(),
+                definition.collisionRadius,definition.collisionHeight);
+        });
+    });
+}
+
+void GameScene::SyncDoorVisuals() {
+    for (size_t i=0;i<doorVisuals_.size();++i) {
+        const auto& box=level_.collision.colliders[level_.doors.doors[i].colliderIndex];
+        auto& visual=*doorVisuals_[i];
+        visual.SetRotate(box.rotation);
+        visual.SetTranslate(StageDoor::Center(box));
+        visual.Update(0);
+    }
+}
+
+void GameScene::BindRemovableMeshes() {
+    removableMeshBindings_.assign(level_.removableMeshes.size(),{});
+    if (removableMeshBindings_.empty()) return;
+    const auto* model=ground_.GetModel();
+    for (uint32_t mesh=0;mesh<model->GetMeshCount();++mesh) {
+        const auto name=model->GetNodeName(model->GetMeshOwnerNodeIndex(mesh));
+        for (size_t i=0;i<level_.removableMeshes.size();++i)
+            if (name==level_.removableMeshes[i].meshNode) removableMeshBindings_[i].push_back(mesh);
+    }
+    SyncRemovableMeshVisuals();
+}
+
+void GameScene::SyncRemovableMeshVisuals() {
+    if (removableMeshBindings_.empty()) return;
+    std::vector<uint32_t> hidden;
+    for (size_t i=0;i<level_.removableMeshes.size();++i) {
+        if (level_.collision.colliders[level_.removableMeshes[i].colliderIndex].enabled) continue;
+        hidden.insert(hidden.end(),removableMeshBindings_[i].begin(),removableMeshBindings_[i].end());
+    }
+    ground_.SetHiddenMeshes(std::move(hidden));
+}
+
 void GameScene::SyncShutterVisuals() {
     for (size_t i=0;i<shutterVisuals_.size();++i) {
         const auto& shutter=level_.shutters.shutters[i]; auto& visual=shutterVisuals_[i];
@@ -129,6 +192,7 @@ void GameScene::SyncShutterVisuals() {
 }
 
 void GameScene::ProcessShutterEvents() {
+    bool meshesChanged=false;
     for (const auto& event : level_.shutters.TakeEvents()) {
         for (size_t i=0;i<shutterVisuals_.size();++i) {
             if (level_.shutters.shutters[i].definition.id!=event.shutterId || !shutterAudio_) continue;
@@ -136,12 +200,36 @@ void GameScene::ProcessShutterEvents() {
             if (event.type==ShutterEventType::Started) { shutterAudio_->Play(sounds[0]); shutterAudio_->Play(sounds[1]); }
             if (event.type==ShutterEventType::Completed) shutterAudio_->Play(sounds[3]);
         }
-        if (event.type==ShutterEventType::EnemyWave && stage_.IsPlaying() && !player_.IsDead()) {
-            spawnSystem_.ActivateManualGroup(event.event);
+        meshesChanged|=event.openCollider.has_value();
+        const auto& group=event.type==ShutterEventType::EnemyWave ? event.event : event.spawnGroup;
+        if (!group.empty() && stage_.IsPlaying() && !player_.IsDead()) {
+            spawnSystem_.ActivateManualGroup(group);
             // Drain each event separately: large dt may cross several wave boundaries.
             UpdateEnemySpawns(0,false);
         }
         if (shutterEventHandler_) shutterEventHandler_(event);
+    }
+    if (meshesChanged) SyncRemovableMeshVisuals();
+}
+
+void GameScene::UpdateStageTransfer() {
+    if (transferUsed_ || !level_.transfer || !level_.transfer->Contains(player_.GetTransform().translate)) return;
+    const auto& transfer=*level_.transfer;
+    const float departureY=player_.GetTransform().translate.y;
+    transferUsed_=true;
+    player_.SetStage(&level_.collision,transfer.arrivalPosition,transfer.arrivalRotation);
+    player_.CancelWeaponBurst();
+    player_.RefreshVisuals();
+    suppressFireUntilRelease_=true;
+    bullets_.Clear();
+    enemyProjectiles_.Clear();
+    for (auto* enemy : enemies_) {
+        const float y=enemy->GetPosition().y;
+        if (std::abs(y-departureY)<std::abs(y-transfer.arrivalPosition.y)) enemy->SetAIPaused(true);
+    }
+    if (!transfer.spawnGroup.empty()) {
+        spawnSystem_.ActivateManualGroup(transfer.spawnGroup);
+        UpdateEnemySpawns(0,false);
     }
 }
 
@@ -158,6 +246,7 @@ void GameScene::UpdateShutterAudio(bool running) {
 }
 
 void GameScene::OnEnter(GameApp& app) {
+    transferUsed_=false;
     app.Render()->ResetDeathPostEffect();
     app.Render()->ResetViewPostPreview();
     SetWindowTextW(app.Win()->GetHwnd(),L"アンアライブ");
@@ -208,6 +297,7 @@ void GameScene::OnEnter(GameApp& app) {
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
     if (placementTest_) spawnSystem_.SetPlacements(*placementTest_);
     InitializeShutters(app);
+    InitializeDoors(app);
     weaponVisuals_.clear();
     player_.UnequipWeapon();
     if (IsGameOverDemo()) {
@@ -219,7 +309,7 @@ void GameScene::OnEnter(GameApp& app) {
         player_.RefreshVisuals();
     } else if (const auto* initial = weapons_.InitialWeapon()) player_.EquipWeapon(*initial);
     pelletRandom_.seed(weapons_.ActualSeed() ^ 0x9e3779b9u); // independent of placement lottery
-    gameHUD_.Initialize(app.SpriteCom(),app.Dx());
+    gameHUD_.Initialize(app.SpriteCom(),app.Dx(),!doorVisuals_.empty());
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     SyncWeaponVisuals(app);
     enemies_.clear();
@@ -248,11 +338,12 @@ void GameScene::OnEnter(GameApp& app) {
         ground_.SetScale({32,.25f,60}); ground_.SetTranslate({0,-.25f,24});
         ground_.SetMaterialColor({.45f,.48f,.52f,1});
     }
-    ground_.SetEnableLighting(stageId_=="stage03" ? 2 : 1); // Readable prototype interiors (Half Lambert).
+    ground_.SetEnableLighting(stageId_=="stage03" || stageId_=="stage04" ? 2 : 1);
     ground_.SetDirection({0.3f, -1.0f, 0.5f});
     ground_.SetIntensity(1.0f);
     ground_.SetPointLightIntensity(0.0f);
     ground_.SetSpotLightIntensity(0.0f);
+    BindRemovableMeshes();
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
         sprite->Initialize(app.SpriteCom(), app.Dx(), "resources/white1x1.png");
         sprite->SetAnchorPoint({0.5f, 0.5f});
@@ -301,7 +392,7 @@ void GameScene::OnEnter(GameApp& app) {
         // Prepare a drawable first frame without processing the outgoing shot,
         // mouse delta, spawn triggers or goals while the incoming view is black.
         player_.RefreshVisuals(); ground_.Update(0);
-        SyncShutterVisuals();
+        SyncShutterVisuals(); SyncDoorVisuals();
         // Pickup WVPs were created before the camera moved to the spawn point.
         // Refresh them now; simulation remains frozen throughout FadeIn.
         for (auto& visual : weaponVisuals_) visual->Update(0);
@@ -326,6 +417,7 @@ void GameScene::OnExit(GameApp& app) {
     startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
     if (shutterAudio_) shutterAudio_->StopAll();
     shutterAudio_.reset(); shutterVisuals_.clear();
+    doorVisuals_.clear();
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) app.ImGui()->SetWeaponWorkspace(false);
     beforeWeaponTest_.reset(); weaponPreview_.reset();
@@ -348,6 +440,7 @@ void GameScene::Update(GameApp& app, float dt) {
     if (!NextScene().empty()) return;
     Input& input = *app.GetInput();
     if (gameOver_.Active()) { UpdateGameOver(app,dt); return; }
+    if (placementTest_ && player_.IsDead() && HasFatalStageFall()) return;
     if (player_.IsDead() && stage_.IsPlaying() && !placementTest_) {
         BeginGameOver(app); UpdateGameOver(app,0); return;
     }
@@ -488,6 +581,7 @@ void GameScene::Update(GameApp& app, float dt) {
             UpdateShutterAudio(false);
             player_.RefreshDebug(); ground_.Update(0);
             SyncShutterVisuals();
+            SyncDoorVisuals();
             for (auto& visual : weaponVisuals_) visual->Update(0);
             for (auto& enemy : enemies_) enemy->UpdateVisuals(0);
             SyncProjectileVisuals(app);
@@ -527,6 +621,7 @@ void GameScene::Update(GameApp& app, float dt) {
     // Debug pause / scene transitions still suspend the entire simulation.
     level_.shutters.Update(dt,level_.collision);
     if (stage_.IsPlaying()) {
+        UpdateDoors(dt);
 
         for (const auto& enemy : enemies_) {
             stage_.ObserveEnemy(
@@ -537,7 +632,21 @@ void GameScene::Update(GameApp& app, float dt) {
         UpdateADS(input, dt);
 
         player_.Update(input, dt);
+        if (HasFatalStageFall()) {
+            player_.ApplyDamage(player_.GetHP());
+            if (placementTest_) {
+                input.SetCameraControlEnabled(false);
+                ground_.Update(0);
+                SyncDoorVisuals();
+                SyncShutterVisuals();
+            } else {
+                BeginGameOver(app);
+                UpdateGameOver(app,0);
+            }
+            return;
+        }
 
+        UpdateStageTransfer();
         if (!showroom_ && stage_.Update(
             dt,
             player_.GetTransform().translate)) {
@@ -553,6 +662,7 @@ void GameScene::Update(GameApp& app, float dt) {
     if (player_.IsDead() && !placementTest_) { BeginGameOver(app); UpdateGameOver(app,0); return; }
     ground_.Update(dt);
     SyncShutterVisuals();
+    SyncDoorVisuals();
     ProcessShutterEvents();
     UpdateShutterAudio(true);
 
@@ -606,7 +716,7 @@ void GameScene::UpdateGameOver(GameApp& app,float dt) {
         enemy->SetPosition(EnemyNavigation::ConstrainMotion(level_.collision,before,enemy->GetPosition(),d.collisionRadius,d.collisionHeight));
     }
     gameOver_.Update(dt,level_.collision,camera_);
-    ground_.Update(0); SyncShutterVisuals();
+    ground_.Update(0); SyncShutterVisuals(); SyncDoorVisuals();
     for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
     for (auto& visual:weaponVisuals_) visual->Update(0);
     if (!gameOver_.MenuReady()) return;
@@ -736,6 +846,7 @@ void GameScene::UpdateADS(
 bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
     if (!pressed) return false;
     if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
+    if (level_.doors.TryInteract(level_.collision,player_.GetTransform().translate)) return false;
     return !IsGameOverDemo() && allowPickup && player_.TryPickupWeapon(weapons_);
 }
 
@@ -851,7 +962,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     // Only bullets already in flight advance this frame. New shots start at the muzzle
     // and cannot damage anything until a subsequent movement sweep reaches it.
     // 既存の弾を先に更新し、新しい弾は銃口から描画することで、生成と同時の移動・命中を避ける。
-    bullets_.Update(dt,level_.collision,enemies_,[this](const BulletEnemyImpact& impact) { OnBulletImpact(impact); });
+    UpdatePlayerBullets(dt);
     for (int shot=0; shot<weaponShots; ++shot) {
         ++shotCount_;
         bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),adsBlend_,pelletRandom_,level_.collision,enemies_);
@@ -874,6 +985,19 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     }
     for (const auto& enemy : enemies_) stage_.ObserveEnemy(enemy->GetSpawnId(), enemy->IsDead());
     SyncProjectileVisuals(app);
+}
+
+void GameScene::UpdatePlayerBullets(float dt) {
+    bullets_.Update(dt,level_.collision,enemies_,[this](const BulletEnemyImpact& impact) { OnBulletImpact(impact); },
+        {},{},[this](const Bullet& bullet,const BulletHit& hit) {
+            if (bullet.damage<=0) return;
+            for (const auto& mesh : level_.removableMeshes) {
+                if (!mesh.breakOnBullet || mesh.colliderIndex!=hit.colliderIndex) continue;
+                level_.collision.colliders[mesh.colliderIndex].enabled=false;
+                SyncRemovableMeshVisuals();
+                break;
+            }
+        });
 }
 
 void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
@@ -904,6 +1028,7 @@ void GameScene::DrawRender(GameApp& app) {
         if (delta.x*delta.x+delta.y*delta.y+delta.z*delta.z>.85f*.85f) startPlayerVisual_->Draw();
     }
     for (auto& shutter : shutterVisuals_) { shutter.model->Draw(); shutter.lamp->Draw(); }
+    for (auto& door : doorVisuals_) door->Draw();
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) {
         if (weaponPreview_ && weaponEditor_.Selected()) weaponPreview_->Draw();
@@ -965,6 +1090,7 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::SameLine();
     if (ImGui::Button(stageId_=="stage03" ? "Open Stage01" : "Open Hotel (Stage03)"))
         RequestChangeScene_(stageId_=="stage03" ? "Game" : "Stage03");
+    if (stageId_!="stage04" && ImGui::Button("Open Upper Hotel (Stage04)")) RequestChangeScene_("Stage04");
 #endif
     if (!spawnSystem_.Error().empty()) ImGui::TextWrapped("Spawn configuration error: %s", spawnSystem_.Error().c_str());
     const bool captured = app.GetInput()->IsCameraControlEnabled();
@@ -1199,7 +1325,7 @@ void GameScene::DrawImGui(GameApp& app) {
             const auto position=shutter.definition.buttonPosition+Vector3{1.75f,-1.25f,.5f};
             const auto target=(shutter.definition.closedPosition+shutter.definition.buttonPosition)*.5f;
             player_.SetStage(&level_.collision,position,{0,std::atan2(target.x-position.x,target.z-position.z),0});
-            player_.RefreshDebug(); SyncShutterVisuals(); suppressFireUntilRelease_=true;
+            player_.RefreshDebug(); SyncShutterVisuals(); SyncDoorVisuals(); suppressFireUntilRelease_=true;
         }
         ImGui::PopID();
     }
@@ -1239,8 +1365,10 @@ void GameScene::DrawOverlay2D(GameApp&) {
     crosshairVertical_.Draw();
     // Refresh here so debug rewind, HP reset and weapon changes appear even while paused.
     const auto closed=level_.shutters.Nearest(player_.GetTransform().translate);
+    const auto door=level_.doors.Nearest(level_.collision,player_.GetTransform().translate);
+    const char* doorPrompt=door ? (level_.doors.doors[*door].targetOpen ? "E CLOSE" : "E OPEN") : "";
     gameHUD_.Update(player_, weapons_, static_cast<float>(WinApp::kClientWidth),
-        static_cast<float>(WinApp::kClientHeight),!closed.has_value());
+        static_cast<float>(WinApp::kClientHeight),!closed && !door,closed ? "" : doorPrompt);
     gameHUD_.Draw(view, projection);
     const auto nearby=closed ? closed : level_.shutters.Nearest(player_.GetTransform().translate,false);
     if (nearby) {
@@ -1277,6 +1405,10 @@ GameScene::DebugFrame GameScene::CaptureDebug() const {
     state.bullets=bullets_.Capture();
     state.projectiles=enemyProjectiles_; state.spawns=spawnSystem_; state.weapons=weapons_; state.stage=stage_;
     state.shutters=level_.shutters;
+    state.doors=level_.doors;
+    state.transferUsed=transferUsed_;
+    for (const auto& mesh : level_.removableMeshes)
+        state.meshesIntact.push_back(level_.collision.colliders[mesh.colliderIndex].enabled);
     state.pelletRandom=pelletRandom_; state.nextEnemy=nextEnemyId_; state.frame=debugFrame_;
     state.shots=shotCount_; state.hits=hitCount_; state.attacks=enemyAttackCount_;
     state.selectedEnemy=selectedEnemy_; state.lastHitEnemy=lastHitEnemy_; state.lastHitPart=lastHitPart_; state.lastHitPartName=lastHitPartName_;
@@ -1297,6 +1429,12 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
     bullets_.Restore(state.bullets);
     enemyProjectiles_=state.projectiles; spawnSystem_=state.spawns; weapons_=state.weapons; stage_=state.stage;
     level_.shutters=state.shutters; level_.shutters.Sync(level_.collision);
+    level_.doors=state.doors; level_.doors.Sync(level_.collision);
+    transferUsed_=state.transferUsed;
+    for (size_t i=0;i<level_.removableMeshes.size();++i)
+        level_.collision.colliders[level_.removableMeshes[i].colliderIndex].enabled=state.meshesIntact[i];
+    SyncRemovableMeshVisuals();
+    SyncDoorVisuals();
     SyncShutterVisuals(); UpdateShutterAudio(false);
     pelletRandom_=state.pelletRandom; nextEnemyId_=state.nextEnemy; debugFrame_=state.frame;
     shotCount_=state.shots; hitCount_=state.hits; enemyAttackCount_=state.attacks;

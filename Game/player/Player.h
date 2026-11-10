@@ -65,6 +65,7 @@ public:
 #endif
     float GetHP() const { return hp_; }
     bool IsDead() const { return hp_ <= 0; }
+    bool HasFatalFall() const { return motion_.fatalFall; }
 
     void SetLookSensitivityMultiplier(float multiplier) {
         if (!std::isfinite(multiplier)) return;

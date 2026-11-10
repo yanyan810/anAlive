@@ -4,6 +4,7 @@
 #include "EnemySpawnSystem.h"
 #include "WeaponSystem.h"
 #include "StageProgress.h"
+#include "UpperHotelRouteChecks.h"
 #include <cassert>
 #include <iostream>
 #include <set>
@@ -14,11 +15,49 @@ static StageCollider Box(Vector3 position,Vector3 scale={1,3,10},Vector3 rotatio
     StageCollider c; c.id="wall"; c.position=position; c.scale=scale; c.rotation=rotation;
     c.local={{-1,-1,-1},{1,1,1}}; c.world=Matrix4x4::MakeAffineMatrix(scale,rotation,position); c.inverse=Matrix4x4::Inverse(c.world); return c;
 }
-int main() {
+int main() try {
     const std::string path="../../resources/levels/stage01/stage01.json";
     StageLoader loader;
     assert(loader.Load(path) && loader.ValidateAssets("../../resources"));
     assert(loader.id=="stage01" && loader.model=="levels/stage01/stage01.gltf");
+    {
+        const std::string upperPath="../../resources/levels/stage04/stage04.json";
+        StageLoader upper;
+        StageProgress progress;
+        assert(upper.Load(upperPath) && upper.ValidateAssets("../../resources") && progress.LoadGoals(upperPath));
+        UpperHotelChecks::WalkRoute(upper,progress,[&](const Vector3& feet,const std::string& name) {
+            const auto selected=upper.doors.Nearest(upper.collision,feet);
+            UpperHotelChecks::Require(selected && upper.doors.doors[*selected].closed.id==name,"select "+name);
+            assert(upper.doors.TryInteract(upper.collision,feet));
+            upper.doors.Update(1,upper.collision,[&](const auto& box) {return StageDoor::Occupied(box,feet,.4f,1.8f);});
+            assert(upper.doors.doors[*selected].angle==upper.doors.doors[*selected].openAngle);
+        },[&](std::string_view part,const Vector3& feet) {
+            if (part=="goal") assert(progress.Update(0,feet) && progress.State()==StageState::Cleared);
+            if (!part.starts_with("window")) return;
+            StageHit hit;
+            assert(upper.collision.Raycast(feet+Vector3{0,1.5f,0},{0,0,1},2,hit));
+            const auto& window=upper.collision.colliders.at(hit.colliderIndex);
+            assert(window.id=="F4_Room"+std::string(part.substr(6))+"_WindowGlass");
+            upper.collision.colliders[hit.colliderIndex].enabled=false;
+        },[&](const Vector3& feet) { assert(upper.shutters.TryInteract(feet)); },[] {});
+        const Vector3 feet{6.35f,UpperHotelChecks::Upper,36.5f}, corridor{9.5f,UpperHotelChecks::Upper,36.5f};
+        assert(upper.doors.TryInteract(upper.collision,feet));
+        upper.doors.Update(1,upper.collision,[](const auto&) {return false;});
+        assert(!EnemyNavigation::Clear(&upper.collision,feet,corridor,.4f,1.8f));
+        assert(upper.doors.TryInteract(upper.collision,feet));
+        upper.doors.Update(1,upper.collision,[](const auto&) {return false;});
+        assert(EnemyNavigation::Clear(&upper.collision,feet,corridor,.4f,1.8f));
+        assert(upper.doors.TryInteract(upper.collision,feet));
+        const Vector3 occupant{8.24f,UpperHotelChecks::Upper,36.56f};
+        upper.doors.Update(1,upper.collision,[&](const auto& box) {return StageDoor::Occupied(box,occupant,.4f,1.8f);});
+        assert(EnemyNavigation::Clear(&upper.collision,occupant,occupant,.399f,1.8f));
+        upper.doors.Reset(upper.collision);
+        assert(!EnemyNavigation::Clear(&upper.collision,feet,corridor,.4f,1.8f));
+        assert(EnemyNavigation::Clear(&upper.collision,{32,UpperHotelChecks::Lower,6},{32,UpperHotelChecks::Lower,9},.4f,1.8f));
+        json invalid; std::ifstream(upperPath)>>invalid;
+        invalid["doors"][0]["openAngle"]=0;
+        assert(!upper.Load(upperPath,&invalid) && upper.doors.doors.size()==30);
+    }
     {
         const std::string hotelPath="../../resources/levels/stage03/stage03.json";
         json hotel; std::ifstream(hotelPath)>>hotel;
@@ -173,4 +212,7 @@ int main() {
         assert(Near(box.min.z,low[2].get<float>()) && Near(box.max.z,high[2].get<float>()));
     }
     std::cout<<"Stage loader tests passed: JSON/rollback, assets/coordinate agreement, spawn/weapon/goal compatibility, OBB rays, swept movement/slide, hitscan occlusion, bullets/bombs.\n";
+} catch (const std::exception& error) {
+    std::cerr<<error.what()<<'\n';
+    return 1;
 }

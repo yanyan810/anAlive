@@ -17,7 +17,8 @@ public:
         const BulletTrace& raycastTarget = {});
     void Update(float dt, const StageWorld& world, const std::vector<Enemy*>& enemies,
         const std::function<void(const BulletEnemyImpact&)>& onImpact,
-        const BulletTrace& raycastTarget = {}, const BulletImpact& onTargetImpact = {});
+        const BulletTrace& raycastTarget = {}, const BulletImpact& onTargetImpact = {},
+        const BulletImpact& onWallImpact = {});
     void Draw();
     void Clear() { simulation_.Clear(); }
     size_t Count() const { return simulation_.Bullets().size(); }

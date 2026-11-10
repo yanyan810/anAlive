@@ -1,0 +1,302 @@
+{
+  "coordinates": "engine-spawn-local-radians",
+  "nextId": 15,
+  "spawns": [
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-1",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_ArrivalEnemy_Center"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-2",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_ArrivalEnemy_Lounge"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-3",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_ArrivalEnemy_Reception"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-4",
+          "offset": [
+            -3.814697265625e-06,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_ArrivalEnemy_Stairs"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-5",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_BreachA"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "ranged",
+          "id": "placement-6",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_BreachB"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "fast",
+          "id": "placement-7",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_BreachC"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "fast",
+          "id": "placement-8",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_Side"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-9",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_Staff"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-10",
+          "offset": [
+            0.0,
+            -2.980232238769531e-07,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F1_Defense_Stairs"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-11",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F4_Room406_Enemy"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-12",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F5_CornerEnemyFar"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-13",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F5_CornerEnemyNear"
+    },
+    {
+      "enemies": [
+        {
+          "enabled": true,
+          "enemy": "normal",
+          "id": "placement-14",
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0
+        }
+      ],
+      "initialYaw": 0.0,
+      "mode": "Automatic",
+      "overrideEnabled": true,
+      "radius": 3.0,
+      "randomYaw": false,
+      "spawnId": "F5_Room513_Enemy"
+    }
+  ],
+  "stage": "stage04",
+  "version": 1
+}

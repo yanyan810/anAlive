@@ -80,6 +80,7 @@ private:
     friend void RunTemporarySceneTransitionCheckTests(GameApp&, TemporarySceneTransitionCheck&);
     friend void RunScreenTransitionTests(GameApp& app);
     friend void RunHotelStageRuntimeTests(GameApp& app);
+    friend void RunUpperHotelRuntimeTests(GameApp& app);
     friend void RunHotelCombatPlacementTests(GameApp& app);
     friend void RunHotelEnemyStairTests(GameApp& app);
     friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
@@ -88,6 +89,7 @@ private:
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
+    void UpdatePlayerBullets(float dt);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
     void ShareEnemyAlerts();
     bool HandleInteraction(bool pressed,bool allowPickup);
@@ -98,7 +100,11 @@ private:
 
     void SyncProjectileVisuals(GameApp& app);
     void SyncWeaponVisuals(GameApp& app);
-    const char* SceneName() const { return showroom_ ? "Showroom" : stageId_=="stage03" ? "Stage03" : "Game"; }
+    const char* SceneName() const {
+        if (showroom_) return "Showroom";
+        if (stageId_=="stage03") return "Stage03";
+        return stageId_=="stage04" ? "Stage04" : "Game";
+    }
     std::string LevelPath() const { return showroom_ ? "resources/levels/showroom/showroom.json" :
         stageLoaded_ ? StagePath() : "resources/levels/fps_spawns.json"; }
     std::string StagePath() const { return "resources/levels/"+stageId_+"/"+stageId_+".json"; }
@@ -120,6 +126,9 @@ private:
         WeaponSystem weapons;
         StageProgress stage;
         StageShutterSystem shutters;
+        StageDoorSystem doors;
+        std::vector<bool> meshesIntact;
+        bool transferUsed=false;
         std::mt19937 pelletRandom;
         uint64_t nextEnemy=0,frame=0;
         unsigned long long shots=0,hits=0,attacks=0;
@@ -156,6 +165,19 @@ private:
     inline static bool debugPauseOnEnter_=false;
 #endif
     StageLoader level_;
+    bool HasFatalStageFall() const {
+        return player_.HasFatalFall() ||
+            (level_.fallDeathY && player_.GetTransform().translate.y<*level_.fallDeathY);
+    }
+    void UpdateStageTransfer();
+    bool transferUsed_=false;
+    void BindRemovableMeshes();
+    void SyncRemovableMeshVisuals();
+    std::vector<std::vector<uint32_t>> removableMeshBindings_;
+    void InitializeDoors(GameApp& app);
+    void UpdateDoors(float dt);
+    void SyncDoorVisuals();
+    std::vector<std::unique_ptr<Object3d>> doorVisuals_;
     void InitializeShutters(GameApp& app);
     void SyncShutterVisuals();
     void ProcessShutterEvents();

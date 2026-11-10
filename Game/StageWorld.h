@@ -16,6 +16,7 @@ struct StageCollider {
     bool walkable = false; // Smooth support proxy; do not use on walls/ceilings.
     bool playerOnly = false; // Spawn-room gates do not obstruct enemies or shots.
     bool blocksSight = true; // Opt-out for future transparent colliders; physical collision is independent.
+    bool enabled = true;
     Vector3 position{}, rotation{}, scale{1,1,1};
     AABB local{};
     Matrix4x4 world=Matrix4x4::MakeIdentity4x4(), inverse=Matrix4x4::MakeIdentity4x4();
@@ -24,15 +25,26 @@ struct StageCollider {
         inverse=Matrix4x4::Inverse(world);
     }
 };
-struct StageHit { float distance=0; Vector3 normal{}; };
+struct StageHit {
+    float distance=0;
+    Vector3 normal{};
+    size_t colliderIndex=std::numeric_limits<size_t>::max();
+};
 class StageWorld {
 public:
     bool playerGravity = false; // Opt-in: legacy stages retain their movement.
-    struct PlayerMotion { float verticalSpeed=0; bool grounded=false; };
+    float fallDeathDistance = 0;
+    struct PlayerMotion {
+        float verticalSpeed=0;
+        bool grounded=false;
+        float airborneDrop=0;
+        bool fatalFall=false;
+    };
     std::vector<StageCollider> colliders;
     // Local-space slabs preserve rotated and nonuniformly scaled boxes.
     static bool CastBox(const StageCollider& c,const Vector3& origin,const Vector3& unit,float range,
         const Vector3& padding,StageHit& hit) {
+        if (!c.enabled) return false;
         const auto o=StagePoint(origin,c.inverse);
         const auto d=StagePoint(origin+unit,c.inverse)-o;
         const float a[]={o.x,o.y,o.z}, b[]={d.x,d.y,d.z};
@@ -66,7 +78,8 @@ public:
         if (!std::isfinite(length) || length<=0 || !std::isfinite(range) || range<0) return false;
         const auto unit=direction*(1/length);
         bool found=false;
-        for (const auto& c : colliders) {
+        for (size_t i=0;i<colliders.size();++i) {
+            const auto& c=colliders[i];
             if (c.playerOnly) continue;
             if (sight && !c.blocksSight) continue;
             Vector3 padding{};
@@ -74,7 +87,9 @@ public:
             padding.y=radius*std::hypot(c.inverse.m[0][1],c.inverse.m[1][1],c.inverse.m[2][1]);
             padding.z=radius*std::hypot(c.inverse.m[0][2],c.inverse.m[1][2],c.inverse.m[2][2]);
             StageHit candidate;
-            if (CastBox(c,origin,unit,range,padding,candidate)) { found=true; hit=candidate; range=hit.distance; }
+            if (CastBox(c,origin,unit,range,padding,candidate)) {
+                found=true; hit=candidate; hit.colliderIndex=i; range=hit.distance;
+            }
         }
         return found;
     }
@@ -127,6 +142,7 @@ public:
         const float tick=dt/static_cast<float>(steps);
         Vector3 position=start;
         for (int step=0;step<steps;++step) {
+            const bool wasGrounded=motion.grounded;
             auto next=Move(position,position+delta*(1.0f/static_cast<float>(steps)),radius,height,true);
             motion.verticalSpeed=std::max(-50.0f,motion.verticalSpeed-20.0f*tick);
             const float falling=motion.verticalSpeed*tick;
@@ -152,6 +168,14 @@ public:
                 if (Raycast(position+Vector3{0,height,0},{0,1,0},next.y-position.y+.002f,hit,radius) && hit.normal.y<-.7f) {
                     next=position; motion.verticalSpeed=0;
                 }
+            }
+            if (fallDeathDistance>0) {
+                // Include the landing substep, even when a long frame spans the whole fall.
+                if (!wasGrounded || !motion.grounded) {
+                    motion.airborneDrop+=std::max(0.0f,position.y-next.y);
+                    motion.fatalFall|=motion.airborneDrop>=fallDeathDistance;
+                }
+                if (motion.grounded) motion.airborneDrop=0;
             }
             position=next;
         }

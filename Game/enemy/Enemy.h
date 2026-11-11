@@ -108,7 +108,8 @@ public:
     DebugState CaptureDebug() const;
     void RestoreDebug(const DebugState& state);
 #endif
-    float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f);
+    float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f,
+        int navigationBudget=std::numeric_limits<int>::max());
     const EnemyAI& AI() const { return ai_; }
     const EnemySenses& Senses() const { return ai_.settings.senses; }
     bool ConfigureSenses(const EnemySenses& senses) {

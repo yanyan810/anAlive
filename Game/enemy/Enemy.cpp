@@ -484,10 +484,10 @@ void Enemy::ShowHitFeedback(EnemyPartType type) { ShowHitFeedback(FindLegacyPart
 void Enemy::ShowHitFeedback(size_t index) {
     if (index<parts_.size()) parts_[index].flashRemaining=0.2f;
 }
-float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight) {
+float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight,int navigationBudget) {
     const auto previous = position_;
     const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead(),world,
-        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight);
+        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight,navigationBudget);
     const bool moving = !IsDead() && std::hypot(position_.x-previous.x, position_.z-previous.z) > 1e-6f;
     animation_.Advance(dt, moving, parts_);
     UpdateVisuals(dt);

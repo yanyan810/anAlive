@@ -925,7 +925,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     const bool cancelBurst = true;
 #endif
     const int weaponShots = player_.UpdateShooting(input, pickedUp ? 0.0f : dt,
-        allowFire, controls, cancelBurst);
+        allowFire, controls, cancelBurst && !pickedUp);
     UpdateEnemySpawns(dt);
     playerDamagedFlash_ = std::max(0.0f, playerDamagedFlash_-dt);
     Vector3 projectileDirection{};
@@ -946,16 +946,24 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         correction[i]=correction[i]+offset; correction[j]=correction[j]-offset;
     }
     std::vector<float> enemyDamage(enemies_.size());
+    // Share the route search work across the crowd instead of finishing every detour in one frame.
+    constexpr int routeNodesPerFrame=1024;
+    const int alive=static_cast<int>(std::count_if(enemies_.begin(),enemies_.end(),[](const Enemy* enemy) { return !enemy->IsDead(); }));
+    const int navigationBudget=std::max(1,routeNodesPerFrame/std::max(1,alive));
     for(size_t i=0;i<enemies_.size();++i) {
         if (showroom_ && freezeEnemies_) { enemies_[i]->UpdateVisuals(dt); continue; }
         const auto previous=enemies_[i]->GetPosition();
         const auto& definition=enemies_[i]->Definition();
         const auto separated=EnemyNavigation::ConstrainMotion(level_.collision,previous,previous+correction[i],definition.collisionRadius,definition.collisionHeight);
         enemies_[i]->SetPosition(separated);
-        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate,&level_.collision,player_.Settings().cameraHeight);
-        if (!enemies_[i]->IsDead()) {
-            enemies_[i]->SetPosition(EnemyNavigation::ConstrainMotion(level_.collision,separated,enemies_[i]->GetPosition(),definition.collisionRadius,definition.collisionHeight));
-            enemies_[i]->UpdateVisuals(0);
+        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate,&level_.collision,player_.Settings().cameraHeight,navigationBudget);
+        const auto desired=enemies_[i]->GetPosition();
+        if (!enemies_[i]->IsDead() && (desired.x!=separated.x || desired.y!=separated.y || desired.z!=separated.z)) {
+            const auto constrained=EnemyNavigation::ConstrainMotion(level_.collision,separated,desired,definition.collisionRadius,definition.collisionHeight);
+            if (constrained.x!=desired.x || constrained.y!=desired.y || constrained.z!=desired.z) {
+                enemies_[i]->SetPosition(constrained);
+                enemies_[i]->UpdateVisuals(0);
+            }
         }
     }
     ShareEnemyAlerts();

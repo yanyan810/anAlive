@@ -136,6 +136,22 @@ int main() try {
             Check(EnemyNavigation::Clear(&world,before,p,.4f,1.8f),"route crossed obstacle");
         }
         Check(StageLength(p-goal)<.06f,"detour never arrived");
+        EnemyNavigation sliced;
+        p={};
+        Check(!sliced.Move(p,r,goal,3,.05f,&world,.4f,1.8f,1) && sliced.planAttempts==1,
+            "one-node budget completed a multi-node detour");
+        sliced.Move(p,r,goal+Vector3{1,0,0},3,.05f,&world,.4f,1.8f,1);
+        Check(sliced.planAttempts==1,"moving target discarded unfinished detour");
+        auto restored=sliced;
+        auto restoredPosition=p;
+        restored.Move(restoredPosition,r,goal,3,.05f,&world,.4f,1.8f,1);
+        Check(restored.planAttempts==2,"restored snapshot did not restart unfinished detour");
+        for (int i=0;i<300 && StageLength(p-goal)>.06f;++i) {
+            const auto before=p;
+            sliced.Move(p,r,goal,3,.05f,&world,.4f,1.8f,1);
+            Check(EnemyNavigation::Clear(&world,before,p,.4f,1.8f),"resumed route crossed obstacle");
+        }
+        Check(StageLength(p-goal)<.06f && sliced.planAttempts==1,"resumed detour did not finish");
         world.colliders.push_back(Box(goal,{1,3,1}));
         p={}; nav={}; Check(!nav.Plan(&world,p,goal,.4f,1.8f),"destination inside wall accepted");
         for (int i=0;i<30;++i) nav.Move(p,r,goal,3,.1f,&world,.4f,1.8f);

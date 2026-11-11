@@ -41,9 +41,10 @@ public:
         bool fatalFall=false;
     };
     std::vector<StageCollider> colliders;
+private:
     // Local-space slabs preserve rotated and nonuniformly scaled boxes.
     static bool CastBox(const StageCollider& c,const Vector3& origin,const Vector3& unit,float range,
-        const Vector3& padding,StageHit& hit) {
+        const Vector3& padding,StageHit* hit) {
         if (!c.enabled) return false;
         const auto o=StagePoint(origin,c.inverse);
         const auto d=StagePoint(origin+unit,c.inverse)-o;
@@ -61,6 +62,7 @@ public:
             leave=std::min(leave,exitDistance);
             if (enter>leave) return false;
         }
+        if (!hit) return true;
         if (face<0) {
             // Origin inside: use the nearest exit plane, for deterministic depenetration.
             float nearest=std::numeric_limits<float>::max();
@@ -71,7 +73,16 @@ public:
         }
         Vector3 n{c.inverse.m[0][face]*sign,c.inverse.m[1][face]*sign,c.inverse.m[2][face]*sign};
         const float length=StageLength(n);
-        hit={enter,length>0 ? n*(1/length) : Vector3{}}; return true;
+        *hit={enter,length>0 ? n*(1/length) : Vector3{}}; return true;
+    }
+public:
+    static bool CastBox(const StageCollider& c,const Vector3& origin,const Vector3& unit,float range,
+        const Vector3& padding,StageHit& hit) {
+        return CastBox(c,origin,unit,range,padding,&hit);
+    }
+    static bool IntersectsBox(const StageCollider& c,const Vector3& origin,const Vector3& unit,float range,
+        const Vector3& padding) {
+        return CastBox(c,origin,unit,range,padding,nullptr);
     }
     bool Raycast(const Vector3& origin,const Vector3& direction,float range,StageHit& hit,float radius=0,bool sight=false) const {
         const float length=StageLength(direction);
@@ -80,12 +91,14 @@ public:
         bool found=false;
         for (size_t i=0;i<colliders.size();++i) {
             const auto& c=colliders[i];
-            if (c.playerOnly) continue;
+            if (!c.enabled || c.playerOnly) continue;
             if (sight && !c.blocksSight) continue;
             Vector3 padding{};
-            padding.x=radius*std::hypot(c.inverse.m[0][0],c.inverse.m[1][0],c.inverse.m[2][0]);
-            padding.y=radius*std::hypot(c.inverse.m[0][1],c.inverse.m[1][1],c.inverse.m[2][1]);
-            padding.z=radius*std::hypot(c.inverse.m[0][2],c.inverse.m[1][2],c.inverse.m[2][2]);
+            if (radius!=0) {
+                padding.x=radius*std::hypot(c.inverse.m[0][0],c.inverse.m[1][0],c.inverse.m[2][0]);
+                padding.y=radius*std::hypot(c.inverse.m[0][1],c.inverse.m[1][1],c.inverse.m[2][1]);
+                padding.z=radius*std::hypot(c.inverse.m[0][2],c.inverse.m[1][2],c.inverse.m[2][2]);
+            }
             StageHit candidate;
             if (CastBox(c,origin,unit,range,padding,candidate)) {
                 found=true; hit=candidate; hit.colliderIndex=i; range=hit.distance;
@@ -105,7 +118,7 @@ public:
             const auto direction=remaining*(1/length);
             StageHit nearest{length,{}}; bool blocked=false;
             for (const auto& c : colliders) {
-                if (c.playerOnly && !player) continue;
+                if (!c.enabled || (c.playerOnly && !player)) continue;
                 if (c.walkable && (player || walkableSupport)) continue;
                 const auto bounds=TransformAABB(c.local,c.world);
                 if (bounds.max.y<=position.y+.01f || bounds.min.y>=position.y+height-.01f) continue;

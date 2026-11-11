@@ -122,8 +122,7 @@ public:
             definition.reloadMode < WeaponReloadMode::Magazine || definition.reloadMode > WeaponReloadMode::PerRound)
             return false;
         definition_ = definition;
-        magazine_ = definition.magazineSize;
-        reserve_ = std::min(definition.reserveAmmo, definition.maxReserveAmmo);
+        ResetAmmo();
         cooldown_ = reloadRemaining_ = 0;
         reloadState_ = WeaponReloadState::None;
         burstShotsRemaining_ = 0;
@@ -143,6 +142,10 @@ public:
     }
     int Magazine() const { return magazine_; }
     int Reserve() const { return reserve_; }
+    void ResetAmmo() {
+        magazine_ = definition_.magazineSize;
+        reserve_ = std::min(definition_.reserveAmmo, definition_.maxReserveAmmo);
+    }
     bool InfiniteReserveAmmo() const { return definition_.infiniteReserveAmmo; }
     bool Reloading() const { return reloadState_ != WeaponReloadState::None; }
     WeaponReloadState ReloadState() const { return reloadState_; }

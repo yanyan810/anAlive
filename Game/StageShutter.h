@@ -101,19 +101,28 @@ public:
                 shutter.state=ShutterState::Open;
                 events_.push_back({ShutterEventType::Completed,shutter.definition.id,"fullyOpened",1});
             }
+            auto& collider=world.colliders.at(shutter.definition.colliderIndex);
+            const auto position=ColliderPosition(shutter);
+            if (position.x!=collider.position.x || position.y!=collider.position.y || position.z!=collider.position.z) {
+                collider.position=position;
+                collider.UpdateMatrices();
+            }
         }
-        Sync(world);
     }
     void Sync(StageWorld& world) const {
         for (const auto& shutter : shutters) {
             auto collider=shutter.definition.collider;
-            collider.position+=shutter.definition.defendBeforeOpening && shutter.state!=ShutterState::Open
-                ? shutter.definition.closedPosition : shutter.Position();
+            collider.position=ColliderPosition(shutter);
             collider.UpdateMatrices();
             world.colliders.at(shutter.definition.colliderIndex)=std::move(collider);
         }
     }
     std::vector<ShutterEvent> TakeEvents() { auto events=std::move(events_); events_.clear(); return events; }
 private:
+    static Vector3 ColliderPosition(const StageShutter& shutter) {
+        const auto& def=shutter.definition;
+        const auto origin=def.defendBeforeOpening && shutter.state!=ShutterState::Open ? def.closedPosition : shutter.Position();
+        return def.collider.position+origin;
+    }
     std::vector<ShutterEvent> events_;
 };

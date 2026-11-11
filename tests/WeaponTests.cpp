@@ -32,13 +32,31 @@ static void TestReusableDrops(const json& definitions) {
     const auto dropped=system.Pickups()[1];
     assert(dropped.savedWeapon && dropped.weaponId=="rifle" && dropped.savedWeapon->Magazine()==magazine && dropped.savedWeapon->Reserve()==reserve);
     assert(!dropped.savedWeapon->Reloading() && dropped.savedWeapon->ReloadRemaining()==0);
+    assert(held.TryFire() && held.StartReload());
+    held.Update(100);
+    assert(held.Reserve()<held.Definition().reserveAmmo);
     for (int i=0;i<12;++i) {
+        assert(held.TryFire() && held.StartReload());
+        const auto reload=held.ReloadRemaining(),cooldown=held.Cooldown();
         assert(system.Nearest({})==0 && system.TryPickup({},held,&world));
+        assert(system.Pickups().size()==2);
         assert(system.Pickups()[0].visible && !system.Pickups()[0].pickedUp && !system.Pickups()[0].savedWeapon);
         assert(system.Pickups()[0].weaponId=="smg" && held.Magazine()==held.Definition().magazineSize);
+        assert(held.Reserve()==held.Definition().reserveAmmo && held.Reloading());
+        assert(held.ReloadRemaining()==reload && held.Cooldown()==cooldown);
+        held.Update(100);
     }
     const auto count=system.Pickups().size();
     const auto feet=Vector3{dropped.position.x,0,dropped.position.z};
+    StageWorld voidWorld; voidWorld.playerGravity=true;
+    auto duplicate=system;
+    auto customRifle=*system.Find("rifle");
+    customRifle.damage+=1;
+    WeaponRuntime same; assert(same.Equip(customRifle) && same.TryFire());
+    assert(duplicate.Nearest(feet)==1 && duplicate.TryPickup(feet,same,&voidWorld));
+    assert(duplicate.Pickups().size()==count && !duplicate.Pickups()[1].visible && duplicate.Pickups()[1].pickedUp);
+    assert(same.Definition().damage==customRifle.damage && same.Magazine()==customRifle.magazineSize);
+    assert(same.Reserve()==customRifle.reserveAmmo && same.Cooldown()==customRifle.fireInterval);
     assert(system.Nearest(feet)==1 && system.TryPickup(feet,held,&world));
     assert(held.Definition().id=="rifle" && held.Magazine()==magazine && held.Reserve()==reserve);
     assert(system.Pickups().size()==count && system.Pickups()[1].savedWeapon->Definition().id=="smg");
@@ -50,6 +68,7 @@ static void TestReusableDrops(const json& definitions) {
     assert(system.TryPickup({loose.position.x,0,loose.position.z},held,&world));
     assert(!system.Pickups()[1].visible && system.Pickups()[1].pickedUp && snapshot.Pickups()[1].visible);
     const auto size=system.Pickups().size();
+    assert(held.Equip(*system.Find("rifle")));
     assert(system.TryPickup({},held,&world) && system.Pickups().size()==size && system.Pickups()[1].visible);
     system.ResetPickups(); assert(system.Pickups().size()==1 && system.Pickups()[0].visible && system.ActualSeed()==42);
     for (const char* id:{"burst_rifle","pump_shotgun","pistol"}) {
@@ -70,13 +89,67 @@ static void TestReusableDrops(const json& definitions) {
     assert(system.Pickups()[1].savedWeapon->Magazine()==0 && system.Pickups()[1].savedWeapon->Reserve()==0);
     // Nearby wall: a preferred drop must stay in front of it, on this floor.
     StageCollider wall; wall.local={{.6f,0,-3},{.8f,3,3}}; wall.UpdateMatrices(); world.colliders.push_back(wall);
-    system.ResetPickups(); assert(system.TryPickup({},held,&world));
-    assert(system.Pickups()[1].position.x+held.Definition().pickupScale.x<.6f);
+    system.ResetPickups(); assert(held.Equip(*system.Find("rifle")) && system.TryPickup({},held,&world));
+    assert(system.Pickups()[1].position.x+system.Find("rifle")->pickupScale.x<.6f);
     // Unsafe floorless exchange is atomic and retains the equipped ammunition.
-    system.ResetPickups(); StageWorld voidWorld; voidWorld.playerGravity=true;
+    system.ResetPickups(); assert(held.Equip(*system.Find("rifle")) && held.TryFire());
     const auto before=held; assert(!system.TryPickup({},held,&voidWorld));
     assert(system.Pickups().size()==1 && held.Definition().id==before.Definition().id && held.Magazine()==before.Magazine());
-    std::cout<<"Reusable pickup/drop tests passed: unlimited sources, same-ID exchange, exact magazine/reserve, empty weapon, infinite reserve, cancelled reload/burst, slot reuse, reset/editor/snapshot, floor/wall safety and atomic failure.\n";
+    std::cout<<"Reusable pickup/drop tests passed: unlimited sources, same-ID ammo reset without drops, exact magazine/reserve, empty weapon, infinite reserve, reload/burst on exchange, slot reuse, reset/editor/snapshot, floor/wall safety and atomic failure.\n";
+}
+static void TestDropRelocation(const json& definitions) {
+    const json level={{"weaponSpawnPoints",json::array({
+        {{"id","smg-source"},{"position",{0,.25f,0}},{"weaponPool",{"smg"}}},
+        {{"id","revolver-source"},{"position",{8,.25f,0}},{"weaponPool",{"Revolver"}}}
+    })}};
+    Save(definitions,level);
+    WeaponSystem system;
+    assert(system.Load("weapon-test.json","weapon-level-test.json"));
+    StageWorld world; world.playerGravity=true;
+    StageCollider floor; floor.local={{-10,-.5f,-10},{20,0,10}}; floor.UpdateMatrices();
+    world.colliders.push_back(floor);
+    WeaponRuntime held;
+    assert(held.Equip(*system.Find("Revolver")));
+    assert(system.TryPickup({},held,&world) && held.Definition().id=="smg");
+    assert(system.TryPickup({8,0,0},held,&world) && held.Definition().id=="Revolver");
+    assert(system.Pickups().size()==4);
+    const auto firstRevolver=system.Pickups()[2];
+    const auto firstSmg=system.Pickups()[3];
+    assert(firstRevolver.weaponId=="Revolver" && firstSmg.weaponId=="smg");
+
+    assert(system.TryPickup({-.5f,0,0},held,&world) && held.Definition().id=="smg");
+    assert(system.Pickups().size()==4 && system.Pickups()[2].spawnPointId==firstRevolver.spawnPointId);
+    assert(StageLength(system.Pickups()[2].position-firstRevolver.position)>2);
+    assert(held.TryFire() && held.StartReload());
+    held.Update(100);
+    assert(held.TryFire());
+    const int magazine=held.Magazine(),reserve=held.Reserve();
+    const Vector3 nextDrop{7.5f,0,0};
+    StageWorld voidWorld; voidWorld.playerGravity=true;
+    assert(!system.TryPickup(nextDrop,held,&voidWorld));
+    assert(system.Pickups().size()==4 && StageLength(system.Pickups()[3].position-firstSmg.position)==0);
+    assert(held.Definition().id=="smg" && held.Magazine()==magazine && held.Reserve()==reserve);
+    assert(system.TryPickup(nextDrop,held,&world,.5f) && held.Definition().id=="Revolver");
+    assert(system.Pickups().size()==4);
+    const auto relocatedSmg=system.Pickups()[3];
+    assert(relocatedSmg.spawnPointId==firstSmg.spawnPointId && relocatedSmg.rotation.y==.5f);
+    assert(StageLength(relocatedSmg.position-firstSmg.position)>2);
+    assert(relocatedSmg.savedWeapon && relocatedSmg.savedWeapon->Magazine()==magazine && relocatedSmg.savedWeapon->Reserve()==reserve);
+
+    // Exchanging with an existing drop must consume that pickup even if the
+    // outgoing weapon can reuse a different drop's slot.
+    const Vector3 smgFeet{relocatedSmg.position.x,0,relocatedSmg.position.z};
+    assert(system.Nearest(smgFeet)==3 && system.TryPickup(smgFeet,held,&world));
+    assert(held.Definition().id=="smg" && held.Magazine()==magazine && held.Reserve()==reserve);
+    assert(!system.Pickups()[3].visible && system.Pickups()[3].pickedUp);
+    assert(system.Pickups()[2].spawnPointId==firstRevolver.spawnPointId && system.Pickups()[2].position.x>smgFeet.x);
+    for (int i=0;i<12;++i) {
+        assert(system.TryPickup({8,0,0},held,&world) && system.TryPickup({},held,&world));
+        assert(system.Pickups().size()==4 && system.Pickups()[2].visible && system.Pickups()[3].visible);
+    }
+    assert(system.Pickups()[0].visible && !system.Pickups()[0].savedWeapon && system.Pickups()[0].position.x==0);
+    assert(system.Pickups()[1].visible && !system.Pickups()[1].savedWeapon && system.Pickups()[1].position.x==8);
+    std::cout<<"Drop relocation tests passed: Revolver/SMG swaps, current ammo and transform, unsafe drop, ground exchange and unchanged stage sources.\n";
 }
 static void TestInfiniteReserve(const WeaponSystem& system) {
     for (const auto& source:system.Definitions()) if (source.slot==WeaponSlot::Sub) {
@@ -352,6 +425,7 @@ int main() {
     TestExtendedModes(system);
     TestInfiniteAmmo(system);
     TestReusableDrops(definitions);
+    TestDropRelocation(definitions);
     // Filter assertions use a fixed seven-weapon catalog; editor-created weapons
     // must not change the number or identity of random candidates in this fixture.
     auto filterDefinitions=definitions;

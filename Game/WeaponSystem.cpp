@@ -145,8 +145,42 @@ bool WeaponSystem::TryPickup(const Vector3& player,WeaponRuntime& weapon,const S
 bool WeaponSystem::Load(const std::string& definitionsPath, const std::string& levelPath,
     std::optional<WeaponRandomSettings> settingsOverride, const nlohmann::json* draft) {
     try {
-        const auto source = Read(definitionsPath);
-        const auto level = draft ? *draft : Read(levelPath);
+        const auto definitions = Read(definitionsPath);
+        return LoadDocuments(definitions, draft ? *draft : Read(levelPath), settingsOverride);
+    } catch (const std::exception& exception) {
+        error_ = exception.what();
+        return false;
+    }
+}
+
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+bool WeaponSystem::LoadLiveDefinitions(const nlohmann::json& definitions) {
+    return LoadDocuments(definitions, json::object(), WeaponRandomSettings{true, 0});
+}
+
+bool WeaponRuntime::ApplyLiveDefinition(const WeaponDefinition& definition) {
+    if (definition.id != definition_.id) return false;
+    if (Reloading() && (definition.reloadMode != definition_.reloadMode ||
+        definition.magazineSize != definition_.magazineSize || definition.maxReserveAmmo != definition_.maxReserveAmmo ||
+        definition.infiniteReserveAmmo != definition_.infiniteReserveAmmo ||
+        definition.reloadTime != definition_.reloadTime || definition.reloadStartTime != definition_.reloadStartTime ||
+        definition.reloadPerRoundTime != definition_.reloadPerRoundTime ||
+        definition.reloadEndTime != definition_.reloadEndTime ||
+        definition.reloadCanInterrupt != definition_.reloadCanInterrupt)) return false;
+    if (BurstRemaining() > 0 && (definition.fireMode != definition_.fireMode ||
+        definition.burstCount != definition_.burstCount || definition.burstInterval != definition_.burstInterval ||
+        definition.ammoPerShot != definition_.ammoPerShot || definition.magazineSize != definition_.magazineSize))
+        return false;
+    definition_ = definition;
+    magazine_ = std::min(magazine_, definition.magazineSize);
+    reserve_ = std::min(reserve_, definition.maxReserveAmmo);
+    return true;
+}
+#endif
+
+bool WeaponSystem::LoadDocuments(const json& source, const json& level,
+    std::optional<WeaponRandomSettings> settingsOverride) {
+    try {
         WeaponSystem loaded;
         std::set<std::string> ids;
         if (!source.at("weapons").is_array()) throw std::runtime_error("weapons must be an array");

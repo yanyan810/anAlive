@@ -22,6 +22,9 @@
 #include "scene/Debug/EnemyAITestScene.h"
 #include "scene/Debug/EnemyPlacementEditorScene.h"
 #include "../../tests/EnemyAITestSceneTests.h"
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+#include "../../tests/EnemyAiChatTests.h"
+#endif
 #include "../../tests/EnemyAIStageSmokeTests.h"
 #include "../../tests/EnemyPlacementEditorTests.h"
 #include "SceneManager.h"
@@ -105,9 +108,25 @@ int GameApp::Run() {
         }
         Finalize_(); return result;
     }
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    if (HasLaunchArgument(L"--enemy-ai-chat-test")) {
+        int result = 0;
+        try { RunEnemyAiChatTests(*this); }
+        catch (const std::exception& error) {
+            result = 1;
+            try { std::ofstream(EnemyAiChatTestDirectory() / "result.txt") << "FAIL: " << error.what() << '\n'; }
+            catch (const std::exception&) { OutputDebugStringA(error.what()); }
+        }
+        Finalize_();
+        return result;
+    }
+#endif
     if (HasLaunchArgument(L"--enemy-ai-scene-test")) {
         int result=0; std::filesystem::create_directories("generated/enemy-ai-tests");
-        try { RunEnemyAITestSceneTests(*this); }
+        try {
+            RunEnemyAITestSceneTests(*this, HasLaunchArgument(L"--check-live-diagnostics"),
+                HasLaunchArgument(L"--check-live-phase2"), HasLaunchArgument(L"--check-live-phase2-restart"));
+        }
         catch (const std::exception& error) {
             std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"FAIL: "<<error.what()<<'\n'; result=1;
         }
@@ -320,6 +339,10 @@ bool GameApp::Initialize_() {
     debugAIConfig.gameId = "CG5";
     debugAIConfig.gameVersion = "0.1.0";
     debugAIConfig.controlEndpoint = "DebugAI_CG5";
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    if (HasLaunchArgument(L"--enemy-ai-chat-test"))
+        debugAIConfig.controlEndpoint += "_LiveAiTest_" + std::to_string(GetCurrentProcessId());
+#endif
     debugAIConfig.logDirectory = "generated/debug_ai";
     debugAIConfig.playerLogDirectory = "generated/debug_ai/player";
     debugAIConfig.aiLogDirectory = "generated/debug_ai/ai";

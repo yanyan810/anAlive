@@ -132,6 +132,9 @@ public:
         return true;
     }
     const WeaponDefinition& Definition() const { return definition_; }
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    bool ApplyLiveDefinition(const WeaponDefinition& definition);
+#endif
     bool InfiniteAmmo() const { return infiniteAmmo_; }
     void SetInfiniteAmmo(bool enabled) {
         infiniteAmmo_ = enabled;
@@ -290,6 +293,9 @@ public:
     // All definition/point validation and lottery happen once at stage initialization.
     bool Load(const std::string& definitionsPath, const std::string& levelPath,
         std::optional<WeaponRandomSettings> settingsOverride = std::nullopt, const nlohmann::json* draft = nullptr);
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    bool LoadLiveDefinitions(const nlohmann::json& definitions);
+#endif
     // Editor reload is transactional and does not reroll or respawn existing pickups.
     bool ReloadForEditor(const std::string& definitionsPath, const std::string& levelPath);
     const WeaponDefinition* Find(const std::string& id) const {
@@ -326,6 +332,8 @@ public:
     }
     bool TryPickup(const Vector3& player, WeaponRuntime& weapon,const StageWorld* world=nullptr,float yaw=0);
 private:
+    bool LoadDocuments(const nlohmann::json& source, const nlohmann::json& level,
+        std::optional<WeaponRandomSettings> settingsOverride);
     std::vector<WeaponDefinition> definitions_;
     std::vector<WeaponSpawnPoint> points_;
     std::vector<WeaponPickup> pickups_;

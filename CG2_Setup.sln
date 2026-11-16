@@ -15,6 +15,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectXTex", "externals\Dir
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DebugAIViewer", "Engine\DebugAI\Tools\DebugAIViewer\DebugAIViewer.vcxproj", "{78B66F87-4F7A-47C6-A58E-A337C09F53B1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EnemyAIDiagnostics", "Game\LiveDevelopment\EnemyAIDiagnostics.vcxproj", "{FD8E6AA6-BB86-41DD-AE7C-F646609AA874}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -40,6 +42,9 @@ Global
 		{78B66F87-4F7A-47C6-A58E-A337C09F53B1}.Development|x64.Build.0 = Development|x64
 		{78B66F87-4F7A-47C6-A58E-A337C09F53B1}.Release|x64.ActiveCfg = Release|x64
 		{78B66F87-4F7A-47C6-A58E-A337C09F53B1}.Release|x64.Build.0 = Release|x64
+		{FD8E6AA6-BB86-41DD-AE7C-F646609AA874}.Debug|x64.ActiveCfg = Debug|x64
+		{FD8E6AA6-BB86-41DD-AE7C-F646609AA874}.Development|x64.ActiveCfg = Debug|x64
+		{FD8E6AA6-BB86-41DD-AE7C-F646609AA874}.Release|x64.ActiveCfg = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

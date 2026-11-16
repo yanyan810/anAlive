@@ -8,6 +8,7 @@
 #include <Shellapi.h>
 
 #include "DebugProtocol.h"
+#include "../../ProjectScanPaths.h"
 #include "AdapterDiagnostics.h"
 #include "CoverageTracker.h"
 #include "ExternalGenericAIProvider.h"
@@ -345,19 +346,6 @@ std::wstring LoadScanTargets() {
     const auto config = nlohmann::json::parse(input, nullptr, false);
     if (config.is_discarded() || !config.is_object()) return {};
     return Utf8ToWide(config.value("scanTargets", ""));
-}
-
-bool IsExcludedProjectPath(const std::filesystem::path& path) {
-    static const std::set<std::wstring> excluded = {
-        L".git", L".vs", L"generated", L"build", L"debug", L"release", L"x64", L"x86",
-        L"externals", L"node_modules", L"packages", L"obj", L"bin"
-    };
-    for (const auto& component : path) {
-        std::wstring name = component.wstring();
-        std::transform(name.begin(), name.end(), name.begin(), ::towlower);
-        if (excluded.contains(name)) return true;
-    }
-    return false;
 }
 
 struct ProjectScanResult {

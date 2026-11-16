@@ -5,11 +5,13 @@
 #include "ImGuiManagaer.h"
 #include "SrvManager.h"
 #include "DirectXTex.h"
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <tuple>
 
-inline void RunEnemyAITestSceneTests(GameApp& app) {
+inline void RunEnemyAITestSceneTests(GameApp& app, bool checkLiveDiagnostics, bool checkLivePhase2, bool checkLiveRestart) {
     const auto check=[](bool ok,const char* text) { if (!ok) throw std::runtime_error(text); };
     const auto frame=[&]() {
 #ifdef USE_IMGUI
@@ -48,6 +50,334 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     app.GetInput()->SetCameraControlEnabled(false);
     const auto initialPlayer=scene->player_.GetTransform();
     scene->Update(app,0);
+    if (checkLiveDiagnostics || checkLivePhase2 || checkLiveRestart) {
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+        const auto coordinates=[](const Vector3& value) { return std::array{value.x,value.y,value.z}; };
+        struct EnemySnapshot {
+            const Enemy* instance;
+            uint64_t spawnId;
+            std::string id;
+            std::array<float,3> position;
+            std::vector<float> partHp;
+            EnemyState state;
+            bool pursuit, paused;
+            bool operator==(const EnemySnapshot&) const = default;
+        };
+        const auto snapshot=[&]() {
+            std::vector<EnemySnapshot> enemies;
+            for (const auto* enemy : scene->enemies_) {
+                EnemySnapshot value{enemy,enemy->GetSpawnId(),enemy->GetId(),coordinates(enemy->GetPosition()),{},
+                    enemy->GetState(),enemy->AI().pursuitOrdered,enemy->AI().paused};
+                for (const auto& part : enemy->CaptureDebug().parts) value.partHp.push_back(part.hp);
+                enemies.push_back(std::move(value));
+            }
+            const auto& player=scene->player_.GetTransform();
+            const auto& camera=scene->camera_;
+            return std::tuple(GetCurrentProcessId(),app.Scenes().Current(),app.Scenes().CurrentName(),
+                coordinates(player.translate),coordinates(player.rotate),scene->player_.GetHP(),
+                coordinates(camera.GetTranslate()),coordinates(camera.GetRotate()),camera.GetFovY(),
+                scene->pauseAll_,std::move(enemies));
+        };
+        const auto before=snapshot();
+        if (checkLivePhase2 || checkLiveRestart) {
+            using Json = nlohmann::json;
+            using Action = LiveEnemyDiagnostics::Action;
+            const std::filesystem::path fixtures("generated/live-phase2-tests");
+            std::string run;
+            std::ifstream(fixtures / "run.txt") >> run;
+            check(run.size() == 32 && run.find_first_not_of("0123456789abcdef") == std::string::npos, "invalid live fixture directory");
+            const auto directory = fixtures / run;
+            std::map<std::string, Json> manifests;
+            for (const auto& path : std::filesystem::directory_iterator(directory)) {
+                std::ifstream manifest(path.path() / "generation.json");
+                if (manifest) {
+                    auto document = Json::parse(manifest);
+                    const auto variant = document.at("variant").get<std::string>();
+                    manifests.emplace(variant, std::move(document));
+                }
+            }
+            auto& host = scene->liveDiagnostics_;
+            host.Open(directory);
+            const auto id = [&](const char* variant) { return manifests.at(variant).at("generation").get<std::string>(); };
+            const auto artifact = [&](const char* variant, const char* extension) {
+                return directory / id(variant) / ("EnemyAIDiagnostics-" + id(variant) + extension);
+            };
+            const auto publish = [&](const Json& manifest) {
+                std::ofstream out(directory / "latest.json", std::ios::binary | std::ios::trunc);
+                out << manifest;
+                out.close();
+                check(static_cast<bool>(out), "fixture manifest write failed");
+            };
+            const auto request = [&](Action action, const std::string& expected, std::string target = {}) {
+                host.Request(action, std::move(target));
+                scene->Update(app, 0);
+                if (host.GenerationId() != expected || !host.Error().empty())
+                    throw std::runtime_error("DLL switch failed: " + host.Error());
+                check(before == snapshot(), "DLL operation changed live game state");
+            };
+            if (checkLiveRestart) {
+                DWORD previousPid = 0;
+                std::ifstream(directory / "first-pid.txt") >> previousPid;
+                check(previousPid != 0 && previousPid != GetCurrentProcessId(), "restart test used the original process");
+                check(host.GenerationId().empty() && host.Generations().size() == 4 &&
+                    host.History().at("operations").back().at("kind") == "JSON apply", "history missing after process restart");
+                request(Action::Restore, id("A"), id("A"));
+                std::ofstream result("generated/enemy-ai-tests/scene-result.txt");
+                result<<"PASS: persisted DLL catalog and JSON journal loaded after game process restart; restored A in PID "
+                    <<GetCurrentProcessId()<<" (previous PID "<<previousPid<<").\n";
+                return;
+            }
+            const auto apply = [&](const char* variant) {
+                publish(manifests.at(variant));
+                request(Action::ApplyLatest, id(variant));
+                check(host.Evaluate(scene->MakeDiagnosticsInput()).has_value(), "loaded DLL did not produce diagnostics");
+            };
+            apply("A");
+            const auto a = host.Evaluate(scene->MakeDiagnosticsInput());
+            apply("B");
+            const auto b = host.Evaluate(scene->MakeDiagnosticsInput());
+            check(a && b && a->detail[0] == '\0' && b->detail[0] != '\0', "running DLL output did not change");
+            apply("C");
+            request(Action::Undo, id("B"));
+            request(Action::Undo, id("A"));
+            request(Action::Redo, id("B"));
+            apply("D");
+            check(!host.CanRedo() && host.Generations().size() == 4, "new DLL did not branch or preserve catalog");
+            request(Action::Undo, id("B"));
+            const auto reject = [&](Action action, const char* message) {
+                const auto undo = host.CanUndo();
+                const auto redo = host.CanRedo();
+                host.Request(action);
+                scene->Update(app, 0);
+                check(host.GenerationId() == id("B") && host.CanUndo() == undo && host.CanRedo() == redo &&
+                    host.Error().find(message) != std::string::npos && before == snapshot(), "failed DLL changed current generation/state or cursor");
+            };
+            for (const auto* extension : {".dll", ".pdb"}) {
+                const auto original = artifact("D", extension);
+                const auto hidden = std::filesystem::path(original).concat(".missing");
+                std::filesystem::rename(original, hidden);
+                const auto d = std::ranges::find(host.Generations(), id("D"), &LiveEnemyDiagnostics::Generation::id);
+                try {
+                    check(d != host.Generations().end() && !host.UnavailableReason(*d).empty(), "missing DLL/PDB not reported");
+                    reject(Action::Redo, extension);
+                }
+                catch (...) { std::filesystem::rename(hidden, original); throw; }
+                std::filesystem::rename(hidden, original);
+            }
+            auto badHash = manifests.at("D");
+            badHash["generation"] = id("TEST_OUTPUT");
+            publish(badHash);
+            reject(Action::ApplyLatest, "SHA-256");
+            publish(manifests.at("TEST_ABI"));
+            reject(Action::ApplyLatest, "ABI");
+            publish(manifests.at("TEST_OUTPUT"));
+            reject(Action::ApplyLatest, "診断結果");
+            request(Action::Redo, id("D"));
+            host.Close();
+            host.Open(directory);
+            check(host.GenerationId().empty() && host.Generations().size() == 4 && !host.History().at("operations").empty(),
+                "persisted DLL catalog could not be reopened");
+            request(Action::Restore, id("C"), id("C"));
+            request(Action::Undo, "");
+            request(Action::Redo, id("C"));
+
+            scene->checkpointAction_ = EnemyAITestScene::CheckpointAction::Capture;
+            scene->Update(app, 0);
+            check(scene->checkpoint_ && scene->manualCheckpoint_, "checkpoint capture failed");
+            scene->player_.SetPositionForDebug(initialPlayer.translate + Vector3{1,0,0});
+            scene->player_.ApplyDamage(10);
+            scene->camera_.SetFovY(.9f);
+            auto* enemy = scene->enemies_.front();
+            enemy->SetPosition(enemy->GetPosition() + Vector3{1,0,0});
+            enemy->ApplyDamage(size_t{0}, 1, {1,0,0});
+            enemy->SetAIPaused(true);
+            scene->pauseAll_ = false;
+            scene->Update(app, 0);
+            const auto mutated = snapshot();
+            check(mutated != before, "checkpoint fixture did not change live state");
+            scene->checkpoint_->schema = 999;
+            scene->checkpointAction_ = EnemyAITestScene::CheckpointAction::Restore;
+            scene->Update(app, 0);
+            check(snapshot() == mutated && !host.History().at("operations").back().at("success").get<bool>(),
+                "invalid checkpoint changed state");
+            scene->checkpoint_->schema = EnemyAITestScene::Checkpoint::kSchema;
+            scene->checkpointAction_ = EnemyAITestScene::CheckpointAction::Restore;
+            scene->Update(app, 0);
+            check(snapshot() == before && host.History().at("operations").back().at("success").get<bool>(),
+                "checkpoint did not restore player/camera/enemy state");
+
+            using Target = EnemyAITestScene::JsonTarget;
+            const auto applyJson = [&](Target target, const std::string& draft, bool applyToRuntime = true) {
+                scene->jsonRequest_ = EnemyAITestScene::JsonRequest{target, enemy->GetSpawnId(), draft, applyToRuntime};
+                scene->Update(app, 0);
+                check(before == snapshot(), "JSON operation changed live game state");
+            };
+            const auto operationCount = host.History().at("operations").size();
+            scene->OpenJsonDraft(Target::EnemySenses);
+            auto senses = Json::parse(scene->jsonDraft_);
+            const float viewDistance = enemy->Senses().viewDistance;
+            applyJson(Target::EnemySenses, "{");
+            auto duplicate = senses.dump();
+            duplicate.pop_back();
+            duplicate += ",\"viewDistance\":43}";
+            applyJson(Target::EnemySenses, duplicate);
+            senses["viewDistance"] = -5;
+            applyJson(Target::EnemySenses, senses.dump());
+            check(enemy->Senses().viewDistance == viewDistance && host.History().at("operations").size() == operationCount + 3 &&
+                !host.History().at("operations").back().at("success").get<bool>(), "invalid JSON was committed or not journaled");
+            senses["viewDistance"] = 42;
+            applyJson(Target::EnemySenses, senses.dump(), false);
+            check(enemy->Senses().viewDistance == viewDistance, "validation applied a change");
+            applyJson(Target::EnemySenses, senses.dump());
+            check(enemy->Senses().viewDistance == 42 && host.History().at("operations").size() == operationCount + 4,
+                "valid senses were not applied");
+
+            const auto weaponPath = "resources/Data/weapons.json";
+            const auto readWeaponFile = [&] {
+                std::ifstream source(weaponPath, std::ios::binary);
+                return std::string(std::istreambuf_iterator<char>(source), std::istreambuf_iterator<char>());
+            };
+            const auto diskWeapon = readWeaponFile();
+            auto weapons = scene->liveWeaponDocument_;
+            auto& equipped = *std::ranges::find_if(weapons.at("weapons"), [&](const Json& weapon) {
+                return weapon.at("id") == scene->player_.CurrentWeapon().Definition().id;
+            });
+            const auto& runtime = scene->player_.CurrentWeapon();
+            scene->weaponTestShot_ = true;
+            scene->Update(app, 0);
+            scene->weaponTestReload_ = true;
+            scene->Update(app, 0);
+            check(runtime.Reloading(), "test weapon did not start a reload");
+            const auto ammo = std::tuple(runtime.Magazine(), runtime.Reserve(), runtime.ReloadState(), runtime.ReloadRemaining());
+            const auto originalDamage = runtime.Definition().damage;
+            equipped["damage"] = originalDamage + 1;
+            equipped["magazineSize"] = runtime.Definition().magazineSize + 1;
+            applyJson(Target::Weapons, weapons.dump());
+            check(runtime.Definition().damage == originalDamage, "incompatible weapon migration applied");
+            equipped["magazineSize"] = runtime.Definition().magazineSize;
+            applyJson(Target::Weapons, weapons.dump());
+            check(runtime.Definition().damage == originalDamage + 1 &&
+                ammo == std::tuple(runtime.Magazine(), runtime.Reserve(), runtime.ReloadState(), runtime.ReloadRemaining()) &&
+                diskWeapon == readWeaponFile(), "weapon change did not preserve ammo/reload or edited the source file");
+
+            const auto setLua = [&](std::string label, std::string source = {}, bool file = false) {
+                const auto state = snapshot();
+                const auto nextSpawn = scene->nextId_;
+                scene->luaRequest_ = EnemyAITestScene::LuaRequest{std::move(label), std::move(source), file};
+                scene->Update(app, 0);
+                check(state == snapshot() && scene->nextId_ == nextSpawn, "Lua update changed game state");
+            };
+            const auto luaId = [&] { return scene->liveScript_.at("generation").get<std::string>(); };
+            const auto originalEnemy = enemy->CaptureLiveCheckpoint();
+            check(originalEnemy.has_value(), "cannot snapshot Lua test enemy");
+            auto lowHp = *originalEnemy;
+            for (auto& part : lowHp.parts) part.hp *= .5f;
+            for (auto& group : lowHp.groups) group.hp *= .5f;
+            lowHp.ai.OrderPursuit(initialPlayer.translate);
+            const auto resetLowHp = [&] { enemy->RestoreLiveCheckpoint(Enemy::LiveCheckpoint(lowHp)); };
+            resetLowHp();
+            for (auto* other : scene->enemies_) if (other != enemy) other->SetAIPaused(true);
+            const auto measure = [&] {
+                resetLowHp();
+                const auto start = enemy->GetPosition();
+                scene->pauseAll_ = false;
+                scene->Update(app, .05f);
+                scene->pauseAll_ = true;
+                return EnemyAI::distanceTo(start, enemy->GetPosition()) / .05f;
+            };
+            setLua("A", {}, true);
+            const float speedA = measure();
+            setLua("B", {}, true);
+            const float speedB = measure();
+            setLua("C", {}, true);
+            const float speedC = measure();
+            enemy->ResetAI();
+            scene->EvaluateLuaPolicies();
+            check(scene->LuaSpeed(*enemy) == 1.0f, "Lua C used Chase multiplier while Idle");
+            enemy->RestoreLiveCheckpoint(Enemy::LiveCheckpoint(*originalEnemy));
+            scene->EvaluateLuaPolicies();
+            check(scene->LuaSpeed(*enemy) == 1.0f, "Lua C used low HP multiplier at full HP");
+            setLua("A", {}, true);
+            check(speedA > 0 && std::abs(speedB / speedA - 1.5f) < .02f &&
+                std::abs(speedC / speedA - 2.0f) < .02f && std::abs(measure() - speedA) < .02f,
+                "Lua A/B/C did not change actual displacement as expected");
+            const auto activeLua = luaId();
+            for (const auto& [source, diagnostic] : {
+                std::pair{"local =", "policy"},
+                std::pair{"while true do end", "limit"},
+                std::pair{"local a = {}; for i = 1, 100000 do a[i] = i end; return 1", "memory"},
+                std::pair{"return os.execute('whoami')", "_ENV"},
+                std::pair{"return 10", "between 0 and 3"}}) {
+                setLua("Invalid", source);
+                check(luaId() == activeLua && host.Error().find(diagnostic) != std::string::npos &&
+                    !host.History().at("operations").back().at("success").get<bool>(), "unsafe Lua candidate accepted");
+            }
+            setLua("Runtime", "local e = ...; if e.id == 'Enemy_000' and e.distance < 8 then return missing() end; return 2");
+            check(host.Error().empty(), "conditional runtime error fixture failed validation");
+            scene->player_.SetStage(&scene->world_, enemy->GetPosition() + Vector3{0,0,-5}, {});
+            scene->pauseAll_ = false;
+            scene->Update(app, .001f);
+            scene->pauseAll_ = true;
+            check(scene->luaFailed_ && scene->LuaSpeed(*enemy) == 1.0f &&
+                host.History().at("operations").back().at("kind") == "Lua runtime", "runtime fault did not fall back");
+            scene->player_.SetStage(&scene->world_, initialPlayer.translate, initialPlayer.rotate);
+            scene->player_.RefreshVisuals();
+            enemy->RestoreLiveCheckpoint(Enemy::LiveCheckpoint(*originalEnemy));
+            for (auto* other : scene->enemies_) other->SetAIPaused(false);
+            setLua("A", {}, true);
+            const auto batchBase = snapshot();
+            const auto baselineLua = luaId();
+            const auto baselineDll = host.GenerationId();
+            const auto batch = [&](const char* variant, float range) {
+                publish(manifests.at(variant));
+                host.Request(Action::ApplyLatest);
+                scene->luaRequest_ = EnemyAITestScene::LuaRequest{"Batch", "return 1.75"};
+                senses["viewDistance"] = range;
+                scene->jsonRequest_ = EnemyAITestScene::JsonRequest{Target::EnemySenses, enemy->GetSpawnId(), senses.dump(), true};
+                scene->Update(app, 0);
+                check(snapshot() == batchBase, "compound operation changed game state");
+            };
+            batch("A", -1);
+            check(host.GenerationId() == baselineDll && luaId() == baselineLua && enemy->Senses().viewDistance == 42,
+                "invalid JSON allowed partial commit");
+            batch("TEST_ABI", 55);
+            check(host.GenerationId() == baselineDll && luaId() == baselineLua && enemy->Senses().viewDistance == 42,
+                "invalid DLL allowed partial commit");
+            batch("A", 55);
+            const auto batchLua = luaId();
+            check(host.GenerationId() == id("A") && batchLua != baselineLua && enemy->Senses().viewDistance == 55 &&
+                host.History().at("operations").back().at("changes").size() == 3, "compound commit failed");
+            host.Request(Action::Undo);
+            scene->Update(app, 0);
+            check(host.GenerationId() == baselineDll && luaId() == baselineLua && enemy->Senses().viewDistance == 42 && host.CanRedo(),
+                "compound Undo did not restore all resources");
+            host.Request(Action::Redo);
+            scene->Update(app, 0);
+            check(host.GenerationId() == id("A") && luaId() == batchLua && enemy->Senses().viewDistance == 55,
+                "compound Redo did not restore all resources");
+            host.Request(Action::Undo);
+            scene->Update(app, 0);
+            setLua("Branch", "return 0.5");
+            check(!host.CanRedo() && snapshot() == batchBase, "Lua branch did not drop compound redo");
+            // Leave a JSON entry at the end for the existing restart assertion.
+            senses["viewDistance"] = 43;
+            applyJson(Target::EnemySenses, senses.dump());
+            std::ofstream(directory / "lua-result.txt") << "PASS: A/B/C/A measured speeds " <<
+                speedA << " / " << speedB << " / " << speedC << " units/s; bounded Lua failures and atomic DLL/Lua/JSON Undo/Redo.\n";
+            std::ofstream(directory / "first-pid.txt") << GetCurrentProcessId();
+        } else {
+            scene->liveDiagnostics_.Request(LiveEnemyDiagnostics::Action::ApplyLatest);
+            check(scene->liveDiagnostics_.GenerationId().empty(),"live DLL was applied before the scene update");
+            scene->Update(app,0);
+            if (scene->liveDiagnostics_.GenerationId().empty())
+                throw std::runtime_error("live DLL was not applied: " + scene->liveDiagnostics_.Error());
+            check(scene->liveDiagnostics_.Evaluate(scene->MakeDiagnosticsInput()).has_value(),"live DLL did not produce diagnostics");
+            check(before==snapshot(),"applying the live DLL changed gameplay state");
+        }
+#else
+        throw std::runtime_error("Live enemy diagnostics require Debug x64.");
+#endif
+    }
     const auto initialPixels=captureEnvironment(L"generated/enemy-ai-tests/camera-initial.png");
     scene->player_.SetStage(&scene->world_,initialPlayer.translate,initialPlayer.rotate+Vector3{.12f,.45f,0});
     scene->Update(app,0);
@@ -147,5 +477,8 @@ inline void RunEnemyAITestSceneTests(GameApp& app) {
     check(scene->enemies_.empty() && !scene->status_.empty(),"spawn inside wall accepted");
     transition("Title");
     check(dynamic_cast<TitleScene*>(app.Scenes().Current())!=nullptr && !app.GetInput()->IsCameraControlEnabled(),"return to title/input cleanup failed");
-    std::ofstream("generated/enemy-ai-tests/scene-result.txt")<<"PASS: real D3D title fades/camera restoration, actual pooled enemy independently latches sight, follows player around L wall for 60s without Search/Wander, no hidden visual samples or wall attacks; live sense tuning/distance loss retain pursuit; pause/reset and same-slot reuse clear discovery/history/path; all definitions; wall spawn rejection.\n";
+    std::ofstream result("generated/enemy-ai-tests/scene-result.txt");
+    result<<"PASS: real D3D title fades/camera restoration, actual pooled enemy independently latches sight, follows player around L wall for 60s without Search/Wander, no hidden visual samples or wall attacks; live sense tuning/distance loss retain pursuit; pause/reset and same-slot reuse clear discovery/history/path; all definitions; wall spawn rejection.\n";
+    if (checkLiveDiagnostics) result<<"PASS: live DLL applied at scene update; PID, scene, player, camera, AI pause, enemy instances, IDs, positions and part HP preserved.\n";
+    if (checkLivePhase2) result<<"PASS: DLL A/B/C Undo/Redo, branch D, missing DLL/PDB, SHA-256, exported ABI, invalid output, reopened history and arbitrary restore; same PID/scene/entities/HP; checkpoint capture, invalid schema and restore; JSON syntax/range rejection, weapon reload migration and disk isolation.\n";
 }

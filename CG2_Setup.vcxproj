@@ -20,6 +20,21 @@
     <ClInclude Include="Game\enemy\EnemyNavigation.h" />
     <ClInclude Include="Game\scene\Debug\EnemyAITestScene.h" />
     <ClCompile Include="Game\scene\Debug\EnemyAITestScene.cpp" />
+    <ClCompile Include="Game\LiveDevelopment\LiveEnemyDiagnostics.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\LiveChangeHistory.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\LiveLua.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\LiveAiClient.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\ProjectResearch.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\ProjectSourceReader.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClCompile Include="Game\LiveDevelopment\ProjectResearchEvidence.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClInclude Include="Game\LiveDevelopment\ProjectResearch.h" />
+    <ClCompile Include="Game\scene\Debug\EnemyAITestAiChat.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClInclude Include="Game\LiveDevelopment\LiveAiClient.h" />
+    <ClInclude Include="Game\LiveDevelopment\LiveLua.h" />
+    <ClCompile Include="Game\scene\Debug\EnemyAITestLiveDevelopment.cpp" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
+    <ClInclude Include="Game\LiveDevelopment\EnemyAIDiagnosticsAbi.h" />
+    <ClInclude Include="Game\LiveDevelopment\LiveEnemyDiagnostics.h" />
+    <ClInclude Include="Game\LiveDevelopment\LiveChangeHistory.h" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Placement.cpp" />
     <ClCompile Include="Game\scene\Debug\EnemyPlacementEditorScene.Camera.cpp" />
@@ -27,6 +42,29 @@
     <ClInclude Include="Game\scene\Debug\EnemyPlacementEditorScene.h" />
     <ClInclude Include="Game\scene\Debug\EnemyPlacementMetadata.h" />
     <ClInclude Include="Game\enemy\EnemyPlacements.h" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile Include="externals\lua\src\lapi.c" />
+    <ClCompile Include="externals\lua\src\lauxlib.c" />
+    <ClCompile Include="externals\lua\src\lcode.c" />
+    <ClCompile Include="externals\lua\src\lctype.c" />
+    <ClCompile Include="externals\lua\src\ldebug.c" />
+    <ClCompile Include="externals\lua\src\ldo.c" />
+    <ClCompile Include="externals\lua\src\ldump.c" />
+    <ClCompile Include="externals\lua\src\lfunc.c" />
+    <ClCompile Include="externals\lua\src\lgc.c" />
+    <ClCompile Include="externals\lua\src\llex.c" />
+    <ClCompile Include="externals\lua\src\lmem.c" />
+    <ClCompile Include="externals\lua\src\lobject.c" />
+    <ClCompile Include="externals\lua\src\lopcodes.c" />
+    <ClCompile Include="externals\lua\src\lparser.c" />
+    <ClCompile Include="externals\lua\src\lstate.c" />
+    <ClCompile Include="externals\lua\src\lstring.c" />
+    <ClCompile Include="externals\lua\src\ltable.c" />
+    <ClCompile Include="externals\lua\src\ltm.c" />
+    <ClCompile Include="externals\lua\src\lundump.c" />
+    <ClCompile Include="externals\lua\src\lvm.c" />
+    <ClCompile Include="externals\lua\src\lzio.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

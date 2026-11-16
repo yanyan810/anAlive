@@ -2,6 +2,78 @@
 #include "DebugEnemyTuning.h"
 #endif
 #include "Enemy.h"
+
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+std::pair<float, float> Enemy::LiveHealth() const noexcept {
+    float hp = 0, maxHp = 0;
+    for (const auto& part : parts_) {
+        if (part.usesLocalHp) { hp += part.hp; maxHp += part.maxHp; }
+    }
+    for (const auto& group : parts_.hpGroups) { hp += group.hp; maxHp += group.maxHp; }
+    return {IsDead() ? 0.0f : hp, maxHp};
+}
+
+std::optional<Enemy::LiveCheckpoint> Enemy::CaptureLiveCheckpoint() const {
+    // Detached model chunks have GPU objects; the Phase 2 checkpoint supports face shards.
+    if (!detachedParts_.empty() || visuals_.size() != parts_.size()) return std::nullopt;
+    LiveCheckpoint state{definition_.id, spawnId_, nextSpawnOrder_, position_, rotation_, explosionCenter_,
+        ai_, animation_, {}, {}, faceShards_, random_, attackCount_, lastAttackDamage_, attackFlash_,
+        explosionTime_, blastHitTime_, lastBlastDamage_, parts_.deathProcessed, exploded_};
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        const auto& part = parts_[i];
+        state.parts.push_back({part.name, part.hp, part.flashRemaining, part.detachedOnDeath, visuals_[i].visible});
+    }
+    for (const auto& group : parts_.hpGroups) state.groups.push_back({group.id, group.hp});
+    return state;
+}
+
+bool Enemy::CanRestoreLiveCheckpoint(const LiveCheckpoint& state) const {
+    if (state.definitionId != definition_.id || state.spawnId != spawnId_ || !detachedParts_.empty() ||
+        state.parts.size() != parts_.size() || state.parts.size() != visuals_.size() ||
+        state.groups.size() != parts_.hpGroups.size() || !state.ai.settings.senses.IsValid()) return false;
+    const auto finite = [](const Vector3& value) {
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    };
+    if (!finite(state.position) || !finite(state.rotation) || !finite(state.explosionCenter)) return false;
+    for (size_t i = 0; i < state.parts.size(); ++i) {
+        const auto& saved = state.parts[i];
+        if (saved.name != parts_[i].name || !std::isfinite(saved.hp) || saved.hp < 0 || saved.hp > parts_[i].maxHp)
+            return false;
+    }
+    for (size_t i = 0; i < state.groups.size(); ++i) {
+        const auto& saved = state.groups[i];
+        if (saved.id != parts_.hpGroups[i].id || !std::isfinite(saved.hp) || saved.hp < 0 || saved.hp > parts_.hpGroups[i].maxHp)
+            return false;
+    }
+    return true;
+}
+
+void Enemy::RestoreLiveCheckpoint(LiveCheckpoint&& state) noexcept {
+    position_ = state.position;
+    rotation_ = state.rotation;
+    explosionCenter_ = state.explosionCenter;
+    nextSpawnOrder_ = state.nextOrder;
+    ai_ = std::move(state.ai);
+    animation_ = state.animation;
+    faceShards_ = std::move(state.faces);
+    random_ = state.random;
+    attackCount_ = state.attacks;
+    lastAttackDamage_ = state.damage;
+    attackFlash_ = state.flash;
+    explosionTime_ = state.explosionTime;
+    blastHitTime_ = state.blastHitTime;
+    lastBlastDamage_ = state.lastBlastDamage;
+    parts_.deathProcessed = state.dead;
+    exploded_ = state.exploded;
+    for (size_t i = 0; i < parts_.size(); ++i) {
+        parts_[i].hp = state.parts[i].hp;
+        parts_[i].flashRemaining = state.parts[i].flash;
+        parts_[i].detachedOnDeath = state.parts[i].detached;
+        visuals_[i].visible = state.parts[i].visible;
+    }
+    for (size_t i = 0; i < parts_.hpGroups.size(); ++i) parts_.hpGroups[i].hp = state.groups[i].hp;
+}
+#endif
 #include "FirstPersonCamera.h"
 #include "GeometryGenerator.h"
 #include "Raycast.h"
@@ -484,10 +556,11 @@ void Enemy::ShowHitFeedback(EnemyPartType type) { ShowHitFeedback(FindLegacyPart
 void Enemy::ShowHitFeedback(size_t index) {
     if (index<parts_.size()) parts_[index].flashRemaining=0.2f;
 }
-float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight,int navigationBudget) {
+float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight,
+    int navigationBudget,float speedMultiplier) {
     const auto previous = position_;
     const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead(),world,
-        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight,navigationBudget);
+        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight,navigationBudget,speedMultiplier);
     const bool moving = !IsDead() && std::hypot(position_.x-previous.x, position_.z-previous.z) > 1e-6f;
     animation_.Advance(dt, moving, parts_);
     UpdateVisuals(dt);

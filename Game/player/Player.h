@@ -61,6 +61,17 @@ public:
         motion_=state.motion;
         lastImpactDirection_=state.impactDirection;
     }
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    void RestoreLiveCheckpoint(DebugState&& state) noexcept {
+        transform_=state.transform; settings_=state.settings; currentWeapon_=std::move(state.weapon);
+        hp_=state.hp; lookSensitivityMultiplier_=state.sensitivity; motion_=state.motion;
+        lastImpactDirection_=state.impactDirection;
+    }
+    void ApplyLiveWeapon(WeaponRuntime&& weapon) noexcept { currentWeapon_ = std::move(weapon); }
+    void StepLiveTestWeapon(float dt, bool shot, bool reload) {
+        currentWeapon_.Step(dt, shot, shot, reload);
+    }
+#endif
     void SetPositionForDebug(const Vector3& position) { transform_.translate = position; motion_={}; }
 #endif
     float GetHP() const { return hp_; }

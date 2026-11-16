@@ -2,6 +2,9 @@
 #include "GameApp.h"
 #include "ImGuiManagaer.h"
 #include "StageProjectile.h"
+#include <cstring>
+#include <limits>
+#include <utility>
 #ifdef USE_IMGUI
 const char* TypeName(EnemyType type) {
     switch(type) {
@@ -97,6 +100,17 @@ void EnemyAITestScene::OnEnter(GameApp& app) {
     pool_.Initialize(app.ObjCom(),app.Dx(),&camera_,definitions_,settings);
     for (const auto& area:areas) Spawn(app,area);
     Spawn(app,areas[5]+Vector3{-3,0,0}); Spawn(app,areas[5]+Vector3{3,0,0}); selected_=0;
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    liveDiagnostics_.Open();
+    aiSceneId_.clear();
+    liveScript_ = nullptr;
+    lua_.reset();
+    luaOverrides_.clear();
+    luaFailed_ = false;
+    luaSpeeds_.clear();
+    luaSpeedIds_.clear();
+    LoadLiveWeapons();
+#endif
     help_.Initialize(app.SpriteCom(),app.Dx(),"resources/ui/enemy_ai_help.png"); help_.SetPosition({16,16});
     app.GetInput()->SetCameraControlEnabled(false); app.GetInput()->SetCameraToggleKeyEnabled(false);
 #ifdef USE_IMGUI
@@ -106,6 +120,11 @@ void EnemyAITestScene::OnEnter(GameApp& app) {
 #endif
 }
 void EnemyAITestScene::OnExit(GameApp& app) {
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    if (aiReview_) StopAiChat("敵AIテストを終了したため問い合わせを破棄しました。");
+    aiClient_.Cancel();
+    liveDiagnostics_.Close();
+#endif
     app.GetInput()->SetCameraControlEnabled(false); app.GetInput()->SetMouseCaptureRect(nullptr);
     app.GetInput()->SetCameraToggleKeyEnabled(true); app.ObjCom()->SetDefaultCamera(nullptr);
 #ifdef USE_IMGUI
@@ -133,6 +152,9 @@ void EnemyAITestScene::Remove(GameApp& app,bool all) {
     selected_=enemies_.empty() ? 0 : std::clamp(selected_,0,static_cast<int>(enemies_.size())-1);
 }
 void EnemyAITestScene::Update(GameApp& app,float dt) {
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    if (!app.Scenes().IsTransitioning() && UpdateLiveDevelopment(app)) return;
+#endif
     auto& input=*app.GetInput();
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F6)) { app.Scenes().TransitionTo("Title"); return; }
     RECT rect{}; bool viewReady=true;
@@ -151,11 +173,17 @@ void EnemyAITestScene::Update(GameApp& app,float dt) {
     if (input.HasFocus() && input.IsKeyTrigger(DIK_F5)) for (auto* e:enemies_) e->ResetAI();
     if (input.HasFocus() && input.IsKeyTrigger(DIK_P)) pauseAll_=!pauseAll_;
     dt=std::isfinite(dt) ? std::clamp(dt,0.0f,.1f) : 0;
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    player_.StepLiveTestWeapon(dt, std::exchange(weaponTestShot_, false), std::exchange(weaponTestReload_, false));
+#endif
     player_.Update(input,dt);
     // Static world transforms still need fresh camera-dependent WVP constants.
     // Keep this outside the AI pause branch so FPS movement always moves the room.
     for (auto& object:geometry_) object->Update(0);
     const auto player=player_.GetTransform().translate;
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    if (!pauseAll_ && dt > 0) EvaluateLuaPolicies();
+#endif
     float damage=pauseAll_ ? 0 : UpdateStageProjectiles(projectiles_,dt,player,world_);
     std::vector<Vector3> correction(enemies_.size());
     for (size_t i=0;i<enemies_.size();++i) for (size_t j=i+1;j<enemies_.size();++j) {
@@ -169,7 +197,12 @@ void EnemyAITestScene::Update(GameApp& app,float dt) {
         if (pauseAll_) { e->UpdateVisuals(dt); continue; }
         const auto& d=e->Definition(); const auto previous=e->GetPosition();
         e->SetPosition(world_.Move(previous,previous+correction[i],d.collisionRadius,d.collisionHeight));
-        const float hit=e->Update(dt,player,&world_,player_.Settings().cameraHeight); damage+=hit;
+        float speedMultiplier = 1.0f;
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+        if (dt > 0 && i < luaSpeeds_.size()) speedMultiplier = luaSpeeds_[i];
+#endif
+        const float hit=e->Update(dt,player,&world_,player_.Settings().cameraHeight,
+            std::numeric_limits<int>::max(),speedMultiplier); damage+=hit;
         if (e->PendingAttackCount()) {
             if (d.IsRanged()) projectiles_.Spawn(MakeEnemyProjectile(d,e->GetPosition()+Vector3{0,1.2f,0},player));
             e->ConfirmAttack(hit);
@@ -199,6 +232,25 @@ void EnemyAITestScene::DrawOverlay2D(GameApp&) {
     const auto projection=Matrix4x4::MakeOrthographicMatrix(0,0,1280,720,0,100);
     help_.Update(view,projection); help_.Draw();
 }
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+EnemyAIDiagnosticsInput EnemyAITestScene::MakeDiagnosticsInput() const {
+    EnemyAIDiagnosticsInput input{};
+    input.size = sizeof(input);
+    const auto* enemy = enemies_.empty() ? nullptr : enemies_[selected_];
+    strcpy_s(input.stateLabel, StateName(enemy ? enemy->GetState() : EnemyState::Idle));
+    if (enemy) {
+        const auto& ai = enemy->AI();
+        input.visible = ai.visible;
+        input.pursuing = ai.pursuitOrdered;
+        input.dead = enemy->IsDead();
+        input.distance = ai.distance;
+        input.sightRange = enemy->Senses().viewDistance;
+    }
+    return input;
+}
+
+#endif
+
 void EnemyAITestScene::DrawImGui(GameApp& app) {
 #ifdef USE_IMGUI
     const auto* viewport=ImGui::GetMainViewport();
@@ -219,6 +271,9 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
         if (pauseAll_) ImGui::TextWrapped("全AIは停止中です。上のチェックを外すとテストを開始します。");
         ImGui::Text("プレイヤー体力: %.0f",player_.GetHP());
         if (ImGui::Button("プレイヤー体力を回復")) player_.ResetHPForDebug();
+#if defined(_DEBUG) && defined(_M_X64)
+        DrawLiveDiagnosticsPanel(app);
+#endif
         if (ImGui::BeginCombo("テストエリア",areaNames[area_])) {
             for (int i=0;i<6;++i) if (ImGui::Selectable(areaNames[i],area_==i)) { area_=i; spawnPosition_=areas[i]; }
             ImGui::EndCombo();
@@ -274,6 +329,12 @@ void EnemyAITestScene::DrawImGui(GameApp& app) {
             enemy.ConfigureSenses(s);
             const auto& a=enemy.AI();
             ImGui::SeparatorText("AI状態");
+#if defined(_DEBUG) && defined(_M_X64)
+            if (const auto diagnostics = liveDiagnostics_.Evaluate(MakeDiagnosticsInput())) {
+                ImGui::TextUnformatted(diagnostics->summary);
+                if (diagnostics->detail[0]) ImGui::TextUnformatted(diagnostics->detail);
+            } else
+#endif
             ImGui::Text("現在: %s / 距離: %.2f",StateName(enemy.GetState()),a.distance);
             ImGui::Text("視野角内: %s / 遮蔽物: %s",a.inFov ? "はい" : "いいえ",a.occluded ? "あり" : "なし");
             ImGui::Text("視認中: %s / 徘徊中: %s",a.visible ? "はい" : "いいえ",a.state==EnemyState::Wander ? "はい" : "いいえ");

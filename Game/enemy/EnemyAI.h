@@ -97,11 +97,11 @@ struct EnemyAI {
         wanderCenter=position;
         state=EnemyState::Wander; wanderWait=settings.senses.wanderWaitTime; navigation={};
     }
-    bool PickSearchGoal(const Vector3& position,const StageWorld* world,float radius,float height) {
+    bool PickSearchGoal(const Vector3& position,const StageWorld* world,float radius,float height,float moveSpeed) {
         const auto& s=settings.senses;
         // Short successive legs let a zombie inspect several places within four
         // seconds, while the complete search stays inside the configured circle.
-        const float leg=std::min(s.searchRadius,std::max(.5f,settings.moveSpeed*s.searchSpeedMultiplier*.75f));
+        const float leg=std::min(s.searchRadius,std::max(.5f,moveSpeed*s.searchSpeedMultiplier*.75f));
         struct Candidate { Vector3 point{}; float score=0; };
         std::array<Candidate,16> candidates{}; size_t count=0;
         const float priority=memory.hasDirection ? std::clamp(s.searchDirectionPriority,0.0f,1.0f) : 0;
@@ -155,7 +155,7 @@ struct EnemyAI {
     // even after occlusion/range loss; visual history and attack LOS stay independent.
     float Update(Vector3& position,Vector3& rotation,const Vector3& target,float dt,bool dead,
         const StageWorld* world=nullptr,float radius=.4f,float height=1.8f,float playerEyeHeight=1.65f,
-        int navigationBudget=std::numeric_limits<int>::max()) {
+        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f) {
         attacksThisUpdate=0;
         currentSpeed=0;
         if (dead) { navigation.CancelPlan(); state=EnemyState::Dead; return 0; }
@@ -164,6 +164,7 @@ struct EnemyAI {
         const auto startPosition=position;
         const auto finish=[&](float damage) { currentSpeed=dt>0 ? distanceTo(startPosition,position)/dt : 0; return damage; };
         const auto& senses=settings.senses;
+        const float moveSpeed=settings.moveSpeed*speedMultiplier;
         const Vector3 delta{target.x-position.x,0,target.z-position.z};
         distance=StageLength(delta);
         const float facing=rotation.y-1.57079632679f;
@@ -204,7 +205,7 @@ struct EnemyAI {
             if (pursuitOrdered && occluded) {
                 // Retained discovery grants pursuit, never attacks or projectiles through walls.
                 rangedRetreating=false;
-                navigation.Move(position,rotation,moveTarget,settings.moveSpeed,dt,world,radius,height,navigationBudget);
+                navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height,navigationBudget);
                 cooldown=std::max(0.0f,cooldown-dt); return finish(0);
             }
             // Keep the original attack cadence/ranges. Movement/attacks require a clear body route;
@@ -214,7 +215,7 @@ struct EnemyAI {
                 navigation.path.clear(); navigation.next=0; navigation.state=EnemyPathState::Direct;
                 navigation.failure=EnemyPathFailure::None;
                 auto desired=position;
-                const float damage=Combat(desired,rotation,lastSeen,dt,false);
+                const float damage=Combat(desired,rotation,lastSeen,dt,false,speedMultiplier);
                 // Ranged retreat goes away from the observed target. Check that segment too,
                 // so backing into a wall or off the floor cannot bypass navigation.
                 Vector3 projected;
@@ -226,7 +227,7 @@ struct EnemyAI {
                 position=projected; return finish(damage);
             }
             rangedRetreating=false;
-            navigation.Move(position,rotation,moveTarget,settings.moveSpeed,dt,world,radius,height,navigationBudget);
+            navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height,navigationBudget);
         } else if (state==EnemyState::Chase || state==EnemyState::Investigate) {
             moveTarget=lastSeen;
             const auto arrived=[&]() { return distanceTo(position,lastSeen)<=senses.arrivalDistance && std::abs(position.y-lastSeen.y)<=.3f; };
@@ -236,7 +237,7 @@ struct EnemyAI {
             }
             else {
                 const float multiplier=state==EnemyState::Investigate ? senses.investigateSpeedMultiplier : 1.0f;
-                navigation.Move(position,rotation,lastSeen,settings.moveSpeed*multiplier,dt,world,radius,height,navigationBudget);
+                navigation.Move(position,rotation,lastSeen,moveSpeed*multiplier,dt,world,radius,height,navigationBudget);
                 if (arrived()) {
                     lastSeenReached=true;
                     if (state==EnemyState::Investigate) BeginSearch(position,false);
@@ -250,7 +251,7 @@ struct EnemyAI {
             }
         } else if (state==EnemyState::Search) {
             searchElapsed+=dt; searchRetry=std::max(0.0f,searchRetry-dt);
-            const float speed=settings.moveSpeed*senses.searchSpeedMultiplier;
+            const float speed=moveSpeed*senses.searchSpeedMultiplier;
             if (SearchRemaining()>0) searchFinishing=false; // Live duration extension resumes exploration.
             if (!navigation.path.empty() && !searchFinishing && distanceTo(moveTarget,searchCenter)>senses.searchRadius+.001f) {
                 navigation.path.clear(); navigation.next=0; searchRetry=0; // Live radius reduction.
@@ -266,7 +267,7 @@ struct EnemyAI {
             if (searchFinishing && (navigation.path.empty() || speed<=0)) BeginWander(position);
             else {
                 if (navigation.path.empty() && searchRetry<=0) {
-                    if (!PickSearchGoal(position,world,radius,height)) searchRetry=.5f;
+                    if (!PickSearchGoal(position,world,radius,height,moveSpeed)) searchRetry=.5f;
                 }
                 if (!navigation.path.empty()) {
                     navigation.Move(position,rotation,moveTarget,speed,dt,world,radius,height,navigationBudget);
@@ -299,7 +300,7 @@ struct EnemyAI {
                 }
                 if (!planned) wanderWait=std::max(.5f,senses.wanderWaitTime);
             } else {
-                navigation.Move(position,rotation,moveTarget,settings.moveSpeed*senses.wanderSpeedMultiplier,dt,world,radius,height,navigationBudget);
+                navigation.Move(position,rotation,moveTarget,moveSpeed*senses.wanderSpeedMultiplier,dt,world,radius,height,navigationBudget);
                 if (navigation.path.empty()) wanderWait=std::max(.1f,senses.wanderWaitTime);
             }
         }
@@ -307,8 +308,10 @@ struct EnemyAI {
     }
     static float distanceTo(const Vector3& a,const Vector3& b) { return std::hypot(a.x-b.x,a.z-b.z); }
     // Returns pending damage. Scene applies it after shooting, so lethal shots win this frame.
-    float Combat(Vector3& position, Vector3& rotation, const Vector3& target, float dt, bool dead) {
+    float Combat(Vector3& position, Vector3& rotation, const Vector3& target, float dt, bool dead,
+        float speedMultiplier=1.0f) {
         attacksThisUpdate = 0;
+        const float moveSpeed=settings.moveSpeed*speedMultiplier;
         const Vector3 delta{target.x-position.x,0,target.z-position.z};
         distance = std::hypot(delta.x,delta.z);
         if (dead) { state=EnemyState::Dead; return 0; }
@@ -327,7 +330,7 @@ struct EnemyAI {
             if (rangedRetreating || distance>maximum) {
                 const float desired=rangedRetreating ? retreatRange : maximum;
                 const float remaining=std::abs(distance-desired);
-                const float travel=std::min(std::max(settings.moveSpeed,0.0f)*dt,remaining);
+                const float travel=std::min(std::max(moveSpeed,0.0f)*dt,remaining);
                 const Vector3 direction=distance>1e-6f ? delta*(1.0f/distance) : Vector3{0,0,1};
                 position+=direction*(rangedRetreating ? -travel : travel);
                 rangedRetreating=rangedRetreating && travel<remaining;
@@ -342,7 +345,7 @@ struct EnemyAI {
             return 0; // Scene emits a projectile after resolving player shots.
         }
         if (distance > attackRange) {
-            const float speed=std::max(settings.moveSpeed,0.0f);
+            const float speed=std::max(moveSpeed,0.0f);
             const float travel=std::min(speed*dt,distance-attackRange);
             position=position+delta*(travel/distance);
             reachTime = speed > 0 ? (distance-attackRange)/speed : std::numeric_limits<float>::infinity();

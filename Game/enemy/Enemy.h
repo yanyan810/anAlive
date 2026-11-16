@@ -6,6 +6,7 @@
 #include "EnemyDefinition.h"
 #include "EnemyExplosion.h"
 #include "DetachedEnemyPart.h"
+#include <limits>
 #include <random>
 
 struct EnemyRenderAsset {
@@ -107,9 +108,31 @@ public:
     };
     DebugState CaptureDebug() const;
     void RestoreDebug(const DebugState& state);
+#if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
+    struct LiveCheckpoint {
+        struct Part { std::string name; float hp, flash; bool detached, visible; };
+        struct HpGroup { std::string id; float hp; };
+        std::string definitionId;
+        uint64_t spawnId, nextOrder;
+        Vector3 position, rotation, explosionCenter;
+        EnemyAI ai;
+        EnemyProceduralAnimation animation;
+        std::vector<Part> parts;
+        std::vector<HpGroup> groups;
+        std::vector<FaceShard> faces;
+        std::mt19937 random;
+        unsigned long long attacks;
+        float damage, flash, explosionTime, blastHitTime, lastBlastDamage;
+        bool dead, exploded;
+    };
+    std::optional<LiveCheckpoint> CaptureLiveCheckpoint() const;
+    bool CanRestoreLiveCheckpoint(const LiveCheckpoint& state) const;
+    void RestoreLiveCheckpoint(LiveCheckpoint&& state) noexcept;
+    std::pair<float, float> LiveHealth() const noexcept;
+#endif
 #endif
     float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f,
-        int navigationBudget=std::numeric_limits<int>::max());
+        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f);
     const EnemyAI& AI() const { return ai_; }
     const EnemySenses& Senses() const { return ai_.settings.senses; }
     bool ConfigureSenses(const EnemySenses& senses) {

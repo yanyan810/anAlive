@@ -27,13 +27,16 @@ void BulletManager::Spawn(const WeaponDefinition& weapon, const Matrix4x4& camer
 void BulletManager::Update(float dt, const StageWorld& world,
     const std::vector<Enemy*>& enemies,
     const std::function<void(const BulletEnemyImpact&)>& onImpact,
-    const BulletTrace& raycastTarget, const BulletImpact& onTargetImpact) {
+    const BulletTrace& raycastTarget, const BulletImpact& onTargetImpact, const BulletImpact& onWallImpact) {
     simulation_.Update(dt, MakeTrace(world, enemies, raycastTarget), [&](const Bullet& bullet, const BulletHit& hit) {
         if (hit.targetIndex != std::numeric_limits<size_t>::max()) {
             if (onTargetImpact) onTargetImpact(bullet, hit);
             return;
         }
-        if (hit.wall) return;
+        if (hit.wall) {
+            if (onWallImpact) onWallImpact(bullet, hit);
+            return;
+        }
         auto& enemy = *enemies[hit.enemyIndex];
         auto result = enemy.ApplyBulletDamage(hit.partIndex, bullet.damage, bullet.direction);
         enemy.ShowHitFeedback(hit.partIndex);

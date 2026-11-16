@@ -26,9 +26,10 @@ inline bool EnemyPartsDead(const EnemyParts& parts) {
 // Symmetric correction per enemy; radius sum defines minimum XZ separation.
 inline Vector3 EnemySeparationOffset(const Vector3& a,float radiusA,const Vector3& b,float radiusB,float dt) {
     const Vector3 delta{a.x-b.x,0,a.z-b.z};
-    const float distance=std::hypot(delta.x,delta.z);
     const float minimum=radiusA+radiusB;
-    if (distance>=minimum || !std::isfinite(dt) || dt<=0) return {};
+    if (std::abs(delta.x)>=minimum || std::abs(delta.z)>=minimum || !std::isfinite(dt) || dt<=0) return {};
+    const float distance=std::hypot(delta.x,delta.z);
+    if (distance>=minimum) return {};
     const auto direction=distance>1e-5f ? delta*(1/distance) : Vector3{1,0,0};
     return direction*std::min((minimum-distance)*.5f,dt*.6f);
 }
@@ -154,10 +155,10 @@ struct EnemyAI {
     // even after occlusion/range loss; visual history and attack LOS stay independent.
     float Update(Vector3& position,Vector3& rotation,const Vector3& target,float dt,bool dead,
         const StageWorld* world=nullptr,float radius=.4f,float height=1.8f,float playerEyeHeight=1.65f,
-        float speedMultiplier=1.0f) {
+        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f) {
         attacksThisUpdate=0;
         currentSpeed=0;
-        if (dead) { state=EnemyState::Dead; return 0; }
+        if (dead) { navigation.CancelPlan(); state=EnemyState::Dead; return 0; }
         if (paused) return 0;
         dt=std::isfinite(dt) ? std::max(0.0f,dt) : 0;
         const auto startPosition=position;
@@ -204,12 +205,13 @@ struct EnemyAI {
             if (pursuitOrdered && occluded) {
                 // Retained discovery grants pursuit, never attacks or projectiles through walls.
                 rangedRetreating=false;
-                navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height);
+                navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height,navigationBudget);
                 cooldown=std::max(0.0f,cooldown-dt); return finish(0);
             }
             // Keep the original attack cadence/ranges. Movement/attacks require a clear body route;
             // LOS additionally gates projectile emission, including while within the lost-sight grace period.
             if (std::abs(position.y-lastSeen.y)<=.35f && EnemyNavigation::Clear(world,position,lastSeen,radius,height)) {
+                navigation.CancelPlan();
                 navigation.path.clear(); navigation.next=0; navigation.state=EnemyPathState::Direct;
                 navigation.failure=EnemyPathFailure::None;
                 auto desired=position;
@@ -225,7 +227,7 @@ struct EnemyAI {
                 position=projected; return finish(damage);
             }
             rangedRetreating=false;
-            navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height);
+            navigation.Move(position,rotation,moveTarget,moveSpeed,dt,world,radius,height,navigationBudget);
         } else if (state==EnemyState::Chase || state==EnemyState::Investigate) {
             moveTarget=lastSeen;
             const auto arrived=[&]() { return distanceTo(position,lastSeen)<=senses.arrivalDistance && std::abs(position.y-lastSeen.y)<=.3f; };
@@ -235,7 +237,7 @@ struct EnemyAI {
             }
             else {
                 const float multiplier=state==EnemyState::Investigate ? senses.investigateSpeedMultiplier : 1.0f;
-                navigation.Move(position,rotation,lastSeen,moveSpeed*multiplier,dt,world,radius,height);
+                navigation.Move(position,rotation,lastSeen,moveSpeed*multiplier,dt,world,radius,height,navigationBudget);
                 if (arrived()) {
                     lastSeenReached=true;
                     if (state==EnemyState::Investigate) BeginSearch(position,false);
@@ -268,7 +270,7 @@ struct EnemyAI {
                     if (!PickSearchGoal(position,world,radius,height,moveSpeed)) searchRetry=.5f;
                 }
                 if (!navigation.path.empty()) {
-                    navigation.Move(position,rotation,moveTarget,speed,dt,world,radius,height);
+                    navigation.Move(position,rotation,moveTarget,speed,dt,world,radius,height,navigationBudget);
                     if (navigation.path.empty()) {
                         if (navigation.state==EnemyPathState::Arrived) {
                             ++searchPointsVisited;
@@ -298,7 +300,7 @@ struct EnemyAI {
                 }
                 if (!planned) wanderWait=std::max(.5f,senses.wanderWaitTime);
             } else {
-                navigation.Move(position,rotation,moveTarget,moveSpeed*senses.wanderSpeedMultiplier,dt,world,radius,height);
+                navigation.Move(position,rotation,moveTarget,moveSpeed*senses.wanderSpeedMultiplier,dt,world,radius,height,navigationBudget);
                 if (navigation.path.empty()) wanderWait=std::max(.1f,senses.wanderWaitTime);
             }
         }

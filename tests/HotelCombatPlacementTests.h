@@ -89,6 +89,13 @@ inline void RunHotelCombatPlacementTests(GameApp& app) {
     capture(L"generated/hotel-combat-tests/00-unarmed-start.png");
     check(game->player_.TryPickupWeapon(game->weapons_) && game->player_.CurrentWeapon().InfiniteReserveAmmo(),"Starting Sub cannot be picked up from respawn");
     check(game->weapons_.Pickups().size()==5,"Unarmed pickup created a phantom dropped weapon");
+    auto firedSub=game->player_.CurrentWeapon();
+    check(firedSub.TryFire(),"Starting Sub fixture shot failed");
+    game->player_.RestoreWeaponForDebug(firedSub);
+    check(game->HandleInteraction(true,true),"Same weapon pickup failed");
+    const auto& refilledSub=game->player_.CurrentWeapon();
+    check(refilledSub.Definition().id==firedSub.Definition().id && refilledSub.Magazine()==firedSub.Definition().magazineSize &&
+        refilledSub.Cooldown()==firedSub.Cooldown() && game->weapons_.Pickups().size()==5,"Same weapon pickup changed weapon or created a drop");
     capture(L"generated/hotel-combat-tests/01-respawn-sub.png");
     game->player_.SetStage(&game->level_.collision,{9,6,10},{0,1.5707963f,0});
     capture(L"generated/hotel-combat-tests/01-sealed-stair-lobby.png");

@@ -177,7 +177,8 @@ bool InvestigateEvidence(const SourceReader& source, const Limits& limits, std::
         const auto evaluate = check({live, "void EnemyAITestScene::EvaluateLuaPolicies()", 42, {
             "speeds[i]=RunLuaPolicy(*lua_,fields,budget);", "luaSpeeds_.swap(speeds);luaSpeedIds_.swap(ids);"}});
         const auto use = check({"Game/scene/Debug/EnemyAITestScene.cpp", "if (!pauseAll_ && dt > 0) EvaluateLuaPolicies();", 24, {
-            "if(dt>0&&i<luaSpeeds_.size())speedMultiplier=luaSpeeds_[i];", "e->Update(dt,player,&world_,player_.Settings().cameraHeight,speedMultiplier);"}});
+            "if(dt>0&&i<luaSpeeds_.size())speedMultiplier=luaSpeeds_[i];",
+            "e->Update(dt,player,&world_,player_.Settings().cameraHeight,std::numeric_limits<int>::max(),speedMultiplier);"}});
         claim("敵AIテストの更新時にLua要求を取り出し、候補VMを作って試行します。ApplyPending が成功したときに CommitChanges がポリシーを差し替えます。",
             "Lua要求の検証から差し替えまでを確認できませんでした。", {request, validate, apply, install});
         claim("AI停止中を除き、EvaluateLuaPolicies が返した速度倍率が次の敵更新に渡されます。",

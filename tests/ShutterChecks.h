@@ -1,6 +1,7 @@
 #pragma once
 #include "StageLoader.h"
 #include "StageProjectile.h"
+#include "EnemyNavigation.h"
 #include <stdexcept>
 
 namespace ShutterChecks {
@@ -64,6 +65,9 @@ inline void Validate(StageLoader& level) {
     system.Update(static_cast<float>(def.openDuration*.5),level.collision); refresh();
     Check(barrier.Move(from,to,.4f,1.8f,true).x>12.6f,"1.6 m gap blocks standing player");
     Check(!barrier.Raycast({14,1.2f,18},{-1,0,0},4,hit) && barrier.Raycast({14,2,18},{-1,0,0},4,hit),"Partial gap ray occlusion follows geometry");
+    EnemyNavigation navigation;
+    Vector3 feet=from,rotation{};
+    Check(!navigation.Move(feet,rotation,to,3,.05f,&barrier,.55f,2.4f,1),"Pending detour cannot cross moving shutter");
     system.Update(static_cast<float>(def.openDuration*4/30),level.collision); refresh();
     Check(Near(barrier.Move(from,to,.4f,1.8f,true).x,10),"2 m gap passes player");
     Check(barrier.Move(from,to,.55f,2.4f).x>12.7f,"Taller enemy still blocked");
@@ -73,6 +77,9 @@ inline void Validate(StageLoader& level) {
     Check(Near(system.shutters[0].Progress(),19.0f/30),"Invalid dt ignored");
     system.Update(100,level.collision); refresh();
     Check(Near(barrier.Move(from,to,.55f,2.4f).x,10),"Open passes tall enemy");
+    for (int i=0;i<40 && feet.x>10.01f;++i)
+        navigation.Move(feet,rotation,to,3,.05f,&barrier,.55f,2.4f,1);
+    Check(Near(feet.x,10) && Near(feet.z,18) && navigation.planAttempts==1,"Pending detour takes newly opened shutter gap");
     system.Reset(level.collision); refresh();
     Check(barrier.Raycast({14,1.4f,18},{-1,0,0},4,hit),"Reset restores blocking matrices");
     system.TryInteract(atButton); system.Update(static_cast<float>(def.openDuration),level.collision); system.TakeEvents(); // Existing route tests traverse the opened exit.

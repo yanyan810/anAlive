@@ -19,6 +19,7 @@ std::optional<BulletHit> TraceBulletPath(const Vector3& origin, const Vector3& d
     if (world.Raycast(origin, direction, distance, wall)) {
         distance = wall.distance;
         closest = BulletHit{distance, origin+direction*distance, EnemyPartType::None, 0, true};
+        closest->colliderIndex = wall.colliderIndex;
     }
     for (size_t i=0; i<enemyCount; ++i) {
         EnemyPartHit part;

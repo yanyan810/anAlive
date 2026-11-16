@@ -1,5 +1,5 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 13, 1),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 17, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.app.handlers import persistent
@@ -253,10 +253,29 @@ def build_level(scene, depsgraph):
     groups = {}
     if settings.player_gravity:
         data['stage']['playerGravity'] = True
+        if settings.fall_death_distance > 0:
+            finite([settings.fall_death_distance], 'Fatal Drop Distance')
+            data['stage']['fallDeathDistance'] = settings.fall_death_distance
+    if settings.player_fall_death:
+        finite([settings.fall_death_y], 'Fall Death Height')
+        data['stage']['fallDeathY'] = settings.fall_death_y
     geometry = []
     for obj in objects:
         cfg = obj.yan_level
         key = object_id(obj)
+        if cfg.role == 'DOOR':
+            if obj.type != 'MESH':
+                raise ValueError(f'{key}: Hinged Door requires an upright box mesh with its origin at the hinge')
+            box, matrix = box_data(obj, depsgraph)
+            up = matrix.to_3x3().col[1].normalized()
+            if (up - Vector((0, 1, 0))).length > 1e-4:
+                raise ValueError(f'{key}: Hinged Door must remain upright')
+            box['rotation'] = [0, math.atan2(matrix[0][2], matrix[2][2]), 0]
+            if not math.radians(10) <= abs(cfg.door_angle) <= math.radians(120):
+                raise ValueError(f'{key}: Hinged Door angle must be 10 to 120 degrees in either direction')
+            data.setdefault('doors', []).append(dict(id=key, **box, openAngle=cfg.door_angle,
+                initiallyOpen=cfg.door_initially_open))
+            continue
         if cfg.role == 'SHUTTER':
             if obj.type != 'MESH' or cfg.shutter_button is None or cfg.shutter_button.name not in scene.objects:
                 raise ValueError(f'{key}: Shutter requires a mesh and a switch object in this scene')
@@ -283,6 +302,8 @@ def build_level(scene, depsgraph):
                 openDuration=cfg.shutter_duration,openDistance=cfg.shutter_distance,interactionDistance=cfg.shutter_reach,
                 sounds={'switch':cfg.shutter_switch_sound,'start':cfg.shutter_start_sound,
                         'motor':cfg.shutter_motor_sound,'complete':cfg.shutter_complete_sound},progressEvents=markers))
+            if cfg.shutter_defend_before_opening:
+                shutters[-1]['defendBeforeOpening'] = True
             continue
         if cfg.role == 'STATIC':
             if obj.type != 'MESH':
@@ -301,6 +322,10 @@ def build_level(scene, depsgraph):
                 collider['walkable'] = True
             if cfg.player_only:
                 collider['playerOnly'] = True
+            if cfg.role == 'STATIC' and cfg.break_on_bullet:
+                if cfg.walkable or cfg.player_only:
+                    raise ValueError(f'{key}: Break on Bullet requires a solid, non-walkable box')
+                collider['breakableMesh'] = obj.name
             data['colliders'].append(collider)
         elif cfg.role in {'PLAYER', 'ENEMY', 'WEAPON'}:
             trs, _ = engine_transform(obj.matrix_world)
@@ -341,6 +366,10 @@ def build_level(scene, depsgraph):
                         point.update(enemy=enemy_id, enemyPool=[{'id': enemy_id, 'weight': 1}])
                     if cfg.spawn_activation == 'OnTrigger':
                         point['groupId'] = cfg.group.strip()
+                    if cfg.spawn_activation == 'Manual' and cfg.manual_group.strip():
+                        point['groupId'] = cfg.manual_group.strip()
+                if cfg.pursue_on_spawn:
+                    point['pursueOnSpawn'] = True
                 data['spawnPoints'].append(point)
             else:
                 candidates = matched_weapons(cfg, weapons)
@@ -352,6 +381,18 @@ def build_level(scene, depsgraph):
                 data['weaponSpawnPoints'].append(point)
         elif cfg.role == 'GOAL':
             data['goalTriggers'].append(dict(id=key, **trigger_volume(obj, depsgraph)))
+        elif cfg.role == 'TRANSFER':
+            target = cfg.transfer_arrival
+            if 'transfer' in data or target is None or target.name not in scene.objects:
+                raise ValueError(f'{key}: place one Stage Transfer and assign an arrival object in this scene')
+            pose, _ = engine_transform(target.matrix_world)
+            volume = trigger_volume(obj, depsgraph)
+            if all(abs(a-b) <= size*.5 for a,b,size in zip(pose['position'],volume['position'],volume['size'])):
+                raise ValueError(f'{key}: arrival must be outside the transfer trigger')
+            data['transfer'] = dict(id=key, **volume, arrivalPosition=pose['position'],
+                                    arrivalRotation=pose['rotation'])
+            if cfg.manual_group.strip():
+                data['transfer']['spawnGroup'] = cfg.manual_group.strip()
     for obj in objects:
         cfg = obj.yan_level
         if cfg.role == 'SPAWN_GROUP':
@@ -393,6 +434,24 @@ def build_level(scene, depsgraph):
         data['spawnTriggers'].append(dict(id=object_id(obj), **trigger_volume(obj, depsgraph), spawnPointIds=points,
             spawnCount=cfg.spawn_count, spawnInterval=cfg.spawn_interval, initialDelay=cfg.initial_delay,
             maxAlive=cfg.max_alive, selection=cfg.selection, oneShot=cfg.one_shot))
+    manual_groups = {point['groupId'] for point in data['spawnPoints']
+                     if point.get('activation') == 'Manual' and 'groupId' in point}
+    arrival_group = data.get('transfer', {}).get('spawnGroup')
+    if arrival_group and arrival_group not in manual_groups:
+        raise ValueError(f'Stage Transfer refers to an unknown Manual spawn group: {arrival_group}')
+    colliders = {c['id']: c for c in data['colliders']}
+    static_meshes = {object_id(obj): obj.name for obj in geometry}
+    for shutter in data.get('shutters', []):
+        for marker in shutter['progressEvents']:
+            if 'spawnGroup' in marker and marker['spawnGroup'] not in manual_groups:
+                raise ValueError(f"Shutter event {marker['event']} refers to an unknown Manual spawn group")
+            if 'openCollider' in marker:
+                target = marker['openCollider']
+                collider = colliders.get(target)
+                if not collider or target not in static_meshes or any(
+                    key in collider for key in ('breakableMesh', 'walkable', 'playerOnly')):
+                    raise ValueError(f'Shutter event needs a solid Static Mesh with Box collision: {target}')
+                collider['eventMesh'] = static_meshes[target]
     if not geometry:
         raise ValueError("At least one Static Mesh is required")
     letters = [obj for obj in objects if obj.yan_level.role == 'START_LETTER']
@@ -560,6 +619,15 @@ def export_level(context):
         gltf = json.loads(path.read_text(encoding='utf-8'))
         if not gltf.get('meshes'):
             raise ValueError("Exported glTF contains no meshes")
+        removable_nodes = {exported[c[key]].name: c[key] for c in data['colliders']
+                           for key in ('breakableMesh', 'eventMesh') if key in c}
+        if removable_nodes:
+            for node in gltf.get('nodes', []):
+                if 'mesh' in node and node.get('name') in removable_nodes:
+                    node['name'] = removable_nodes.pop(node['name'])
+            if removable_nodes:
+                raise ValueError(f'Removable mesh was not exported: {next(iter(removable_nodes.values()))}')
+            path.write_text(json.dumps(gltf, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
         for entry in gltf.get('buffers', []) + gltf.get('images', []):
             uri = entry.get('uri', '')
             if uri and not uri.startswith('data:') and not (scratch / uri).is_file():
@@ -609,7 +677,7 @@ def role_changed(self, context):
     if self.role == 'TRIGGER' and not self.is_property_set('trigger_mode'):
         self.trigger_mode = 'GROUP'
     if obj.type == 'EMPTY':
-        obj.empty_display_type = 'CUBE' if self.role in {'COLLIDER', 'TRIGGER', 'GOAL'} else 'ARROWS'
+        obj.empty_display_type = 'CUBE' if self.role in {'COLLIDER', 'TRIGGER', 'GOAL', 'TRANSFER'} else 'ARROWS'
         obj.empty_display_size = 1.0
     if self.role == 'COLLIDER':
         obj.display_type = 'WIRE'
@@ -650,7 +718,9 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
         ('START_LETTER', 'Game Start (Head)', 'Title only; join the whole text into one Mesh'),
         ('SPAWN_GROUP', '時刻指定の出現グループ', 'ステージ開始からの時刻で敵を出現させます'),
         ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision'),
-        ('CAMERA_POINT', 'Camera Point', 'Engine camera forward is local -Y; up is local +Z')])
+        ('CAMERA_POINT', 'Camera Point', 'Engine camera forward is local -Y; up is local +Z'),
+        ('DOOR', 'Hinged Door', 'Upright box; place the object origin on the hinge'),
+        ('TRANSFER', 'Stage Transfer', 'One-way transfer from a volume to an arrival object')])
     camera_sequence: StringProperty(name='Sequence ID', default='start')
     camera_order: IntProperty(name='Order', default=0, min=0)
     camera_duration: FloatProperty(name='Duration to next (s)', default=1, min=0, max=1200)
@@ -666,6 +736,9 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     camera_look_height: FloatProperty(name='Look At Player height (m)', default=1, min=-100, max=100)
     identifier: StringProperty(name="ID", description="空欄ならオブジェクト名を使用します")
     group: StringProperty(name="出現グループID", default="A")
+    manual_group: StringProperty(name='Manual Spawn Group')
+    pursue_on_spawn: BoolProperty(name='Pursue Player on Spawn')
+    transfer_arrival: PointerProperty(name='Arrival Object', type=bpy.types.Object)
     spawn_activation: EnumProperty(name='起動方法', default='StageStart', items=[
         ('LEGACY', '旧形式（互換）', '旧トリガーの共有出現設定または時刻指定グループを使用します'),
         ('StageStart', 'ステージ開始時', 'トリガー不要。初回待機時間の後に出現します'),
@@ -682,6 +755,7 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     trigger_condition: EnumProperty(name='起動条件', default='PlayerEnter', items=[
         ('PlayerEnter', 'プレイヤー進入', '範囲外から範囲内へ入ると起動します')])
     collision: EnumProperty(name="Collision", items=[('NONE', 'None', ''), ('BOX', 'Box', ''), ('CUSTOM', 'Custom', '')])
+    break_on_bullet: BoolProperty(name='Break on Bullet', description='A player bullet removes this mesh and its box collision')
     custom_collider: PointerProperty(name="Collider Object", type=bpy.types.Object)
     walkable: BoolProperty(name='Walkable Ramp', description='Smooth floor support proxy; never enable on walls or ceilings', default=False)
     player_only: BoolProperty(name='Player Only', description='Block the player but allow enemies and shots through', default=False)
@@ -702,9 +776,13 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
     start_time: FloatProperty(name='開始時刻（秒）', description='ステージ開始からのゲーム内秒数', default=0, min=0)
     members: CollectionProperty(type=YAN_SpawnGroupEnemy)
     shutter_button: PointerProperty(name='Switch Object', type=bpy.types.Object)
+    door_angle: FloatProperty(name='Open Angle', subtype='ANGLE', default=math.pi/2,
+                             min=-math.radians(120), max=math.radians(120))
+    door_initially_open: BoolProperty(name='Initially Open', default=False)
     shutter_duration: FloatProperty(name='Open Duration (s)',default=30,min=.001)
     shutter_distance: FloatProperty(name='Open Distance (m)',default=3.2,min=.001)
     shutter_reach: FloatProperty(name='Interaction Distance (m)',default=2,min=.001)
+    shutter_defend_before_opening: BoolProperty(name='Defend Before Opening')
     shutter_progress_events: StringProperty(name='Progress Events (JSON)',default='[]')
     shutter_switch_sound: StringProperty(name='Switch WAV',default='')
     shutter_start_sound: StringProperty(name='Start WAV',default='')
@@ -723,6 +801,10 @@ class YAN_SceneSettings(bpy.types.PropertyGroup):
     camera_preview_time: FloatProperty(name='Preview time (s)', default=0, min=0, max=3600,
         update=lambda self, context: camera_seek(context))
     player_gravity: BoolProperty(name='プレイヤー重力', description='床の支持・落下・坂の歩行を使用します', default=False)
+    player_fall_death: BoolProperty(name='Fall Death')
+    fall_death_y: FloatProperty(name='Fall Death Height', description='Engine Y (Blender Z) below which the player dies')
+    fall_death_distance: FloatProperty(name='Fatal Drop Distance', default=0, min=0, max=1e6,
+        description='Continuous unsupported drop that kills the player, in metres (0 disables)')
     stage_id: StringProperty(name="ステージID", default="stage01")
     project_root: StringProperty(name="プロジェクトの場所", description="エンジンのプロジェクトフォルダー。//はblendファイルからの相対パスです")
     output_directory: StringProperty(name="出力フォルダー", default="resources/levels/stage01", subtype='DIR_PATH')
@@ -1558,6 +1640,11 @@ class YAN_PT_level(bpy.types.Panel):
         cfg = context.scene.yan_level
         for key in ('stage_id', 'project_root', 'output_directory', 'fixed_seed', 'player_gravity'):
             layout.prop(cfg, key)
+        layout.prop(cfg, 'player_fall_death')
+        if cfg.player_fall_death:
+            layout.prop(cfg, 'fall_death_y')
+        if cfg.player_gravity:
+            layout.prop(cfg, 'fall_death_distance')
         layout.operator('yanengine.refresh_definitions', icon='FILE_REFRESH')
         if cfg.fixed_seed:
             layout.prop(cfg, 'seed')
@@ -1573,16 +1660,26 @@ class YAN_PT_level(bpy.types.Panel):
                 layout.prop(settings, 'identifier', text='出現ID' if settings.role == 'ENEMY' else 'トリガーID' if settings.role == 'TRIGGER' else 'ID')
             if settings.role == 'START_LETTER':
                 layout.label(text='One combined Mesh; all faces are Head, 1 HP')
+            if settings.role == 'DOOR':
+                layout.label(text='Set the object origin at the hinge')
+                layout.prop(settings, 'door_angle')
+                layout.prop(settings, 'door_initially_open')
             if settings.role == 'SHUTTER':
                 for field in ('shutter_button','shutter_duration','shutter_distance','shutter_reach',
+                              'shutter_defend_before_opening',
                               'shutter_progress_events','shutter_switch_sound','shutter_start_sound',
                               'shutter_motor_sound','shutter_complete_sound'):
                     layout.prop(settings,field)
+            if settings.role == 'TRANSFER':
+                layout.prop(settings, 'transfer_arrival')
+                layout.prop(settings, 'manual_group')
             if settings.role == 'COLLIDER' or (settings.role == 'STATIC' and settings.collision == 'BOX'):
                 layout.prop(settings, 'walkable')
                 layout.prop(settings, 'player_only')
             if settings.role == 'STATIC':
                 layout.prop(settings, 'collision')
+                if settings.collision == 'BOX':
+                    layout.prop(settings, 'break_on_bullet')
                 if settings.collision == 'CUSTOM':
                     layout.prop(settings, 'custom_collider')
                 auto = layout.box()
@@ -1602,7 +1699,8 @@ class YAN_PT_level(bpy.types.Panel):
                     if settings.spawn_activation == 'OnTrigger':
                         layout.prop(settings, 'group')
                     if settings.spawn_activation == 'Manual':
-                        layout.label(text='出現IDを指定して外部APIから起動します')
+                        layout.prop(settings, 'manual_group')
+                    layout.prop(settings, 'pursue_on_spawn')
                     choices = {}
                     try:
                         choices = definitions(context.scene, 'enemies')
@@ -1713,7 +1811,7 @@ class YAN_PT_level(bpy.types.Panel):
                         op.index, op.move = index, direction
                     row.operator('yanengine.group_member', text='', icon='REMOVE').index = index
                 box.operator('yanengine.group_member', text='敵を追加', icon='ADD')
-            if settings.role in {'COLLIDER', 'TRIGGER', 'GOAL'}:
+            if settings.role in {'COLLIDER', 'TRIGGER', 'GOAL', 'TRANSFER'}:
                 layout.label(text='範囲はビューポートで拡縮してください')
         layout.separator()
         layout.operator('yanengine.validate', icon='CHECKMARK')

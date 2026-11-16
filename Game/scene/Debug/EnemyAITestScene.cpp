@@ -3,6 +3,7 @@
 #include "ImGuiManagaer.h"
 #include "StageProjectile.h"
 #include <cstring>
+#include <limits>
 #include <utility>
 #ifdef USE_IMGUI
 const char* TypeName(EnemyType type) {
@@ -200,7 +201,8 @@ void EnemyAITestScene::Update(GameApp& app,float dt) {
 #if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
         if (dt > 0 && i < luaSpeeds_.size()) speedMultiplier = luaSpeeds_[i];
 #endif
-        const float hit=e->Update(dt,player,&world_,player_.Settings().cameraHeight,speedMultiplier); damage+=hit;
+        const float hit=e->Update(dt,player,&world_,player_.Settings().cameraHeight,
+            std::numeric_limits<int>::max(),speedMultiplier); damage+=hit;
         if (e->PendingAttackCount()) {
             if (d.IsRanged()) projectiles_.Spawn(MakeEnemyProjectile(d,e->GetPosition()+Vector3{0,1.2f,0},player));
             e->ConfirmAttack(hit);

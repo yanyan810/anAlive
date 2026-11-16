@@ -6,6 +6,7 @@
 #include "EnemyDefinition.h"
 #include "EnemyExplosion.h"
 #include "DetachedEnemyPart.h"
+#include <limits>
 #include <random>
 
 struct EnemyRenderAsset {
@@ -131,7 +132,7 @@ public:
 #endif
 #endif
     float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f,
-        float speedMultiplier=1.0f);
+        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f);
     const EnemyAI& AI() const { return ai_; }
     const EnemySenses& Senses() const { return ai_.settings.senses; }
     bool ConfigureSenses(const EnemySenses& senses) {

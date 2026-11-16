@@ -13,6 +13,7 @@ inline Vector3 ResolveOverlap(const StageWorld& world,Vector3 position,float rad
     for (int iteration=0;iteration<12;++iteration) {
         bool moved=false;
         for (const auto& c:world.colliders) {
+            if (!c.enabled) continue;
             const auto p=StagePoint(position,c.inverse), pad=Padding(c,radius);
             const auto low=c.local.min-pad, high=c.local.max+pad;
             if (p.x<=low.x || p.x>=high.x || p.y<=low.y || p.y>=high.y || p.z<=low.z || p.z>=high.z) continue;

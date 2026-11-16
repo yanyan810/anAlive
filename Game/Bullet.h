@@ -19,6 +19,7 @@ struct BulletHit {
     bool wall = true;
     size_t partIndex=kNoEnemyPart;
     size_t targetIndex=std::numeric_limits<size_t>::max(); // Optional scene-owned shootable.
+    size_t colliderIndex=std::numeric_limits<size_t>::max();
 };
 using BulletTrace = std::function<std::optional<BulletHit>(const Vector3&, const Vector3&, float)>;
 using BulletImpact = std::function<void(const Bullet&, const BulletHit&)>;

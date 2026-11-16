@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <cstring>
 #include <cstdint>
+#include <optional>
 
 enum class EnemyPathState { None, Direct, Following, Arrived, NoPath, Limited, Unsupported };
 enum class EnemyPathFailure { None, StartOccupied, GoalOccupied, HeightDifference, MissingFloor,
@@ -17,12 +18,49 @@ struct EnemyNavigation {
     Vector3 goal{};
     float retry=0;
     unsigned int planAttempts=0;
+
+    EnemyNavigation()=default;
+    // Debug history copies the AI each frame. Keep the route and restart any
+    // unfinished search on restore instead of storing its open/closed nodes.
+    EnemyNavigation(const EnemyNavigation& other) { *this=other; }
+    EnemyNavigation& operator=(const EnemyNavigation& other) {
+        if (this==&other) return *this;
+        state=other.state; failure=other.failure; path=other.path; next=other.next;
+        goal=other.goal; retry=other.search_ ? 0 : other.retry; planAttempts=other.planAttempts;
+        search_.reset(); directCheck_=0;
+        return *this;
+    }
+    EnemyNavigation(EnemyNavigation&&)=default;
+    EnemyNavigation& operator=(EnemyNavigation&&)=default;
+
 private:
+    struct GridSearch {
+        struct Node { Vector3 point{}; float cost=0; int cell=0,parent=-1; bool closed=false; };
+        using Entry=std::pair<float,int>;
+        Vector3 start{},target{};
+        float cell=0;
+        int side=0,limit=0,visited=0;
+        bool fine=false;
+        std::vector<Node> nodes;
+        std::unordered_map<int64_t,int> index;
+        std::priority_queue<Entry,std::vector<Entry>,std::greater<Entry>> open;
+
+        int64_t Key(int xy,float y) const { return static_cast<int64_t>(std::floor((y+.01f)*2))*side*side+xy; }
+    };
+    std::optional<GridSearch> search_;
+    float directCheck_=0;
+
     struct Geometry {
         const StageWorld* world=nullptr;
         const StageCollider* data=nullptr;
         float margin=0;
-        struct Cached { Matrix4x4 matrix{}; AABB local{},bounds{}; bool playerOnly=false; };
+        struct Cached {
+            Matrix4x4 matrix{};
+            AABB local{},bounds{};
+            Vector3 horizontalProjection{},verticalProjection{};
+            bool playerOnly=false;
+            int firstX=0,firstZ=0;
+        };
         std::vector<Cached> boxes;
         std::unordered_map<uint64_t,std::vector<size_t>> cells;
         std::vector<size_t> large;
@@ -38,14 +76,19 @@ private:
                 if (fresh || rebuild || std::memcmp(&c.world,&b.matrix,sizeof(c.world)) || std::memcmp(&c.local,&b.local,sizeof(c.local)) || c.playerOnly!=b.playerOnly) {
                     const auto bounds=TransformAABB(c.local,c.world);
                     if (bounds.min.x!=b.bounds.min.x || bounds.max.x!=b.bounds.max.x || bounds.min.z!=b.bounds.min.z || bounds.max.z!=b.bounds.max.z || c.playerOnly!=b.playerOnly) rebuild=true;
-                    b={c.world,c.local,bounds,c.playerOnly};
+                    b.matrix=c.world; b.local=c.local; b.bounds=bounds; b.playerOnly=c.playerOnly;
+                    const auto& inverse=c.inverse.m;
+                    b.horizontalProjection={std::hypot(inverse[0][0],inverse[2][0]),
+                        std::hypot(inverse[0][1],inverse[2][1]),std::hypot(inverse[0][2],inverse[2][2])};
+                    b.verticalProjection={std::abs(inverse[1][0]),std::abs(inverse[1][1]),std::abs(inverse[1][2])};
                 }
             }
             if (!rebuild) return;
             cells.clear(); large.clear();
             for (size_t i=0;i<boxes.size();++i) {
-                const auto& b=boxes[i]; if (b.playerOnly) continue;
+                auto& b=boxes[i]; if (b.playerOnly) continue;
                 const int x0=Cell(b.bounds.min.x-margin),x1=Cell(b.bounds.max.x+margin),z0=Cell(b.bounds.min.z-margin),z1=Cell(b.bounds.max.z+margin);
+                b.firstX=x0; b.firstZ=z0;
                 if (int64_t{x1-x0+1}*(z1-z0+1)>4096) { large.push_back(i); continue; }
                 for (int z=z0;z<=z1;++z) for (int x=x0;x<=x1;++x) cells[Key(x,z)].push_back(i);
             }
@@ -59,7 +102,12 @@ private:
             for (const auto i:large) if (!visit(i)) return false;
             for (int z=z0;z<=z1;++z) for (int x=x0;x<=x1;++x) {
                 const auto found=cells.find(Key(x,z));
-                if (found!=cells.end()) for (const auto i:found->second) if (!visit(i)) return false;
+                if (found==cells.end()) continue;
+                for (const auto i:found->second) {
+                    // Visit the collider at the first cell it shares with this query.
+                    const auto& box=boxes[i];
+                    if (x==std::max(x0,box.firstX) && z==std::max(z0,box.firstZ) && !visit(i)) return false;
+                }
             }
             return true;
         }
@@ -75,7 +123,9 @@ private:
         g.Each(sample,sample,[&](size_t i) {
             const auto& bounds=g.boxes[i].bounds;
             if (sample.x<bounds.min.x-.001f || sample.x>bounds.max.x+.001f || sample.z<bounds.min.z-.001f || sample.z>bounds.max.z+.001f || bounds.max.y<reference-drop || bounds.min.y>reference+rise) return true;
-            const auto& c=g.world->colliders[i]; const auto local=StagePoint(origin,c.inverse);
+            const auto& c=g.world->colliders[i];
+            if (!c.enabled) return true;
+            const auto local=StagePoint(origin,c.inverse);
             // An inside-origin ray is not a supporting top face. Reject it so
             // a tall solid block cannot become a series of upward teleports.
             if (local.x>c.local.min.x+1e-5f && local.x<c.local.max.x-1e-5f && local.y>c.local.min.y+1e-5f && local.y<c.local.max.y-1e-5f && local.z>c.local.min.z+1e-5f && local.z<c.local.max.z-1e-5f) return true;
@@ -88,29 +138,36 @@ private:
     static bool Sweep(const Geometry& g,const Vector3& a,const Vector3& b,float radius,float height) {
         const auto delta=b-a; const float length=StageLength(delta);
         const auto direction=length>1e-6f ? delta*(1/length) : Vector3{1,0,0};
-        const float low=std::min(a.y,b.y),high=std::max(a.y,b.y)+height;
+        const Vector3 low{std::min(a.x,b.x)-radius,std::min(a.y,b.y)+.01f,std::min(a.z,b.z)-radius};
+        const Vector3 high{std::max(a.x,b.x)+radius,std::max(a.y,b.y)+height-.01f,std::max(a.z,b.z)+radius};
+        const float bodyRadius=std::max(0.0f,radius-.0001f);
         return g.Each(a,b,[&](size_t i) {
-            const auto& bounds=g.boxes[i].bounds;
-            if (bounds.max.x<std::min(a.x,b.x)-radius || bounds.min.x>std::max(a.x,b.x)+radius || bounds.max.z<std::min(a.z,b.z)-radius || bounds.min.z>std::max(a.z,b.z)+radius || bounds.max.y<=low+.01f || bounds.min.y>=high-.01f) return true;
+            const auto& box=g.boxes[i];
+            const auto& bounds=box.bounds;
+            if (bounds.max.x<low.x || bounds.min.x>high.x || bounds.max.z<low.z || bounds.min.z>high.z ||
+                bounds.max.y<=low.y || bounds.min.y>=high.y) return true;
             const auto& c=g.world->colliders[i];
+            if (!c.enabled) return true;
             // The sole follows walkable support; the upper body still sweeps
             // against that geometry, including overhead floors and ceilings.
             const float bottom=g.world->playerGravity && c.walkable ? std::min(height*.5f,.35f) : 0;
-            const float body=height-bottom; float extent[3];
+            const float body=height-bottom;
             // Float transforms can put a tangential body a few microns inside a wall.
             // Keep the navigation contact tolerance below the physical sweep stand-off.
-            const float bodyRadius=std::max(0.0f,radius-.0001f);
-            for (int j=0;j<3;++j) extent[j]=bodyRadius*std::hypot(c.inverse.m[0][j],c.inverse.m[2][j])+body*.5f*std::abs(c.inverse.m[1][j]);
-            StageHit hit;
-            return !StageWorld::CastBox(c,a+Vector3{0,bottom+body*.5f,0},direction,length,{extent[0],extent[1],extent[2]},hit);
+            const auto extent=box.horizontalProjection*bodyRadius+box.verticalProjection*(body*.5f);
+            return !StageWorld::IntersectsBox(c,a+Vector3{0,bottom+body*.5f,0},direction,length,extent);
         });
     }
-    static bool Trace(const Geometry& g,const Vector3& start,const Vector3& desired,float radius,float height,Vector3& result) {
+    static bool CanStartTrace(const Geometry& g,const Vector3& start,float radius,float height,float& floor) {
+        return !g.world->playerGravity ||
+            (Ground(g,start,start.y,floor) && std::abs(floor-start.y)<=.08f && Sweep(g,start,start,radius,height));
+    }
+    static bool TraceFromStart(const Geometry& g,const Vector3& start,const Vector3& desired,
+        float radius,float height,float floor,Vector3& result) {
         if (!g.world->playerGravity) { result=desired; return Sweep(g,start,desired,radius,height); }
-        float floor=0;
-        if (!Ground(g,start,start.y,floor) || std::abs(floor-start.y)>.08f || !Sweep(g,start,start,radius,height)) return false;
         auto previous=start;
         const float horizontal=std::hypot(desired.x-start.x,desired.z-start.z);
+        if (horizontal==0 && floor==start.y) { result=start; return true; }
         const int steps=std::max(1,static_cast<int>(std::ceil(horizontal/.18f)));
         for (int i=1;i<=steps;++i) {
             const float t=static_cast<float>(i)/steps;
@@ -120,6 +177,10 @@ private:
             previous=p;
         }
         result=previous; return true;
+    }
+    static bool Trace(const Geometry& g,const Vector3& start,const Vector3& desired,float radius,float height,Vector3& result) {
+        float floor=0;
+        return CanStartTrace(g,start,radius,height,floor) && TraceFromStart(g,start,desired,radius,height,floor,result);
     }
     static bool ClearWith(const Geometry& g,const Vector3& a,const Vector3& b,float radius,float height) {
         Vector3 projected;
@@ -144,56 +205,83 @@ public:
         Vector3 projected;
         return FollowSurface(&world,a,clipped,radius,height,projected) ? projected : a;
     }
-    bool Plan(const StageWorld* world,const Vector3& start,const Vector3& physicalTarget,float radius,float height) {
-        ++planAttempts; failure=EnemyPathFailure::None;
+    void CancelPlan() { search_.reset(); }
+private:
+    void BeginPlan(const StageWorld* world,const Vector3& start,const Vector3& physicalTarget,float radius,float height) {
+        CancelPlan();
+        ++planAttempts; state=EnemyPathState::None; failure=EnemyPathFailure::None;
         goal=physicalTarget; path.clear(); next=0; retry=1;
         auto target=physicalTarget;
         if (world && world->playerGravity) {
             float support=0;
             if (!Ground(CachedGeometry(world,radius),target,target.y,support) || std::abs(support-target.y)>.25f) {
-                state=EnemyPathState::Unsupported; failure=EnemyPathFailure::MissingFloor; return false;
+                state=EnemyPathState::Unsupported; failure=EnemyPathFailure::MissingFloor; return;
             }
             // Player support samples can lift feet slightly above the centre of
             // a ramp. Route the enemy onto the actual surface at that XZ.
             target.y=support;
         }
-        if (std::abs(start.y-target.y)>.3f && (!world || !world->playerGravity)) { state=EnemyPathState::Unsupported; failure=EnemyPathFailure::HeightDifference; return false; }
-        if (!Supported(world,start) || !Supported(world,target)) { state=EnemyPathState::Unsupported; failure=EnemyPathFailure::MissingFloor; return false; }
-        if (Clear(world,start,target,radius,height)) { path.push_back(target); state=EnemyPathState::Direct; return true; }
-        if (!Clear(world,start,start,radius,height)) { state=EnemyPathState::NoPath; failure=EnemyPathFailure::StartOccupied; return false; }
-        if (!Clear(world,target,target,radius,height)) { state=EnemyPathState::NoPath; failure=EnemyPathFailure::GoalOccupied; return false; }
-        const float cell=std::max(.75f,radius*2+.1f);
-        if (PlanGrid(world,start,target,radius,height,cell,false)) return true;
-        if (failure==EnemyPathFailure::Disconnected || failure==EnemyPathFailure::NodeBudget) return PlanGrid(world,start,target,radius,height,cell*.5f,true);
-        return false;
+        if (std::abs(start.y-target.y)>.3f && (!world || !world->playerGravity)) { state=EnemyPathState::Unsupported; failure=EnemyPathFailure::HeightDifference; return; }
+        if (!Supported(world,start) || !Supported(world,target)) { state=EnemyPathState::Unsupported; failure=EnemyPathFailure::MissingFloor; return; }
+        if (Clear(world,start,target,radius,height)) { path.push_back(target); state=EnemyPathState::Direct; return; }
+        if (!Clear(world,start,start,radius,height)) { state=EnemyPathState::NoPath; failure=EnemyPathFailure::StartOccupied; return; }
+        if (!Clear(world,target,target,radius,height)) { state=EnemyPathState::NoPath; failure=EnemyPathFailure::GoalOccupied; return; }
+        BeginGrid(world,start,target,std::max(.75f,radius*2+.1f),false);
     }
-    bool PlanGrid(const StageWorld* world,const Vector3& start,const Vector3& target,float radius,float height,float cell,bool fine=false) {
+    void BeginGrid(const StageWorld* world,const Vector3& start,const Vector3& target,float cell,bool fine) {
         const bool terrain=world && world->playerGravity,levels=terrain && std::abs(start.y-target.y)>.3f;
         const int side=terrain && (levels || fine) ? (fine ? 193 : 129) : 65,center=side/2;
-        const int budget=terrain && (levels || fine) ? (fine ? 24000 : 10000) : 1800;
         const int gx=static_cast<int>(std::round((target.x-start.x)/cell))+center,gz=static_cast<int>(std::round((target.z-start.z)/cell))+center;
-        if (gx<0 || gz<0 || gx>=side || gz>=side) { state=EnemyPathState::Limited; failure=EnemyPathFailure::OutsideGrid; return false; }
-        const Geometry* geometry=world ? &CachedGeometry(world,radius) : nullptr;
-        struct Node { Vector3 point{}; float cost=std::numeric_limits<float>::infinity(); int cell=0,parent=-1; bool closed=false; };
-        std::vector<Node> nodes; nodes.reserve(static_cast<size_t>(budget)*2);
-        std::unordered_map<int64_t,int> index;
-        const auto key=[&](int xy,float y) { return static_cast<int64_t>(std::floor((y+.01f)*2))*side*side+xy; };
+        if (gx<0 || gz<0 || gx>=side || gz>=side) { state=EnemyPathState::Limited; failure=EnemyPathFailure::OutsideGrid; return; }
+        state=EnemyPathState::None; failure=EnemyPathFailure::None;
+        auto& search=search_.emplace();
+        search.start=start; search.target=target; search.cell=cell; search.side=side; search.fine=fine;
+        search.limit=terrain && (levels || fine) ? (fine ? 24000 : 10000) : 1800;
         const int source=center*side+center;
-        nodes.push_back({start,0,source,-1,false}); index[key(source,start.y)]=0;
-        using Entry=std::pair<float,int>; std::priority_queue<Entry,std::vector<Entry>,std::greater<Entry>> open;
-        open.push({StageLength(target-start),0}); int found=-1,visited=0;
-        while (!open.empty() && visited<budget) {
+        search.nodes.push_back({start,0,source});
+        search.index[search.Key(source,start.y)]=0;
+        search.open.push({StageLength(target-start),0});
+    }
+    void ContinuePlan(const StageWorld* world,float radius,float height,int budget) {
+        while (search_ && budget>0) {
+            auto& search=*search_;
+            AdvanceGrid(world,radius,height,search,budget);
+            if (!search.open.empty() && search.visited<search.limit && path.empty()) return;
+            const bool refine=path.empty() && !search.fine;
+            const auto start=search.start,target=search.target;
+            const float fineCell=search.cell*.5f;
+            CancelPlan();
+            if (refine) BeginGrid(world,start,target,fineCell,true);
+            if (!search_) retry=1;
+        }
+    }
+    void AdvanceGrid(const StageWorld* world,float radius,float height,GridSearch& search,int& budget) {
+        const Geometry* geometry=world ? &CachedGeometry(world,radius) : nullptr;
+        const auto start=search.start,target=search.target;
+        const int side=search.side,center=side/2;
+        const float cell=search.cell;
+        auto& nodes=search.nodes;
+        auto& index=search.index;
+        auto& open=search.open;
+        int found=-1;
+        while (!open.empty() && search.visited<search.limit && budget>0) {
             const int id=open.top().second; open.pop(); if (nodes[id].closed) continue;
-            nodes[id].closed=true; ++visited;
+            nodes[id].closed=true; ++search.visited; --budget;
             const auto p=nodes[id].point; const int xy=nodes[id].cell; const float baseCost=nodes[id].cost;
-            if (StageLength(p-target)<=cell*1.5f && (!geometry || ClearWith(*geometry,p,target,radius,height))) { found=id; break; }
+            float floor=0;
+            if (geometry && !CanStartTrace(*geometry,p,radius,height,floor)) continue;
+            if (StageLength(p-target)<=cell*1.5f) {
+                Vector3 projected;
+                if (!geometry || (TraceFromStart(*geometry,p,target,radius,height,floor,projected) &&
+                    std::abs(projected.y-target.y)<=.25f)) { found=id; break; }
+            }
             for (int z=-1;z<=1;++z) for (int x=-1;x<=1;++x) {
                 if (!x && !z) continue;
                 const int nx=xy%side+x,nz=xy/side+z; if (nx<0 || nz<0 || nx>=side || nz>=side) continue;
                 const int nextCell=nz*side+nx;
                 const Vector3 desired{start.x+(nx-center)*cell,p.y,start.z+(nz-center)*cell}; Vector3 q=desired;
-                if (geometry && !Trace(*geometry,p,desired,radius,height,q)) continue;
-                const auto k=key(nextCell,q.y); auto existing=index.find(k); int neighbor=0;
+                if (geometry && !TraceFromStart(*geometry,p,desired,radius,height,floor,q)) continue;
+                const auto k=search.Key(nextCell,q.y); auto existing=index.find(k); int neighbor=0;
                 if (existing==index.end()) { neighbor=static_cast<int>(nodes.size()); index[k]=neighbor; nodes.push_back({q,std::numeric_limits<float>::infinity(),nextCell,-1,false}); }
                 else neighbor=existing->second;
                 if (nodes[neighbor].closed) continue;
@@ -202,14 +290,50 @@ public:
                 open.push({cost+StageLength(q-target),neighbor});
             }
         }
-        if (found<0) { state=visited>=budget ? EnemyPathState::Limited : EnemyPathState::NoPath; failure=visited>=budget ? EnemyPathFailure::NodeBudget : EnemyPathFailure::Disconnected; return false; }
+        if (found<0) {
+            if (open.empty() || search.visited>=search.limit) {
+                state=search.visited>=search.limit ? EnemyPathState::Limited : EnemyPathState::NoPath;
+                failure=search.visited>=search.limit ? EnemyPathFailure::NodeBudget : EnemyPathFailure::Disconnected;
+            }
+            return;
+        }
         path.push_back(target);
         for (int id=found;id!=0;id=nodes[id].parent) path.push_back(nodes[id].point);
-        std::reverse(path.begin(),path.end()); state=EnemyPathState::Following; failure=EnemyPathFailure::None; return true;
+        std::reverse(path.begin(),path.end()); state=EnemyPathState::Following; failure=EnemyPathFailure::None;
     }
-    bool Move(Vector3& position,Vector3& rotation,const Vector3& target,float speed,float dt,const StageWorld* world,float radius,float height) {
+public:
+    bool Plan(const StageWorld* world,const Vector3& start,const Vector3& target,float radius,float height) {
+        BeginPlan(world,start,target,radius,height);
+        ContinuePlan(world,radius,height,std::numeric_limits<int>::max());
+        return !path.empty();
+    }
+    bool Move(Vector3& position,Vector3& rotation,const Vector3& target,float speed,float dt,const StageWorld* world,float radius,float height,
+        int nodeBudget=std::numeric_limits<int>::max()) {
         retry=std::max(0.0f,retry-dt); const bool changed=StageLength(target-goal)>.75f;
-        if ((path.empty() || changed) && retry<=0) Plan(world,position,target,radius,height);
+        // Finish the current detour even if its target moves. Restarting every
+        // time a player moves would starve a search with a small node budget.
+        if (search_ && StageLength(position-search_->start)>.75f) {
+            CancelPlan();
+            retry=0;
+        }
+        if (search_) {
+            // A door may open while a longer detour is still being searched.
+            directCheck_-=dt;
+            if (directCheck_<=0) {
+                directCheck_=.2f;
+                Vector3 projected;
+                if ((std::abs(position.y-target.y)<=.3f || (world && world->playerGravity)) &&
+                    FollowSurface(world,position,target,radius,height,projected) && std::abs(projected.y-target.y)<=.25f) {
+                    CancelPlan();
+                    path={projected}; next=0; goal=target;
+                    state=EnemyPathState::Direct; failure=EnemyPathFailure::None;
+                }
+            }
+        } else if ((path.empty() || changed) && retry<=0) {
+            BeginPlan(world,position,target,radius,height);
+            directCheck_=.2f;
+        }
+        ContinuePlan(world,radius,height,nodeBudget);
         if (next>=path.size()) return false;
         const Geometry* geometry=world ? &CachedGeometry(world,radius) : nullptr;
         float remaining=std::max(0.0f,speed)*dt; bool moved=false;

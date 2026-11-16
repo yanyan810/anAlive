@@ -114,32 +114,43 @@ std::optional<Vector3> DropPosition(const Vector3& player,const Vector3& source,
 bool WeaponSystem::TryPickup(const Vector3& player,WeaponRuntime& weapon,const StageWorld* world,float yaw) {
     const auto index=Nearest(player);
     if (!index) return false;
-    // Copy before appending: growing pickups_ must not invalidate a selected source.
-    const auto selected=pickups_[*index];
+    auto& selected=pickups_[*index];
+    const auto* definition=PickupDefinition(selected);
+    if (!definition) return false;
+    const bool sameWeapon=weapon.Definition().id==definition->id;
     WeaponRuntime incoming;
-    if (selected.savedWeapon) incoming=*selected.savedWeapon;
-    else {
-        const auto* definition=Find(selected.weaponId);
-        if (!definition || !incoming.Equip(*definition)) return false;
+    if (!sameWeapon) {
+        if (selected.savedWeapon) incoming=*selected.savedWeapon;
+        else if (!incoming.Equip(*definition)) return false;
     }
-    if (!weapon.Definition().id.empty()) {
+    if (!sameWeapon && !weapon.Definition().id.empty()) {
         const auto position=DropPosition(player,selected.position,yaw,weapon.Definition(),world);
         if (!position) return false; // Keep both weapons intact if there is no safe ground.
         auto outgoing=weapon; outgoing.PrepareForDrop();
+        const auto firstDrop=pickups_.begin()+points_.size();
+        auto destination=std::find_if(firstDrop,pickups_.end(),[&](const auto& p) {
+            return p.visible && !p.pickedUp && p.weaponId==outgoing.Definition().id;
+        });
+        const bool relocating=destination!=pickups_.end();
+        if (!relocating) {
+            destination=selected.savedWeapon ? pickups_.begin()+*index :
+                std::find_if(firstDrop,pickups_.end(),[](const auto& p) { return p.pickedUp; });
+        }
         WeaponPickup dropped;
-        dropped.spawnPointId="dropped-"+std::to_string(nextDropId_++);
+        dropped.spawnPointId=relocating ? destination->spawnPointId : "dropped-"+std::to_string(nextDropId_++);
         dropped.weaponId=outgoing.Definition().id;
         dropped.position=*position; dropped.rotation={0,yaw,0}; dropped.savedWeapon=std::move(outgoing);
-        if (selected.savedWeapon) pickups_[*index]=std::move(dropped);
-        else {
-            auto free=std::find_if(pickups_.begin()+points_.size(),pickups_.end(),[](const auto& p) { return p.pickedUp; });
-            if (free!=pickups_.end()) *free=std::move(dropped);
-            else pickups_.push_back(std::move(dropped));
+        if (relocating && selected.savedWeapon) {
+            selected.visible=false;
+            selected.pickedUp=true;
         }
+        if (destination!=pickups_.end()) *destination=std::move(dropped);
+        else pickups_.push_back(std::move(dropped));
     } else if (selected.savedWeapon) {
-        pickups_[*index].visible=false; pickups_[*index].pickedUp=true;
+        selected.visible=false; selected.pickedUp=true;
     }
-    weapon=std::move(incoming);
+    if (sameWeapon) weapon.ResetAmmo();
+    else weapon=std::move(incoming);
     return true;
 }
 bool WeaponSystem::Load(const std::string& definitionsPath, const std::string& levelPath,

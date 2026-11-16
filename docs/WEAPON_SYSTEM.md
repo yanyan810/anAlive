@@ -2,7 +2,7 @@
 
 性能は `resources/Data/weapons.json`、配置と候補は `resources/levels/fps_spawns.json` で設定します。変更はRestart Stageで再読込します。専用の銃モデルは追加せず、同梱Cubeを武器ごとのサイズ・色で表示しています。モデル、定義、Pickup描画リソースはStage初期化時に準備し、Pickup時や射撃時のモデルロードはありません。
 
-初期装備はpistol。武器に2.2以内まで近づき、Eで最寄りの1個を取得します。同距離ならJSONの順で選びます。取得したPickupは消え、旧武器は破棄、新武器は満タンMagazineと定義のReserveになります。装備変更でReload・Burst・Cooldownをリセットします。
+武器に2.2以内まで近づき、Eで最寄りの1個を取得します。同距離ならJSONの順で選びます。ステージに配置された武器は繰り返し取得できます。別の武器に持ち替えると、旧武器をその場に落とします。同じ種類のドロップがすでに地面にある場合は、その位置・向き・残弾を今回落とした武器の情報で更新します。装備中と同じ武器を拾うと、現在の武器を装備したまま、装填数と予備弾数を定義の初期値に戻します。地面に落とした武器を拾うと、その拾得物は回収されます。
 
 | ID | FireMode | Ammo/shot | Pellet | Magazine / Reserve | Reload |
 |---|---|---:|---:|---|---|
@@ -68,7 +68,7 @@ ammoPerShot、pelletCount、burstCount、magazineSizeは正整数。Burst間隔�
 4. **Pump Reload**：数発撃ってR。0.25秒で最初の1発、以後0.55秒ごとに1発ずつMagazine増加/Reserve減少。満タン後0.30秒でRELOADING消失。
 5. **Reload途中射撃**：Pump装填途中にLMBで中断して射撃。空のときは装填前に射撃しない。Magazine方式は中断不可。
 6. **AmmoとPellet**：Pumpの1回射撃で弾数は1だけ減る。ammoPerShot=2に変えてRestartすると2減るが、Pellet数は8のまま。
-7. **Pickup/Restart**：Eで最寄り武器だけが消え、装備・弾薬が切り替わる。Reload/Burst中の拾い替えで旧状態が残らない。固定Seedで再現し、Restartで取得状態と初期装備がリセットされる。
+7. **Pickup/Restart**：Eで最寄りの武器を拾う。別の武器に持ち替えた場合は、落とした武器を再取得して残弾を確認する。同じ武器を拾った場合は、装填数と予備弾数が初期値に戻り、落とした武器が増えないことを確認する。固定Seedで再現し、Restartで取得状態と初期装備がリセットされる。
 8. **ADS/部位/クリア**：RMB長押しで視点が揺れずFOV・感度・Spreadが変わる。各武器で部位HPとFace/Chunk破壊が動く。Goal後は弾数・Reload/Burstが進まない。
 
 自動検証は `tools/test-weapons.ps1`。武器関連に加え、Stage/Spawn/Enemy部位・AI・破片/FPS/Raycastの既存テストを実行します。描画・操作感は自動テストの検証範囲に含めません。

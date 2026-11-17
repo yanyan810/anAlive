@@ -1,7 +1,9 @@
-#include "GameScene.h"
+﻿#include "GameScene.h"
 #include "GameApp.h"
 #include <limits>
 #include <map>
+#include <fstream>
+#include <filesystem>
 #ifdef USE_IMGUI
 #include "imgui.h"
 #endif
@@ -58,7 +60,6 @@ void GameScene::InitializeHotelEscape(GameApp& app) {
     const auto goal=std::find_if(stage_.Goals().begin(),stage_.Goals().end(),
         [&](const auto& item) { return item.id==escape.goal; });
     if (goal==stage_.Goals().end() || !FindEscapeCamera(level_,escape.cameras[0]) ||
-        !FindEscapeCamera(level_,escape.cameras[1]) ||
         (!escape.launchCamera.empty() && !FindEscapeCamera(level_,escape.launchCamera))) {
         OutputDebugStringA("Hotel escape disabled: missing Goal or camera sequence\n");
         return;
@@ -182,14 +183,17 @@ void GameScene::RefreshEscapeCarVisuals() {
 bool GameScene::BeginHotelEscape(GameApp& app,bool preview) {
     if (!escapeCar_ || EscapePlaying() || sequenceOwnsCamera_ || gameOver_.Active() ||
         (preview && (!stage_.IsPlaying() || app.Scenes().IsTransitioning()))) return false;
+
     const auto& escape=*level_.hotelEscape;
+
     if (!preview && std::none_of(stage_.Goals().begin(),stage_.Goals().end(),
         [&](const auto& goal) { return goal.id==escape.goal && goal.activated; })) return false;
 
     escapeReturnCamera_={camera_.GetTranslate(),camera_.GetRotate(),camera_.GetFovY()};
-    for (size_t i=0;i<escapeCameras_.size();++i)
-        escapeCameras_[i].Start(*FindEscapeCamera(level_,escape.cameras[i]),escapeReturnCamera_,player_.GetTransform().translate);
+    escapeIntroCamera_.Start(*FindEscapeCamera(level_,escape.cameras[0]),escapeReturnCamera_,player_.GetTransform().translate);
+
     escapeLaunchCamera_.reset();
+
     if (const auto* launch=FindEscapeCamera(level_,escape.launchCamera))
         escapeLaunchCamera_.emplace().Start(*launch,escapeReturnCamera_,player_.GetTransform().translate);
     for (size_t i=0;i<escape.actors.size();++i) {
@@ -207,6 +211,12 @@ bool GameScene::BeginHotelEscape(GameApp& app,bool preview) {
     }
     escapeTime_=0;
     escapeMode_=preview ? EscapeMode::Preview : EscapeMode::Clear;
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    escapeDiagnosticSamples_.clear();
+    escapeDiagnosticHasTick_ = false;
+#endif
+
     escapeWasCaptured_=app.GetInput()->IsCameraControlEnabled();
     app.GetInput()->SetCameraControlEnabled(false);
 #ifdef USE_IMGUI
@@ -227,14 +237,27 @@ bool GameScene::HandleHotelEscapeKey(GameApp& app) {
 
 void GameScene::UpdateHotelEscape(GameApp& app,float dt) {
     const auto& escape=*level_.hotelEscape;
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    const auto diagnosticNow = std::chrono::steady_clock::now();
+
+    const double frameMs = escapeDiagnosticHasTick_
+        ? std::chrono::duration<double, std::milli>(
+            diagnosticNow - escapeDiagnosticLastTick_).count()
+        : 0.0;
+
+    escapeDiagnosticLastTick_ = diagnosticNow;
+    escapeDiagnosticHasTick_ = true;
+#endif
+
     const double previous=escapeTime_;
     if (std::isfinite(dt) && dt>0) escapeTime_=std::min<double>(escape.duration,escapeTime_+dt);
-    const size_t shot=escapeTime_<escape.cut ? 0 : 1;
-    auto pose=shot==0 && escapeLaunchCamera_ && escapeTime_>=escape.departure ?
-        escapeLaunchCamera_->Evaluate(escapeTime_-escape.departure) :
-        escapeCameras_[shot].Evaluate(escapeTime_-(shot ? escape.cut : 0));
+    const bool chasing=escapeTime_>=escape.cut;
+    auto pose=chasing ? escape.ChaseCameraAt(escapeTime_) : escapeIntroCamera_.Evaluate(escapeTime_);
+    if (!chasing && escapeLaunchCamera_ && escapeTime_>=escape.departure)
+        pose=escapeLaunchCamera_->Evaluate(escapeTime_-escape.departure);
 
-    const bool impactShot=escapeLaunchCamera_ ? shot==1 : shot==0;
+    const bool impactShot=escapeLaunchCamera_ ? chasing : !chasing;
     constexpr double impactReactionSeconds=.20;
     for (const auto& entry:escapeEnemies_) {
         if (entry.impactTime<0 || entry.impactTime>escapeTime_) continue;
@@ -257,7 +280,128 @@ void GameScene::UpdateHotelEscape(GameApp& app,float dt) {
             movement+car.Right()*(side*.35f)+Vector3{0,.22f,0};
         enemy.BreakForImpact(direction,actor.launchPower,actor.position.y);
     }
-    camera_.SetTranslate(pose.position); camera_.SetRotate(pose.rotation); camera_.SetFovY(pose.fov); camera_.Update();
+
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    // デバッグ試写専用：高所から道路を見下ろす固定カメラ
+    if (escapeMode_ == EscapeMode::Preview &&
+        debugFixedEscapeCamera_ &&
+        !escape.route.empty())
+    {
+        const auto& segment = escape.route.front();
+
+        // 車の進行方向（水平方向のみ）
+        const float length = std::hypot(
+            segment.direction.x,
+            segment.direction.z
+        );
+
+        if (length > 0.0001f)
+        {
+            const Vector3 forward{
+                segment.direction.x / length,
+                0.0f,
+                segment.direction.z / length
+            };
+
+            // 車の進行方向に対する右側
+            const Vector3 right{
+                forward.z,
+                0.0f,
+                -forward.x
+            };
+
+            // カメラ位置を調整するパラメータ
+            constexpr float cameraForward = 2.0f;
+            constexpr float cameraSide = 12.0f;
+            constexpr float cameraHeight = 18.0f;
+            constexpr float lookForward = 7.0f;
+
+            // カメラ位置
+            const Vector3 cameraPosition =
+                escape.start +
+                forward * cameraForward +
+                right * cameraSide +
+                Vector3{ 0.0f, cameraHeight, 0.0f };
+
+            // 道路の少し先を見る
+            const Vector3 target =
+                escape.start +
+                forward * lookForward +
+                Vector3{ 0.0f, 1.0f, 0.0f };
+
+            const Vector3 direction = target - cameraPosition;
+            const float horizontal = std::hypot(
+                direction.x,
+                direction.z
+            );
+
+            // 固定カメラの画角には追走開始時の画角を使う
+            pose.fov = escape.ChaseCameraAt(escape.cut).fov;
+            pose.position = cameraPosition;
+
+            // CameraSequenceのLookAtTargetと同じ向き計算
+            pose.rotation = {
+                -std::atan2(direction.y, horizontal),
+                std::atan2(direction.x, direction.z),
+                0.0f
+            };
+        }
+    }
+#endif
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    if (escapeMode_ == EscapeMode::Preview &&
+        escapeTime_ > previous)
+    {
+        const double simulationSeconds = escapeTime_ - previous;
+
+        const auto carNow = escape.CarAt(escapeTime_);
+        const auto carBefore = escape.CarAt(previous);
+
+        const float carSpeed =
+            StageLength(carNow.position - carBefore.position) /
+            static_cast<float>(simulationSeconds);
+
+        const bool cameraCut =
+            (escapeLaunchCamera_ &&
+                previous < escape.departure &&
+                escapeTime_ >= escape.departure) ||
+            (previous < escape.cut &&
+                escapeTime_ >= escape.cut);
+
+        const float cameraSpeed = cameraCut
+            ? -1.0f
+            : StageLength(
+                pose.position - camera_.GetTranslate()) /
+            static_cast<float>(simulationSeconds);
+
+        int impact = 0;
+        for (const auto& entry : escapeEnemies_) {
+            if (entry.impactTime > previous &&
+                entry.impactTime <= escapeTime_) {
+                impact = static_cast<int>(entry.placement) + 1;
+                break;
+            }
+        }
+
+        escapeDiagnosticSamples_.push_back({
+            escapeTime_,
+            frameMs,
+            simulationSeconds * 1000.0,
+            carSpeed,
+            cameraSpeed,
+            impact,
+            cameraCut
+            });
+    }
+#endif
+
+    camera_.SetTranslate(pose.position);
+    camera_.SetRotate(pose.rotation);
+    camera_.SetFovY(pose.fov);
+    camera_.Update();
+
     for (const auto& entry:escapeEnemies_) {
         const double start=entry.enemy->IsDead() ? std::max(previous,entry.impactTime) : previous;
         entry.enemy->UpdateVisuals(static_cast<float>(escapeTime_-start));
@@ -267,7 +411,40 @@ void GameScene::UpdateHotelEscape(GameApp& app,float dt) {
     ground_.Update(0); SyncShutterVisuals(); SyncDoorVisuals();
     if (escapeTime_<escape.duration) return;
 
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    if (escapeMode_ == EscapeMode::Preview) {
+        std::error_code ec;
+        std::filesystem::create_directories("generated", ec);
+
+        std::ofstream csv(
+            "generated/hotel-escape-diagnostics.csv"
+        );
+
+        if (csv) {
+            csv << "time,frame_ms,simulation_ms,"
+                "car_speed,camera_speed,impact,camera_cut\n";
+
+            for (const auto& sample : escapeDiagnosticSamples_) {
+                csv << sample.time << ','
+                    << sample.frameMs << ','
+                    << sample.simulationMs << ','
+                    << sample.carSpeed << ','
+                    << sample.cameraSpeed << ','
+                    << sample.impact << ','
+                    << (sample.cameraCut ? 1 : 0) << '\n';
+            }
+
+            OutputDebugStringA(
+                "Hotel escape diagnostics CSV saved.\n"
+            );
+        }
+    }
+#endif
+
+
     app.Dx()->WaitForGPU();
+
     for (const auto& actor:escapeEnemies_) enemyPool_.ReleaseForReset(actor.enemy);
     escapeEnemies_.clear();
     const bool preview=escapeMode_==EscapeMode::Preview;

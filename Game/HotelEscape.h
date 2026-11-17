@@ -66,8 +66,8 @@ struct HotelEscape {
         result.launchCamera=data.value("launchCamera",std::string{});
         result.hiddenMeshes=data.value("hiddenMeshes",result.hiddenMeshes);
         result.cameras=data.value("cameras",result.cameras);
-        if (result.goal.empty() || result.cameras[0].empty() || result.cameras[1].empty())
-            throw std::runtime_error("Escape: a Goal and both camera sequence IDs are required");
+        if (result.goal.empty() || result.cameras[0].empty())
+            throw std::runtime_error("Escape: a Goal and an intro camera sequence ID are required");
         result.start=vector(data.at("position"));
         result.rotation=vector(data.at("rotation"));
         result.departure=number(data,"departure",result.departure,0,120);
@@ -193,6 +193,45 @@ struct HotelEscape {
         const float yawOffset=-std::copysign(drift.yawDegrees,drift.lateralMeters)*CameraSequence::DegreesToRadians*slip.slipWeight;
         pose.rotation.y+=std::atan2(lateralSpeed,forwardSpeed)+yawOffset;
         return pose;
+    }
+
+    CameraPose ChaseCameraAt(double elapsed) const {
+        const auto road = CarPose{start, route.front().Heading()};
+        const auto forward = road.Forward();
+        const auto right = road.Right();
+        const auto car = CarAt(elapsed).position - start;
+        const auto projectHorizontal = [](const Vector3& offset, const Vector3& axis) {
+            return offset.x * axis.x + offset.z * axis.z;
+        };
+        const auto integrateRamp = [](double time, double rampSeconds) {
+            const double t = std::clamp(time / rampSeconds, 0.0, 1.0);
+            return rampSeconds * t * t * t * (1 - .5 * t) + std::max(0.0, time - rampSeconds);
+        };
+        const auto smootherStep = [](double t) {
+            t = std::clamp(t, 0.0, 1.0);
+            return static_cast<float>(t * t * t * (10 + t * (-15 + 6 * t)));
+        };
+
+        const double age = std::max(0.0, elapsed - cut);
+        // Integrate the camera's own forward velocity so the car gains ground in frame.
+        constexpr double initialSpeed = 6.0, chaseSpeed = 8.9, finalSpeed = 3.4;
+        const float forwardTravel = static_cast<float>(initialSpeed * age
+            + (chaseSpeed - initialSpeed) * integrateRamp(age, 1.25)
+            + (finalSpeed - chaseSpeed) * integrateRamp(age - 1.50, 3.10));
+        const float along = DistanceAt(cut) - 4.90f + forwardTravel;
+        const float rise = smootherStep((age - 1.65) / 3.50);
+        const float side = -3.15f - .23f * Ease(static_cast<float>(age / .68)) + 2.45f * rise;
+        const auto position = start + forward * along + right * side + Vector3{0, 3.38f + 10.2f * rise, 0};
+
+        const float chaseLead = 6.95f + 2.f * Ease(static_cast<float>((age - .50) / 2.25));
+        const float gap = projectHorizontal(car, forward) - along;
+        const float craneLead = std::max(2.f, gap * (1 - .16f * rise) - .35f);
+        const float lead = std::lerp(chaseLead, craneLead, smootherStep((age - 1.85) / 1.30));
+        const float aimSide = .35f * (1 - rise) * projectHorizontal(car, right);
+        const auto target = start + forward * (along + lead) + right * aimSide + Vector3{0, car.y + .91f, 0};
+        const auto aim = target - position;
+        return {position, {-std::atan2(aim.y, std::hypot(aim.x, aim.z)), std::atan2(aim.x, aim.z), 0},
+            (54.f + rise) * CameraSequence::DegreesToRadians};
     }
 
 private:

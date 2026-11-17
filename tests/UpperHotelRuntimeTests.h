@@ -50,12 +50,16 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         const double recoveryEnd=slideEnd+escape.drift.recoverySeconds;
         const auto heading=escape.route.front().Heading();
         const auto forward=HotelEscape::CarPose{escape.start,heading}.Forward();
-        const auto carInFrame=[&] {
-            const auto point=escape.CarAt(game->escapeTime_).position+Vector3{0,.8f,0};
+        const auto projectCar=[&](float height) {
+            const auto point=escape.CarAt(game->escapeTime_).position+Vector3{0,height,0};
             const auto& vp=game->camera_.GetViewProjectionMatrix();
             const auto clip=StagePoint(point,vp);
             const float w=point.x*vp.m[0][3]+point.y*vp.m[1][3]+point.z*vp.m[2][3]+vp.m[3][3];
-            return w>0 && std::abs(clip.x)<.9f*w && std::abs(clip.y)<.9f*w;
+            return w>0 ? Vector3{clip.x/w,clip.y/w,w} : Vector3{};
+        };
+        const auto carInFrame=[&] {
+            const auto center=projectCar(.8f);
+            return center.z>0 && std::abs(center.x)<.9f && std::abs(center.y)<.9f;
         };
         const auto widest=escape.CarAt(slideEnd);
         const auto travelAt=[&](double t) {
@@ -93,7 +97,7 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         const float expectedRoll=motion.rollDegrees*CameraSequence::DegreesToRadians*std::sin(std::numbers::pi_v<float>*static_cast<float>(rollPhase));
         const auto frontQuarter=game->camera_.GetTranslate()-escape.start;
         Require(StageDot(frontQuarter,forward)>3 && frontQuarter.y<1.5f &&
-            StageLength(game->camera_.GetTranslate()-game->escapeCameras_[0].Evaluate(0).position)<.01f && carInFrame(),
+            StageLength(game->camera_.GetTranslate()-game->escapeIntroCamera_.Evaluate(0).position)<.01f && carInFrame(),
             "The stationary rev uses the low front-quarter camera");
         Require(std::hypot(revving.m[3][0]-escape.start.x,revving.m[3][2]-escape.start.z)<.0001f &&
             std::abs(bodyRoll-expectedRoll)<.001f,
@@ -160,34 +164,44 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
             slipAngle(game->escapeTime_)<.5f*deg,
             "Countersteer follows travel back to the centerline");
         seek(recoveryEnd);
+        const float initialScreenY=projectCar(.8f).y;
+        const float initialScreenHeight=projectCar(1.55f).y-projectCar(0).y;
         auto previousPosition=game->escapeCar_->GetTranslate();
+        auto previousCameraPosition=game->camera_.GetTranslate();
         float previousSpeed=0;
-        std::array<bool,2> straightImpactLift{};
+        float previousCameraSpeed=0;
         constexpr float frameTime=1.f/60;
         while (game->escapeTime_+frameTime<cast[2].impactTime+.06) {
             game->Update(app,frameTime);
             const auto position=game->escapeCar_->GetTranslate();
             const auto travel=position-previousPosition;
             const float speed=StageDot(travel,forward)/frameTime;
+            const auto cameraPosition=game->camera_.GetTranslate();
+            const float cameraSpeed=StageDot(cameraPosition-previousCameraPosition,forward)/frameTime;
             Require(speed>=previousSpeed-.01f && std::abs(StageDot(travel,HotelEscape::CarPose{position,roadHeading}.Right()))<.0001f,
                 "The car advances without braking or drifting after recovery");
+            Require(speed-cameraSpeed>1.6f && (previousSpeed==0 || std::abs(cameraSpeed-previousCameraSpeed)<.12f),
+                "The rear camera moves smoothly and lets the car gain ground through the straight impacts");
             previousPosition=position;
+            previousCameraPosition=cameraPosition;
             previousSpeed=speed;
+            previousCameraSpeed=cameraSpeed;
 
-            const auto baseline=game->escapeCameras_[1].Evaluate(game->escapeTime_-escape.cut).position;
+            const auto baseline=escape.ChaseCameraAt(game->escapeTime_).position;
             const auto reaction=game->camera_.GetTranslate()-baseline;
-            Require(std::hypot(reaction.x,reaction.z)<.0001f,"Impacts do not jolt the chase camera along the road");
-            for (size_t i=0;i<straightImpactLift.size();++i)
-                if (game->escapeTime_>cast[i+1].impactTime && game->escapeTime_<cast[i+1].impactTime+.15 && reaction.y>.015f)
-                    straightImpactLift[i]=true;
+            Require(std::hypot(reaction.x,reaction.z)<.0001f && reaction.y>=-.0001f && reaction.y<=escape.shake+.0001f,
+                "Any impact reaction stays vertical and within the configured amplitude");
         }
-        Require(straightImpactLift[0] && straightImpactLift[1],"Both straight impacts still give the camera a visible lift");
         seek(cast[2].impactTime+.06);
         Require(std::all_of(cast.begin(),cast.end(),[](const auto& entry) { return entry.enemy->IsDead(); }) &&
             StageLength(game->escapeCar_->GetRotate()-roadHeading)<.0001f && slipAngle(game->escapeTime_)<.5f*deg &&
-            StageLength(game->camera_.GetTranslate()-game->escapeCameras_[1].Evaluate(game->escapeTime_-escape.cut).position)<.15f && carInFrame(),
+            StageLength(game->camera_.GetTranslate()-escape.ChaseCameraAt(game->escapeTime_).position)<.15f && carInFrame(),
             "The rear chase frames both straight impacts");
         captureFrame(straightName);
+        seek(cast[2].impactTime+.53);
+        Require(carInFrame() && projectCar(.8f).y>initialScreenY+.045f &&
+            projectCar(1.55f).y-projectCar(0).y<initialScreenHeight*.8f,
+            "The car visibly advances and recedes in the frame after both straight impacts");
     };
     const auto capture=[&](const char* name,const Vector3& feet,const Vector3& rotation) {
         game->player_.SetStage(&game->level_.collision,feet,rotation);
@@ -263,6 +277,24 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
     game->Update(app,10);
     Require(!game->EscapePlaying() && game->stage_.IsPlaying() && game->enemyPool_.Active()==poolCount,
         "A slow preview frame still completes and releases the cast");
+    game->debugFixedEscapeCamera_=true;
+    input.keys_[DIK_K]=0x80;
+    Require(game->HandleHotelEscapeKey(app),"K starts the high fixed preview");
+    input.keys_[DIK_K]=0;
+    const auto fixedView=game->camera_.GetTranslate();
+    while (game->escapeTime_<previewTimes.back()+.1) game->Update(app,1.f/60);
+    Require(StageLength(game->camera_.GetTranslate()-fixedView)<.001f &&
+        game->escapeDiagnosticSamples_.back().cameraSpeed<.001f &&
+        std::all_of(game->escapeEnemies_.begin(),game->escapeEnemies_.end(),[](const auto& entry) { return entry.enemy->IsDead(); }),
+        "High fixed preview stays fixed and keeps the same collisions");
+    game->Update(app,10);
+    game->debugFixedEscapeCamera_=false;
+    std::ifstream diagnostics("generated/hotel-escape-diagnostics.csv");
+    std::string header, firstSample;
+    Require(static_cast<bool>(std::getline(diagnostics,header)) &&
+        header=="time,frame_ms,simulation_ms,car_speed,camera_speed,impact,camera_cut" &&
+        static_cast<bool>(std::getline(diagnostics,firstSample)) && !firstSample.empty(),
+        "Escape preview writes the existing diagnostics CSV schema and samples");
 #endif
     const auto shootWindow=[&](std::string_view name,const Vector3& feet,float yaw) {
         const auto& windows=game->level_.removableMeshes;
@@ -491,9 +523,9 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
     game=dynamic_cast<GameScene*>(app.Scenes().Current());
     Require(game && game->stageLoaded_ && !game->escapeCar_,"Stage01 has no escape sequence");
     std::ofstream("generated/upper-hotel-tests/result.txt")<<
-        "PASS: Stage04 route, transfer and six ingress routes. Stage03 and Stage04 Goal, front-quarter rev, head-on launch, steady straight drive and rear chase through all three impacts, results and restart. Stage01 isolated. "
+        "PASS: Stage04 route, transfer and six ingress routes. Stage03 and Stage04 Goal, front-quarter rev, head-on launch, smooth rear chase and visible separation through all three impacts, results and restart. Stage01 isolated. "
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
-        "K trigger with injected input, repeat guard, deterministic impacts, debris and state restoration verified."
+        "K trigger with injected input, repeat guard, deterministic impacts, debris, state restoration, high fixed camera and diagnostics CSV verified."
 #endif
         "\n";
 }

@@ -1086,6 +1086,39 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 void GameScene::DrawImGui(GameApp& app) {
     if (EscapePlaying()) {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+
+        if (escapeMode_ == EscapeMode::Preview &&
+            ImGui::Begin("Hotel Escape Diagnostics"))
+        {
+            if (!escapeDiagnosticSamples_.empty()) {
+                const auto& s = escapeDiagnosticSamples_.back();
+
+                ImGui::Text("Time: %.3f s", s.time);
+
+                ImGui::Text("FPS (estimated): %.1f",
+                    s.frameMs > 0 ? 1000.0 / s.frameMs : 0.0);
+
+                ImGui::Text("Frame Interval: %.2f ms", s.frameMs);
+                ImGui::Text("Simulation DT: %.2f ms", s.simulationMs);
+
+                ImGui::Separator();
+
+                ImGui::Text("Car Speed: %.2f m/s", s.carSpeed);
+
+                if (s.cameraCut)
+                    ImGui::TextUnformatted("Camera: CUT");
+                else
+                    ImGui::Text("Camera Speed: %.2f m/s",
+                        s.cameraSpeed);
+
+                if (s.impact > 0)
+                    ImGui::Text("Enemy Impact: %d", s.impact);
+            }
+
+            ImGui::End();
+        }
+   
+
         if (ImGui::Begin("Spawn System") && ImGui::Button("Restart Stage")) RequestChangeScene_(SceneName());
         ImGui::End();
 #endif
@@ -1121,6 +1154,15 @@ void GameScene::DrawImGui(GameApp& app) {
     }
 #endif
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+
+    if (!showroom_ && level_.hotelEscape)
+    {
+        ImGui::Checkbox(
+            "High Fixed Escape Camera (K preview)",
+            &debugFixedEscapeCamera_
+        );
+    }
+
     if (ImGui::Button(showroom_ ? "Return to Game" : "Open Showroom")) RequestChangeScene_(showroom_ ? "Game" : "Showroom");
     ImGui::SameLine();
     if (ImGui::Button(stageId_=="stage03" ? "Open Stage01" : "Open Hotel (Stage03)"))

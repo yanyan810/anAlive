@@ -10,8 +10,10 @@ Debug／Developmentでは、開始カメラ終了後にゲームウィンドウ�
 2. **Escape_Car** を移動・回転して停車位置と初期向きを設定します。**N → YanEngine Level** にある **Goal** で対応するゴールを選びます。既定では1.2秒で発進して正面カットに切り替わり、**Cut 2 Start** の1.45秒から後方追走に入ります。6秒で暗転を開始し、7秒で終了します。
 3. **Escape_Road_End** を移動して終点を設定します。途中で曲がる場合は **Hotel Escape Waypoint** を追加し、一意の **Order** を付けます。車は番号の昇順に直線で移動します。**Road Width** は再生中に描く道路の幅です。既存の道路を使う場合は `0` を指定できます。Stage03では道路終端の壁とその奥の仮構造物に **Hide During Hotel Escape** を設定しています。
 4. **Escape_Enemy_1〜3** の位置・向きと **敵定義** を編集します。**Launch Speed** で吹き飛びの強さを設定します。**Launch Direction** はBlenderのワールド座標で入力します。ゼロベクトルの場合は車の進行方向と敵が当たった側から求めます。
-5. `Escape_Cut1_*`、`Escape_Launch_*`、`Escape_Cut2_*` は既存の **Camera Point** です。**Cut 1 Sequence ID** は空転を低い斜め正面から捉え、**Launch Sequence ID** は発進を短く正面から映します。**Cut 2 Sequence ID** は左斜め後方から衝突を追い、最後の衝突後に同じカットのまま上昇して車を見送ります。衝突時はカメラが一度だけ短く上下に動きます。`Look At Target` の `*_Target` マーカー、`Duration to next`、補間方式で各カットを調整できます。
+5. **Cut 1 Sequence ID** は空転を低い斜め正面から捉え、**Launch Sequence ID** は発進を短く正面から映します。`Escape_Cut1_*` と `Escape_Launch_*` の `*_Target` マーカー、`Duration to next`、補間方式でこの2カットを調整できます。
 6. **レベルを検証 → レベルを書き出す** を実行し、ゲームでステージを再読み込みします。ゲーム用JSONには `hotelEscape` とカメラシーケンスが出力されます。
+
+後方追走の試作は `Game/HotelEscape.h` の `ChaseCameraAt` で調整します。最初の経路の向きと演出時間からカメラ位置を計算し、衝突後は緩やかに減速しながら上昇します。Blenderの `Escape_Cut2_*` は従来の追走カメラの編集データとして保存しています。
 
 仮車両は共通の `resources/levels/hotel_escape_car.glb` です。読み込めない場合は箱形の車で再生します。演出設定やカメラが利用できない場合はGoalから通常のクリア画面へ進みます。
 

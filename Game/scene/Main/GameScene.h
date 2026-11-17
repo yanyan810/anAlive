@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "IScene.h"
 #include "Camera.h"
 #include "Object3d.h"
@@ -20,6 +20,8 @@
 #include "GameOverOverlay.h"
 #include "GameOverVisionOverlay.h"
 #include <array>
+#include <chrono>
+#include <vector>
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugTimeline.h"
 #include "DebugJsonEditor.h"
@@ -85,8 +87,28 @@ private:
     void RefreshEscapeCarVisuals();
     void DrawEscapeFade(const Matrix4x4& view, const Matrix4x4& projection);
     EscapeMode escapeMode_=EscapeMode::Idle;
-    std::array<CameraSequence,2> escapeCameras_;
+    CameraSequence escapeIntroCamera_;
     std::optional<CameraSequence> escapeLaunchCamera_;
+
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+
+    struct EscapeDiagnosticSample {
+        double time = 0;
+        double frameMs = 0;
+        double simulationMs = 0;
+        float carSpeed = 0;
+        float cameraSpeed = 0;
+        int impact = 0;
+        bool cameraCut = false;
+    };
+
+    std::vector<EscapeDiagnosticSample> escapeDiagnosticSamples_;
+    std::chrono::steady_clock::time_point escapeDiagnosticLastTick_{};
+    bool escapeDiagnosticHasTick_ = false;
+
+    bool debugFixedEscapeCamera_ = false;
+#endif
+
     CameraPose escapeReturnCamera_;
     std::unique_ptr<Object3d> escapeCar_;
     struct EscapeWheel { std::unique_ptr<Object3d> visual; Vector3 center; float radius; };

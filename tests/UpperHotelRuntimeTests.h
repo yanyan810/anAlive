@@ -21,14 +21,7 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         Require(point.activation==(defense ? SpawnActivation::Manual : SpawnActivation::StageStart),
             "unexpected spawn activation: "+point.id);
     }
-    const auto capture=[&](const char* name,const Vector3& feet,const Vector3& rotation) {
-        game->player_.SetStage(&game->level_.collision,feet,rotation);
-        game->player_.RefreshVisuals();
-        game->ground_.Update(0);
-        game->SyncDoorVisuals();
-        game->SyncShutterVisuals();
-        game->SyncWeaponVisuals(app);
-        for (auto* enemy : game->enemies_) enemy->UpdateVisuals(0);
+    const auto captureFrame=[&](const char* name) {
 #ifdef USE_IMGUI
         app.ImGui()->Begin();
 #endif
@@ -48,6 +41,229 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         Require(SUCCEEDED(DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
             DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path.c_str())),"Save upper hotel capture");
     };
+    const auto verifyLaunch=[&](const char* launchName,const char* slideName,const char* straightName) {
+        Require(game->escapeCarWheels_.size()==4,"Each tire and hub has its own axle transform");
+        const auto& escape=*game->level_.hotelEscape;
+        const auto& motion=escape.bodyMotion;
+        const auto seek=[&](double seconds) { game->Update(app,static_cast<float>(seconds-game->escapeTime_)); };
+        const double slideEnd=escape.departure+escape.drift.slideSeconds;
+        const double recoveryEnd=slideEnd+escape.drift.recoverySeconds;
+        const auto heading=escape.route.front().Heading();
+        const auto forward=HotelEscape::CarPose{escape.start,heading}.Forward();
+        const auto carInFrame=[&] {
+            const auto point=escape.CarAt(game->escapeTime_).position+Vector3{0,.8f,0};
+            const auto& vp=game->camera_.GetViewProjectionMatrix();
+            const auto clip=StagePoint(point,vp);
+            const float w=point.x*vp.m[0][3]+point.y*vp.m[1][3]+point.z*vp.m[2][3]+vp.m[3][3];
+            return w>0 && std::abs(clip.x)<.9f*w && std::abs(clip.y)<.9f*w;
+        };
+        const auto widest=escape.CarAt(slideEnd);
+        const auto travelAt=[&](double t) {
+            return escape.CarAt(t+.001).position-escape.CarAt(t-.001).position;
+        };
+        const auto slipAngle=[&](double t) {
+            const auto car=escape.CarAt(t);
+            const auto travel=travelAt(t);
+            return std::abs(std::atan2(StageDot(travel,car.Right()),StageDot(travel,car.Forward())));
+        };
+        float peakSlip=0;
+        for (double t=escape.departure+.04;t<recoveryEnd+.12;t+=1.0/240)
+            peakSlip=std::max(peakSlip,slipAngle(t));
+        constexpr float deg=CameraSequence::DegreesToRadians;
+        Require(std::abs(StageDot(widest.position-escape.start,HotelEscape::CarPose{escape.start,heading}.Right())-
+                escape.drift.lateralMeters)<.001f &&
+            std::abs(peakSlip-escape.drift.yawDegrees*deg)<.5f*deg && peakSlip>=15*deg && peakSlip<=25*deg &&
+            slipAngle(escape.departure+.06)<.5f*deg,
+            "The car starts along its heading and briefly reaches the configured sideslip");
+        const auto& cast=game->escapeEnemies_;
+        Require(cast.size()==3 && cast[0].impactTime>escape.departure && cast[0].impactTime<slideEnd &&
+            cast[1].impactTime>recoveryEnd && cast[2].impactTime>cast[1].impactTime,
+            "One drift impact and two straight impacts");
+        Require(game->escapeLaunchCamera_.has_value() && escape.cut<cast[0].impactTime && cast[2].impactTime<escape.fade,
+            "The front launch cut precedes the chase through all three impacts");
+        const auto aligned=escape.DistanceAt(recoveryEnd);
+        const auto gaining=escape.DistanceAt(recoveryEnd+.10);
+        Require(escape.DistanceAt(recoveryEnd+.20)-gaining>gaining-aligned+.01f,"The car keeps accelerating after straightening");
+        const Vector3 front{0,.45f,2}, rear{0,.45f,-2};
+        const auto parked=Matrix4x4::MakeAffineMatrix({1,1,1},escape.rotation,escape.start);
+        constexpr double rollPhase=.4375;
+        seek(escape.departure-motion.ignitionSeconds*(1-rollPhase));
+        const auto& revving=game->escapeCar_->GetWorldMatrix();
+        const float bodyRoll=std::asin(std::abs(revving.m[0][1]));
+        const float expectedRoll=motion.rollDegrees*CameraSequence::DegreesToRadians*std::sin(std::numbers::pi_v<float>*static_cast<float>(rollPhase));
+        const auto frontQuarter=game->camera_.GetTranslate()-escape.start;
+        Require(StageDot(frontQuarter,forward)>3 && frontQuarter.y<1.5f &&
+            StageLength(game->camera_.GetTranslate()-game->escapeCameras_[0].Evaluate(0).position)<.01f && carInFrame(),
+            "The stationary rev uses the low front-quarter camera");
+        Require(std::hypot(revving.m[3][0]-escape.start.x,revving.m[3][2]-escape.start.z)<.0001f &&
+            std::abs(bodyRoll-expectedRoll)<.001f,
+            "The body rocks over a stationary chassis");
+        for (const auto& wheel:game->escapeCarWheels_) {
+            Require(StageLength(StagePoint(wheel.center,wheel.visual->GetWorldMatrix())-StagePoint(wheel.center,parked))<.0001f,
+                "All four axles stay fixed during the rev");
+            const float spin=std::abs(wheel.visual->GetRotate().x-escape.rotation.x);
+            Require(wheel.center.z<0 ? spin>.05f : spin<.0001f,"Only the rear wheels spin in place");
+        }
+        seek(escape.departure-.01);
+        Require(StagePoint(rear,game->escapeCar_->GetWorldMatrix()).y<StagePoint(rear,parked).y-.12f &&
+            StagePoint(front,game->escapeCar_->GetWorldMatrix()).y>StagePoint(front,parked).y+.02f,
+            "The rear suspension loads before the car moves");
+        const float wheelRadius=game->escapeCarWheels_.front().radius;
+        const auto spinAt=[&](double time) { return escape.WheelAngleAt(time,wheelRadius,true); };
+        const float leadingSpin=spinAt(escape.departure)-spinAt(escape.departure-.005);
+        const float trailingSpin=spinAt(escape.departure+.005)-spinAt(escape.departure);
+        Require(leadingSpin>.1f && std::abs(trailingSpin-leadingSpin)<.01f,"Rear wheel spin continues through departure");
+
+        seek(escape.departure+.105);
+        const auto& body=game->escapeCar_->GetWorldMatrix();
+        const auto car=escape.CarAt(game->escapeTime_);
+        const auto chassis=Matrix4x4::MakeAffineMatrix({1,1,1},car.rotation,car.position);
+        Require(StageLength(game->camera_.GetTranslate()-game->escapeLaunchCamera_->Evaluate(game->escapeTime_-escape.departure).position)<.01f &&
+            StageDot(game->camera_.GetTranslate()-car.position,forward)>2 && carInFrame(),
+            "The rebound is framed by the short head-on launch cut");
+        Require(StagePoint(front,body).y>StagePoint(front,chassis).y+.22f &&
+            std::abs(body.m[0][1])>.05f,"The body rebounds upward and rolls into the slide");
+        auto unboosted=escape;
+        unboosted.bodyMotion.boostAcceleration=0;
+        Require(escape.DistanceAt(game->escapeTime_)>2*unboosted.DistanceAt(game->escapeTime_),
+            "The rebound coincides with the initial acceleration burst");
+        const auto travel=car.position-escape.start;
+        Require(std::abs(travel.y)<.0001f &&
+            std::abs(StageDot(travel,escape.route.front().direction)-escape.DistanceAt(game->escapeTime_))<.0001f,
+            "Grounded wheels follow the existing launch distance");
+        for (const auto& wheel:game->escapeCarWheels_)
+            Require(StageLength(StagePoint(wheel.center,wheel.visual->GetWorldMatrix())-StagePoint(wheel.center,chassis))<.0001f,
+                "Axles follow the driven chassis through launch");
+        captureFrame(launchName);
+
+        const double hit=cast[0].impactTime;
+        const auto hitPose=escape.CarAt(hit);
+        const auto toEnemy=cast[0].enemy->GetPosition()-hitPose.position;
+        Require(std::abs(StageDot(toEnemy,hitPose.Forward()))<1.7f &&
+            std::abs(StageDot(toEnemy,hitPose.Right()))>.98f && slipAngle(hit)>4*deg && slipAngle(hit)<12*deg &&
+            (hitPose.rotation.y-heading.y)*escape.drift.lateralMeters>0,
+            "The first enemy hits the sliding flank after the body has turned toward the trajectory");
+        seek(hit+.035);
+        Require(cast[0].enemy->IsDead() && !cast[1].enemy->IsDead() && !cast[2].enemy->IsDead() &&
+            StageDot(game->camera_.GetTranslate()-escape.CarAt(game->escapeTime_).position,forward)<-2 && carInFrame(),
+            "The rear chase frames the first drift impact");
+        captureFrame(slideName);
+
+        seek(escape.departure+motion.launchSeconds+.05);
+        const auto recovering=escape.CarAt(game->escapeTime_);
+        Require(StageLength(game->escapeCar_->GetTranslate()-recovering.position)<.0001f &&
+            std::abs(game->escapeCar_->GetWorldMatrix().m[2][1])<.0001f,"The rebound settles before the body finishes countersteering");
+        const auto roadHeading=escape.route.front().Heading();
+        seek(slideEnd+escape.drift.recoverySeconds*.55);
+        const auto& countersteer=game->escapeCar_->GetWorldMatrix();
+        Require(std::atan2(countersteer.m[2][0],countersteer.m[2][2])>roadHeading.y+.05f &&
+            slipAngle(game->escapeTime_)<.5f*deg,
+            "Countersteer follows travel back to the centerline");
+        seek(recoveryEnd);
+        auto previousPosition=game->escapeCar_->GetTranslate();
+        float previousSpeed=0;
+        std::array<bool,2> straightImpactLift{};
+        constexpr float frameTime=1.f/60;
+        while (game->escapeTime_+frameTime<cast[2].impactTime+.06) {
+            game->Update(app,frameTime);
+            const auto position=game->escapeCar_->GetTranslate();
+            const auto travel=position-previousPosition;
+            const float speed=StageDot(travel,forward)/frameTime;
+            Require(speed>=previousSpeed-.01f && std::abs(StageDot(travel,HotelEscape::CarPose{position,roadHeading}.Right()))<.0001f,
+                "The car advances without braking or drifting after recovery");
+            previousPosition=position;
+            previousSpeed=speed;
+
+            const auto baseline=game->escapeCameras_[1].Evaluate(game->escapeTime_-escape.cut).position;
+            const auto reaction=game->camera_.GetTranslate()-baseline;
+            Require(std::hypot(reaction.x,reaction.z)<.0001f,"Impacts do not jolt the chase camera along the road");
+            for (size_t i=0;i<straightImpactLift.size();++i)
+                if (game->escapeTime_>cast[i+1].impactTime && game->escapeTime_<cast[i+1].impactTime+.15 && reaction.y>.015f)
+                    straightImpactLift[i]=true;
+        }
+        Require(straightImpactLift[0] && straightImpactLift[1],"Both straight impacts still give the camera a visible lift");
+        seek(cast[2].impactTime+.06);
+        Require(std::all_of(cast.begin(),cast.end(),[](const auto& entry) { return entry.enemy->IsDead(); }) &&
+            StageLength(game->escapeCar_->GetRotate()-roadHeading)<.0001f && slipAngle(game->escapeTime_)<.5f*deg &&
+            StageLength(game->camera_.GetTranslate()-game->escapeCameras_[1].Evaluate(game->escapeTime_-escape.cut).position)<.15f && carInFrame(),
+            "The rear chase frames both straight impacts");
+        captureFrame(straightName);
+    };
+    const auto capture=[&](const char* name,const Vector3& feet,const Vector3& rotation) {
+        game->player_.SetStage(&game->level_.collision,feet,rotation);
+        game->player_.RefreshVisuals();
+        game->ground_.Update(0);
+        game->SyncDoorVisuals();
+        game->SyncShutterVisuals();
+        game->SyncWeaponVisuals(app);
+        for (auto* enemy : game->enemies_) enemy->UpdateVisuals(0);
+        captureFrame(name);
+    };
+    Require(game->escapeCar_ && game->escapeEnemies_.empty(),"Parked car and hidden escape cast");
+    const auto parked=game->escapeCar_->GetTranslate();
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    auto& input=*app.GetInput();
+    const auto before=game->CaptureDebug();
+    const auto view=game->camera_.GetTranslate();
+    const auto poolCount=game->enemyPool_.Active();
+    input.keys_[DIK_K]=0x80; input.prevKeys_[DIK_K]=0;
+    Require(game->HandleHotelEscapeKey(app),"K preview entry point");
+    for (int i=0;i<3;++i) {
+        input.keys_[DIK_K]=0x80; input.prevKeys_[DIK_K]=0;
+        game->Update(app,.05f);
+        Require(game->escapeMode_==GameScene::EscapeMode::Preview && game->escapeEnemies_.size()==3,"K preview and repeated trigger");
+    }
+    input.keys_[DIK_K]=0;
+    Require(game->escapeTime_>=.09 && StageLength(game->escapeCar_->GetTranslate()-parked)<.001f,"Preview was restarted or departed early");
+    std::vector<double> previewTimes;
+    for (const auto& entry:game->escapeEnemies_) previewTimes.push_back(entry.impactTime);
+    while (game->escapeTime_<previewTimes.back()+.05) game->Update(app,1.f/37);
+    Require(game->escapeTime_>game->level_.hotelEscape->cut && std::all_of(game->escapeEnemies_.begin(),game->escapeEnemies_.end(),[](const auto& entry) {
+        const auto state=entry.enemy->CaptureDebug();
+        return entry.enemy->IsDead() && (!state.faces.empty() || !state.detached.empty());
+    }),"All three impacts use existing fragmentation during the rear chase");
+    const auto impactView=game->camera_.GetTranslate();
+    const auto& escape=*game->level_.hotelEscape;
+    const float impactRange=StageLength(escape.CarAt(game->escapeTime_).position-impactView);
+    game->Update(app,2);
+    Require(game->camera_.GetTranslate().y>impactView.y+4 &&
+        StageLength(escape.CarAt(game->escapeTime_).position-game->camera_.GetTranslate())>impactRange+4,
+        "The chase camera rises and falls back after the impacts");
+    game->Update(app,10);
+    const auto restored=game->CaptureDebug();
+    Require(!game->EscapePlaying() && game->stage_.IsPlaying() && game->escapeEnemies_.empty() &&
+        game->enemyPool_.Active()==poolCount && StageLength(game->escapeCar_->GetTranslate()-parked)<.001f,
+        "Preview retires cast and parks car");
+    Require(StageLength(game->camera_.GetTranslate()-view)<.001f && restored.fov==before.fov &&
+        StageLength(restored.player.transform.translate-before.player.transform.translate)<.001f &&
+        StageLength(restored.player.transform.rotate-before.player.transform.rotate)<.001f &&
+        restored.player.hp==before.player.hp && restored.player.weapon.Magazine()==before.player.weapon.Magazine() &&
+        restored.stage.Time()==before.stage.Time() && restored.spawns.ElapsedTime()==before.spawns.ElapsedTime(),"Preview preserves player, stage and spawn state");
+    for (size_t i=0;i<restored.enemies.size();++i)
+        Require(StageLength(restored.enemies[i].position-before.enemies[i].position)<.001f &&
+            restored.enemies[i].random==before.enemies[i].random,"Preview preserves normal enemies");
+    input.keys_[DIK_K]=0x80;
+    Require(game->HandleHotelEscapeKey(app) && game->escapeTime_==0 && game->escapeEnemies_.size()==previewTimes.size(),
+        "K starts another preview with a fresh cast");
+    input.keys_[DIK_K]=0;
+    for (size_t i=0;i<previewTimes.size();++i)
+        Require(game->escapeEnemies_[i].impactTime==previewTimes[i] && !game->escapeEnemies_[i].enemy->IsDead(),
+            "Impact schedule is identical on replay");
+    for (const auto& wheel:game->escapeCarWheels_)
+        Require(StageLength(wheel.visual->GetRotate()-game->level_.hotelEscape->rotation)<.0001f,"Wheel spin resets on replay");
+    if (std::wstring_view(GetCommandLineW()).find(L"--escape-launch-capture")!=std::wstring_view::npos) {
+        std::filesystem::create_directories("generated/upper-hotel-tests/escape-launch-frames");
+        game->Update(app,.25f);
+        for (int frame=0;frame<216;++frame) {
+            const auto name="escape-launch-frames/frame-"+std::to_string(1000+frame).substr(1);
+            captureFrame(name.c_str());
+            game->Update(app,1.f/60);
+        }
+    }
+    game->Update(app,10);
+    Require(!game->EscapePlaying() && game->stage_.IsPlaying() && game->enemyPool_.Active()==poolCount,
+        "A slow preview frame still completes and releases the cast");
+#endif
     const auto shootWindow=[&](std::string_view name,const Vector3& feet,float yaw) {
         const auto& windows=game->level_.removableMeshes;
         const auto window=std::find_if(windows.begin(),windows.end(),
@@ -166,9 +382,25 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         } else if (part=="open") {
             capture("14-first-floor-exit-open",{42,.08f,16.5f},{0,1.5708f,0});
         } else if (part=="goal") {
+            const auto defeated=game->stage_.DefeatedCount();
             game->Update(app,1.f/60);
-            Require(game->stage_.State()==StageState::Cleared && countEnemies("F1_Defense_")==19,
+            Require(game->stage_.State()==StageState::Cleared && game->EscapePlaying() && countEnemies("F1_Defense_")==19,
                 "walk-through goal without another encounter or a kill requirement");
+            if (std::wstring_view(GetCommandLineW()).find(L"--escape-camera-capture")!=std::wstring_view::npos) {
+                std::filesystem::create_directories("generated/upper-hotel-tests/escape-camera-frames");
+                for (int frame=0;frame<450;++frame) {
+                    const auto name="escape-camera-frames/frame-"+std::to_string(1000+frame).substr(1);
+                    captureFrame(name.c_str());
+                    if (game->EscapePlaying()) game->Update(app,1.f/60);
+                }
+            } else {
+                game->Update(app,.55f); captureFrame("escape-01-ready");
+                verifyLaunch("escape-stage04-launch","escape-stage04-slide-impact","escape-stage04-straight-impact");
+                game->Update(app,.65f); captureFrame("escape-03-road");
+                game->Update(app,4); captureFrame("escape-04-result");
+            }
+            Require(game->escapeMode_==GameScene::EscapeMode::Results && game->escapeEnemies_.empty() &&
+                game->stage_.DefeatedCount()==defeated,"Clear screen keeps gameplay kill count");
         } else if (part.starts_with("window")) {
             const bool finalPane=part=="window403";
             const auto name="F4_Room"+std::string(part.substr(6))+"_WindowGlass";
@@ -218,6 +450,8 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
     for (const auto& mesh : game->level_.removableMeshes)
         Require(game->level_.collision.colliders[mesh.colliderIndex].enabled,"Restart restores glass and breach collision");
     Require(game->ground_.GetHiddenMeshes().empty(),"Restart restores glass meshes");
+    Require(!game->EscapePlaying() && game->escapeEnemies_.empty() &&
+        StageLength(game->escapeCar_->GetTranslate()-parked)<.001f,"Restart resets escape car and cast");
     Require(!game->transferUsed_ && game->level_.shutters.shutters.front().state==ShutterState::Closed &&
         countEnemies("F1_ArrivalEnemy_")==4 && countEnemies("F1_Defense_")==0,
         "Restart restores the initial lobby enemies and resets defense");
@@ -232,6 +466,34 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
     game->placementTest_.reset();
     game->player_.ResetHPForDebug();
     fallToDeath(outsideLedge);
+
+    app.Scenes().Change(app,"Stage03");
+    game=dynamic_cast<GameScene*>(app.Scenes().Current());
+    Require(game && game->stageLoaded_ && game->escapeCar_ && !game->escapeHiddenMeshes_.empty(),"Stage03 escape configuration");
+    const auto lowerParked=game->escapeCar_->GetTranslate();
+    const auto hidden=game->ground_.GetHiddenMeshes();
+    game->player_.SetStage(&game->level_.collision,{-16,0,18},{});
+    game->stage_.ObserveEnemy(10000,true);
+    game->Update(app,0);
+    Require(game->EscapePlaying() && game->escapeEnemies_.size()==3 &&
+        game->ground_.GetHiddenMeshes().size()>hidden.size(),"Stage03 Goal clears the cinematic road");
+    game->Update(app,.55f); captureFrame("escape-stage03-01-ready");
+    verifyLaunch("escape-stage03-launch","escape-stage03-slide-impact","escape-stage03-straight-impact");
+    game->Update(app,.65f); captureFrame("escape-stage03-03-road");
+    game->Update(app,4);
+    Require(game->escapeMode_==GameScene::EscapeMode::Results && game->stage_.DefeatedCount()==1 &&
+        game->ground_.GetHiddenMeshes()==hidden && game->escapeEnemies_.empty(),"Stage03 preserves kills and retires cast");
+    app.Scenes().Change(app,"Stage03");
+    game=dynamic_cast<GameScene*>(app.Scenes().Current());
+    Require(game && game->escapeCar_ && StageLength(game->escapeCar_->GetTranslate()-lowerParked)<.001f &&
+        game->escapeEnemies_.empty() && !game->EscapePlaying(),"Stage03 restart parks car");
+    app.Scenes().Change(app,"Game");
+    game=dynamic_cast<GameScene*>(app.Scenes().Current());
+    Require(game && game->stageLoaded_ && !game->escapeCar_,"Stage01 has no escape sequence");
     std::ofstream("generated/upper-hotel-tests/result.txt")<<
-        "PASS: Stage04 eight initial enemies on 5F/4F/1F, active lobby enemies after transfer, shutter-only waves, six ingress routes, straight exit, restart.\n";
+        "PASS: Stage04 route, transfer and six ingress routes. Stage03 and Stage04 Goal, front-quarter rev, head-on launch, steady straight drive and rear chase through all three impacts, results and restart. Stage01 isolated. "
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+        "K trigger with injected input, repeat guard, deterministic impacts, debris and state restoration verified."
+#endif
+        "\n";
 }

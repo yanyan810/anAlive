@@ -13,8 +13,11 @@ int main() {
         RotationNear(r,CameraSequence::Euler(CameraSequence::Rotation(r)));
     for (const auto* stage:{"stage01","stage02","stage03"}) {
         const auto path=std::string("../../resources/levels/")+stage+"/"+stage+".json";
-        StageLoader loader; assert(loader.Load(path)); assert(loader.cameraWarning.empty()); assert(loader.cameraSequences.size()==1);
-        const auto& def=loader.cameraSequences[0];
+        StageLoader loader; assert(loader.Load(path)); assert(loader.cameraWarning.empty());
+        const auto start=std::find_if(loader.blenderCameraSequences.begin(),loader.blenderCameraSequences.end(),
+            [](const auto& sequence) { return sequence.id=="start"; });
+        assert(start!=loader.blenderCameraSequences.end());
+        auto def=*start; def.enabled=true; // Evaluate the Blender path even if playback is disabled or overridden.
         CameraPose eye{loader.playerPosition+Vector3{0,1.6f,0},loader.playerRotation,1.04719755f};
         {
             CameraSequence s; auto disabled=def; disabled.enabled=false;
@@ -95,5 +98,16 @@ int main() {
     bad=valid; bad["cameraSequences"][0]["points"][2]["position"]={1,2}; reject(bad);
     bad=valid; bad["cameraSequences"][0]["points"].back()["duration"]=1; reject(bad);
     valid.erase("cameraSequences"); assert(CameraSequence::Parse(valid).empty());
+    {
+        constexpr auto path="../../resources/levels/stage03/stage03.json";
+        json stage; std::ifstream(path)>>stage;
+        StageLoader loader;
+        assert(loader.Load(path) && loader.hotelEscape && loader.hotelEscapeWarning.empty());
+        stage["hotelEscape"]["path"]=json::array();
+        assert(loader.Load(path,&stage) && !loader.hotelEscape && !loader.hotelEscapeWarning.empty());
+        assert(!loader.cameraSequences.empty() && loader.cameraWarning.empty());
+        stage.erase("hotelEscape");
+        assert(loader.Load(path,&stage) && !loader.hotelEscape && loader.hotelEscapeWarning.empty());
+    }
     std::cout<<"PASS: camera curves/rotation/FOV/handoff, 30/60/144FPS, large/invalid dt, skip/restart, collision sweep, Blender parity when available, malformed camera fallback and legacy JSON\n";
 }

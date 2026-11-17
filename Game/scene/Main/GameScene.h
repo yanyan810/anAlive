@@ -73,6 +73,32 @@ private:
     CameraPose sequenceEye_;
     bool startSequenceEnabled_=true, sequenceOwnsCamera_=false, sequenceWaiting_=false, sequenceInputGuard_=false;
     int sequenceDebugCommand_=0; // queued by ImGui, applied before the next simulation frame
+    enum class EscapeMode { Idle, Preview, Clear, Results };
+    bool EscapePlaying() const { return escapeMode_==EscapeMode::Preview || escapeMode_==EscapeMode::Clear; }
+    void InitializeHotelEscape(GameApp& app);
+    bool BeginHotelEscape(GameApp& app, bool preview);
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    bool HandleHotelEscapeKey(GameApp& app);
+#endif
+    void UpdateHotelEscape(GameApp& app, float dt);
+    void PositionEscapeCar(double elapsed);
+    void RefreshEscapeCarVisuals();
+    void DrawEscapeFade(const Matrix4x4& view, const Matrix4x4& projection);
+    EscapeMode escapeMode_=EscapeMode::Idle;
+    std::array<CameraSequence,2> escapeCameras_;
+    std::optional<CameraSequence> escapeLaunchCamera_;
+    CameraPose escapeReturnCamera_;
+    std::unique_ptr<Object3d> escapeCar_;
+    struct EscapeWheel { std::unique_ptr<Object3d> visual; Vector3 center; float radius; };
+    std::vector<EscapeWheel> escapeCarWheels_;
+    std::optional<AABB> escapeUnsplitCarBounds_;
+    std::vector<std::unique_ptr<Object3d>> escapeRoad_;
+    std::vector<uint32_t> escapeHiddenMeshes_;
+    struct EscapeEnemy { Enemy* enemy; size_t placement; double impactTime=-1; };
+    std::vector<EscapeEnemy> escapeEnemies_;
+    Sprite escapeFade_;
+    double escapeTime_=0;
+    bool escapeWasCaptured_=false;
     friend void RunEnemyPlacementEditorTests(GameApp&);
     std::optional<EnemyPlacements> placementTest_;
     std::optional<nlohmann::json> placementTestStage_;

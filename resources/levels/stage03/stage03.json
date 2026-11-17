@@ -8096,9 +8096,720 @@
           ]
         }
       ]
+    },
+    {
+      "id": "hotel_escape_1",
+      "enabled": true,
+      "points": [
+        {
+          "id": "Escape_Cut1_01",
+          "order": 0,
+          "position": [
+            -22.94999885559082,
+            1.2200000286102295,
+            20.5
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 1.2000000476837158,
+          "interpolation": "Hold",
+          "rotationMode": "LookAtTarget",
+          "fov": 38.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -17.420000076293945,
+            0.8799999952316284,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut1_02",
+          "order": 1,
+          "position": [
+            -22.94999885559082,
+            1.2200000286102295,
+            20.5
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.0,
+          "interpolation": "Linear",
+          "rotationMode": "LookAtTarget",
+          "fov": 38.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -17.420000076293945,
+            0.8799999952316284,
+            18.0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hotel_escape_2",
+      "enabled": true,
+      "points": [
+        {
+          "id": "Escape_Cut2_01",
+          "order": 0,
+          "position": [
+            -13.38534927368164,
+            3.380000114440918,
+            14.850000381469727
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -20.33534812927246,
+            0.9100000262260437,
+            17.978364944458008
+          ]
+        },
+        {
+          "id": "Escape_Cut2_02",
+          "order": 1,
+          "position": [
+            -15.812456130981445,
+            3.380000114440918,
+            14.719819068908691
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -23.045459747314453,
+            0.9100000262260437,
+            17.748634338378906
+          ]
+        },
+        {
+          "id": "Escape_Cut2_03",
+          "order": 2,
+          "position": [
+            -18.884387969970703,
+            3.380000114440918,
+            14.619999885559082
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -26.334388732910156,
+            0.9100000262260437,
+            17.868072509765625
+          ]
+        },
+        {
+          "id": "Escape_Cut2_04",
+          "order": 3,
+          "position": [
+            -22.74829864501953,
+            3.380000114440918,
+            14.619999885559082
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -30.198299407958984,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_05",
+          "order": 4,
+          "position": [
+            -26.99396514892578,
+            3.380000114440918,
+            14.619999885559082
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -34.443965911865234,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_06",
+          "order": 5,
+          "position": [
+            -31.248334884643555,
+            3.4048540592193604,
+            14.625969886779785
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.002437591552734,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -38.6943359375,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_07",
+          "order": 6,
+          "position": [
+            -35.39928436279297,
+            4.095259666442871,
+            14.791802406311035
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.07012176513672,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -42.82073211669922,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_08",
+          "order": 7,
+          "position": [
+            -39.17143249511719,
+            5.5187907218933105,
+            15.133728981018066
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.209686279296875,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -46.81056213378906,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_09",
+          "order": 8,
+          "position": [
+            -42.35844421386719,
+            7.386876583099365,
+            15.582435607910156
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.39282989501953,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -50.717586517333984,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_10",
+          "order": 9,
+          "position": [
+            -44.855098724365234,
+            9.4109468460083,
+            16.0686092376709
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.591270446777344,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -54.59555435180664,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_11",
+          "order": 10,
+          "position": [
+            -46.65729904174805,
+            11.302430152893066,
+            16.52293586730957
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.776710510253906,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -58.49821853637695,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_12",
+          "order": 11,
+          "position": [
+            -47.86206817626953,
+            12.772756576538086,
+            16.876102447509766
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.920860290527344,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -62.47933578491211,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_13",
+          "order": 12,
+          "position": [
+            -48.66753387451172,
+            13.533354759216309,
+            17.058795928955078
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 54.995426177978516,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -66.5926513671875,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_14",
+          "order": 13,
+          "position": [
+            -49.3499641418457,
+            13.579999923706055,
+            17.06999969482422
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 55.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -70.8389663696289,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_15",
+          "order": 14,
+          "position": [
+            -50.030765533447266,
+            13.579999923706055,
+            17.06999969482422
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.3700000047683716,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 55.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -75.09396362304688,
+            0.9100000262260437,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Cut2_16",
+          "order": 15,
+          "position": [
+            -50.71156692504883,
+            13.579999923706055,
+            17.06999969482422
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.0,
+          "interpolation": "CatmullRom",
+          "rotationMode": "LookAtTarget",
+          "fov": 55.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -79.34896850585938,
+            0.9100000262260437,
+            18.0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hotel_escape_launch",
+      "enabled": true,
+      "points": [
+        {
+          "id": "Escape_Launch_01",
+          "order": 0,
+          "position": [
+            -22.799999237060547,
+            1.0,
+            18.239999771118164
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.24999995529651642,
+          "interpolation": "Hold",
+          "rotationMode": "LookAtTarget",
+          "fov": 37.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -17.69999885559082,
+            0.9399999976158142,
+            18.0
+          ]
+        },
+        {
+          "id": "Escape_Launch_02",
+          "order": 1,
+          "position": [
+            -22.799999237060547,
+            1.0,
+            18.239999771118164
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "duration": 0.0,
+          "interpolation": "Linear",
+          "rotationMode": "LookAtTarget",
+          "fov": 37.0,
+          "playerEye": false,
+          "lookAtOffset": [
+            0,
+            1.0,
+            0
+          ],
+          "lookAtTarget": [
+            -17.69999885559082,
+            0.9399999976158142,
+            18.0
+          ]
+        }
+      ]
     }
   ],
   "playerVisual": {
     "yawOffsetDegrees": 90
+  },
+  "hotelEscape": {
+    "goal": "Goal_Outdoor_CityConnection",
+    "position": [
+      -17.299999237060547,
+      0.0,
+      18.0
+    ],
+    "rotation": [
+      0.0,
+      -1.570796251296997,
+      0.0
+    ],
+    "path": [
+      [
+        -81.30000305175781,
+        0.0,
+        18.0
+      ]
+    ],
+    "enemies": [
+      {
+        "enemy": "normal",
+        "position": [
+          -21.25,
+          0.0,
+          16.040000915527344
+        ],
+        "rotation": [
+          0.0,
+          1.3507963418960571,
+          0.0
+        ],
+        "launchDirection": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "launchPower": 7.0
+      },
+      {
+        "enemy": "fast",
+        "position": [
+          -31.299999237060547,
+          0.0,
+          18.549999237060547
+        ],
+        "rotation": [
+          -0.0,
+          1.570796251296997,
+          0.0
+        ],
+        "launchDirection": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "launchPower": 9.199999809265137
+      },
+      {
+        "enemy": "normal",
+        "position": [
+          -35.29999923706055,
+          0.0,
+          17.520000457763672
+        ],
+        "rotation": [
+          -0.0,
+          1.7907965183258057,
+          -0.0
+        ],
+        "launchDirection": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "launchPower": 10.5
+      }
+    ],
+    "cameras": [
+      "hotel_escape_1",
+      "hotel_escape_2"
+    ],
+    "departure": 1.2000000476837158,
+    "acceleration": 15.0,
+    "maxSpeed": 11.5,
+    "cut": 1.45,
+    "fade": 6.0,
+    "duration": 7.0,
+    "shake": 0.06499999761581421,
+    "roadWidth": 11.899999618530273,
+    "bodyMotion": {
+      "ignitionSeconds": 0.8,
+      "vibrationMeters": 0.009,
+      "rollDegrees": 8,
+      "launchSeconds": 0.84,
+      "pitchDegrees": 2.5,
+      "squatMeters": 0.058,
+      "boostAcceleration": 42,
+      "reboundDegrees": 5,
+      "launchRollDegrees": 6.2
+    },
+    "hiddenMeshes": [
+      "Outdoor_DistantWhiteStructure_Placeholder.001",
+      "Outdoor_Road_End_Segment01.001"
+    ],
+    "drift": {
+      "lateralMeters": -0.8,
+      "yawDegrees": 22,
+      "slideSeconds": 0.72,
+      "recoverySeconds": 0.52
+    },
+    "launchCamera": "hotel_escape_launch"
   }
 }

@@ -3,6 +3,7 @@
 #include "StageDoor.h"
 #include "CameraSequence.h"
 #include "CameraSequenceOverrides.h"
+#include "HotelEscape.h"
 #include "PlayerVisualSettings.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -34,6 +35,8 @@ public:
     CameraSequenceOverrides cameraOverrides;
     std::string cameraOverrideWarning;
     std::string cameraWarning;
+    std::optional<HotelEscape> hotelEscape;
+    std::string hotelEscapeWarning;
     PlayerVisualSettings playerVisual;
     std::string playerVisualWarning;
     const std::string& Error() const { return error_; }
@@ -54,6 +57,10 @@ public:
             try { next.cameraSequences=CameraSequence::Parse(data); }
             catch (const std::exception& error) { next.cameraWarning=error.what(); }
             next.id=data.at("stage").at("id").get<std::string>();
+            if (HotelEscape::IsHotel(next.id) && data.contains("hotelEscape")) {
+                try { next.hotelEscape=HotelEscape::Parse(data.at("hotelEscape")); }
+                catch (const std::exception& error) { next.hotelEscapeWarning=error.what(); }
+            }
             next.blenderCameraSequences=next.cameraSequences;
             if (next.cameraOverrides.Load(CameraSequenceOverrides::PathFor(path),next.id)) {
                 auto merged=CameraSequenceOverrides::Merge(next.cameraSequences,next.cameraOverrides.sequences);

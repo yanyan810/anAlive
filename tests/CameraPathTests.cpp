@@ -63,7 +63,11 @@ int main() {
     // Splitting legacy Catmull curves must also freeze affected neighbour polynomials.
     for (const auto* stage:{"stage01","stage02","stage03"}) {
         StageLoader level; assert(level.Load(std::string("../../resources/levels/")+stage+"/"+stage+".json"));
-        CameraSequence old; assert(old.Start(level.cameraSequences.front(),{level.playerPosition+Vector3{0,1.6f,0},level.playerRotation,1.04719755f},level.playerPosition));
+        const auto start=std::find_if(level.blenderCameraSequences.begin(),level.blenderCameraSequences.end(),
+            [](const auto& sequence) { return sequence.id=="start"; });
+        assert(start!=level.blenderCameraSequences.end());
+        auto route=*start; route.enabled=true;
+        CameraSequence old; assert(old.Start(route,{level.playerPosition+Vector3{0,1.6f,0},level.playerRotation,1.04719755f},level.playerPosition));
         CameraSequence held;
         assert(held.Start(old.SplitSegment(0,.3f,"hold-insert"),{level.playerPosition+Vector3{0,1.6f,0},level.playerRotation,1.04719755f},level.playerPosition));
         for (int j=0;j<=200;++j) {

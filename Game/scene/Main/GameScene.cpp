@@ -34,6 +34,7 @@ void GameScene::ApplySequenceCamera() {
 
 void GameScene::RefreshSequenceVisuals() {
     ground_.Update(0); SyncShutterVisuals(); SyncDoorVisuals();
+    RefreshEscapeCarVisuals();
     for (auto& visual:weaponVisuals_) visual->Update(0);
     for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
     for (auto& visual:projectileVisuals_) visual->Update(0);
@@ -170,12 +171,12 @@ void GameScene::BindRemovableMeshes() {
 }
 
 void GameScene::SyncRemovableMeshVisuals() {
-    if (removableMeshBindings_.empty()) return;
     std::vector<uint32_t> hidden;
     for (size_t i=0;i<level_.removableMeshes.size();++i) {
         if (level_.collision.colliders[level_.removableMeshes[i].colliderIndex].enabled) continue;
         hidden.insert(hidden.end(),removableMeshBindings_[i].begin(),removableMeshBindings_[i].end());
     }
+    if (EscapePlaying()) hidden.insert(hidden.end(),escapeHiddenMeshes_.begin(),escapeHiddenMeshes_.end());
     ground_.SetHiddenMeshes(std::move(hidden));
 }
 
@@ -344,6 +345,7 @@ void GameScene::OnEnter(GameApp& app) {
     ground_.SetPointLightIntensity(0.0f);
     ground_.SetSpotLightIntensity(0.0f);
     BindRemovableMeshes();
+    InitializeHotelEscape(app);
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
         sprite->Initialize(app.SpriteCom(), app.Dx(), "resources/white1x1.png");
         sprite->SetAnchorPoint({0.5f, 0.5f});
@@ -392,6 +394,7 @@ void GameScene::OnEnter(GameApp& app) {
         // Prepare a drawable first frame without processing the outgoing shot,
         // mouse delta, spawn triggers or goals while the incoming view is black.
         player_.RefreshVisuals(); ground_.Update(0);
+        RefreshEscapeCarVisuals();
         SyncShutterVisuals(); SyncDoorVisuals();
         // Pickup WVPs were created before the camera moved to the spawn point.
         // Refresh them now; simulation remains frozen throughout FadeIn.
@@ -415,6 +418,9 @@ void GameScene::OnExit(GameApp& app) {
     player_.SetMovementEnabled(true); player_.CancelWeaponBurst();
     camera_.SetNearZ(.1f); camera_.SetFovY(kNormalFovDegrees*kDegreesToRadians);
     startSequence_.Stop(); sequenceOwnsCamera_=false; startPlayerVisual_.reset();
+    escapeMode_=EscapeMode::Idle; escapeEnemies_.clear();
+    escapeCar_.reset(); escapeCarWheels_.clear(); escapeUnsplitCarBounds_.reset();
+    escapeRoad_.clear(); escapeHiddenMeshes_.clear();
     if (shutterAudio_) shutterAudio_->StopAll();
     shutterAudio_.reset(); shutterVisuals_.clear();
     doorVisuals_.clear();
@@ -439,6 +445,7 @@ void GameScene::Update(GameApp& app, float dt) {
     // SceneManager consumes this request after Update, safely outside ImGui drawing.
     if (!NextScene().empty()) return;
     Input& input = *app.GetInput();
+    if (EscapePlaying()) { UpdateHotelEscape(app,dt); return; }
     if (gameOver_.Active()) { UpdateGameOver(app,dt); return; }
     if (placementTest_ && player_.IsDead() && HasFatalStageFall()) return;
     if (player_.IsDead() && stage_.IsPlaying() && !placementTest_) {
@@ -555,6 +562,7 @@ void GameScene::Update(GameApp& app, float dt) {
 #ifdef USE_IMGUI
     typing=ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive();
 #endif
+    if (!typing && input.HasFocus() && HandleHotelEscapeKey(app)) return;
     if (!showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F1)) {
         debugPaused_=!debugPaused_;
         initialCapturePending_=!debugPaused_;
@@ -580,6 +588,7 @@ void GameScene::Update(GameApp& app, float dt) {
         } else {
             UpdateShutterAudio(false);
             player_.RefreshDebug(); ground_.Update(0);
+            RefreshEscapeCarVisuals();
             SyncShutterVisuals();
             SyncDoorVisuals();
             for (auto& visual : weaponVisuals_) visual->Update(0);
@@ -651,6 +660,7 @@ void GameScene::Update(GameApp& app, float dt) {
             dt,
             player_.GetTransform().translate)) {
 
+            if (BeginHotelEscape(app,false)) return;
             OnStageClear(app);
         }
     }
@@ -661,6 +671,7 @@ void GameScene::Update(GameApp& app, float dt) {
     // Enter once after combat; subsequent frames bypass combat and goal updates.
     if (player_.IsDead() && !placementTest_) { BeginGameOver(app); UpdateGameOver(app,0); return; }
     ground_.Update(dt);
+    RefreshEscapeCarVisuals();
     SyncShutterVisuals();
     SyncDoorVisuals();
     ProcessShutterEvents();
@@ -673,7 +684,7 @@ void GameScene::Update(GameApp& app, float dt) {
 }
 
 bool GameScene::ReturnToTitle(GameApp& app) {
-    if (placementTest_) return false;
+    if (placementTest_ || EscapePlaying()) return false;
     return !stage_.IsPlaying() && app.Scenes().TransitionTo("Title", .5f, .5f);
 }
 
@@ -717,6 +728,7 @@ void GameScene::UpdateGameOver(GameApp& app,float dt) {
     }
     gameOver_.Update(dt,level_.collision,camera_);
     ground_.Update(0); SyncShutterVisuals(); SyncDoorVisuals();
+    RefreshEscapeCarVisuals();
     for (auto* enemy:enemies_) enemy->UpdateVisuals(0);
     for (auto& visual:weaponVisuals_) visual->Update(0);
     if (!gameOver_.MenuReady()) return;
@@ -1028,7 +1040,11 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
 void GameScene::DrawRender(GameApp& app) {
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     if (!gameOver_.Active()) app.Render()->ApplyViewPostPreview();
+    if (escapeMode_==EscapeMode::Results) return;
     ground_.Draw();
+    if (EscapePlaying()) for (auto& road:escapeRoad_) road->Draw();
+    if (escapeCar_) escapeCar_->Draw();
+    for (const auto& wheel:escapeCarWheels_) wheel.visual->Draw();
     gameOver_.Draw();
     if (sequenceOwnsCamera_ && startPlayerVisual_) {
         const auto delta=camera_.GetTranslate()-player_.EyePosition();
@@ -1037,6 +1053,10 @@ void GameScene::DrawRender(GameApp& app) {
     }
     for (auto& shutter : shutterVisuals_) { shutter.model->Draw(); shutter.lamp->Draw(); }
     for (auto& door : doorVisuals_) door->Draw();
+    if (EscapePlaying()) {
+        for (const auto& entry:escapeEnemies_) entry.enemy->Draw(false);
+        return;
+    }
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_ && weaponEditor_.mode==WeaponEditorMode::Edit) {
         if (weaponPreview_ && weaponEditor_.Selected()) weaponPreview_->Draw();
@@ -1064,6 +1084,13 @@ void GameScene::EquipWeaponForDebug(const WeaponDefinition& definition) {
 #endif
 
 void GameScene::DrawImGui(GameApp& app) {
+    if (EscapePlaying()) {
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+        if (ImGui::Begin("Spawn System") && ImGui::Button("Restart Stage")) RequestChangeScene_(SceneName());
+        ImGui::End();
+#endif
+        return;
+    }
     app.Render()->DrawViewPostEffectsImGui(gameOver_.settings.post.doubleVision,gameOver_.settings.post.impactBlur);
     if (gameOver_.Active()) return;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
@@ -1358,6 +1385,10 @@ void GameScene::DrawOverlay2D(GameApp&) {
     const auto view = Matrix4x4::MakeIdentity4x4();
     const auto projection = Matrix4x4::MakeOrthographicMatrix(0.0f, 0.0f,
         static_cast<float>(WinApp::kClientWidth), static_cast<float>(WinApp::kClientHeight), 0.0f, 100.0f);
+    if (EscapePlaying() || escapeMode_==EscapeMode::Results) {
+        DrawEscapeFade(view,projection);
+        if (EscapePlaying()) return;
+    }
     if (gameOver_.Active()) {
         gameOverOverlay_.Draw(view,projection,gameOver_.MenuReady(),gameOverMenuTime_);
         gameOverVision_.Draw(gameOver_.Vision(),gameOver_.settings.eyelidCurve);
@@ -1436,6 +1467,10 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
     player_.RestoreDebug(state.player); camera_.SetFovY(state.fov); camera_.Update();
     bullets_.Restore(state.bullets);
     enemyProjectiles_=state.projectiles; spawnSystem_=state.spawns; weapons_=state.weapons; stage_=state.stage;
+    if (escapeMode_==EscapeMode::Results && stage_.IsPlaying()) {
+        escapeMode_=EscapeMode::Idle;
+        PositionEscapeCar(0);
+    }
     level_.shutters=state.shutters; level_.shutters.Sync(level_.collision);
     level_.doors=state.doors; level_.doors.Sync(level_.collision);
     transferUsed_=state.transferUsed;

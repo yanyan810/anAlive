@@ -476,6 +476,12 @@ float Enemy::ApplyDamage(size_t index, float damage, const Vector3& shotDirectio
     else if (parts_[index].Destroyed()) DetachPart(index,shotDirection);
     return lost;
 }
+void Enemy::BreakForImpact(const Vector3& direction,float launchPower,float groundHeight) {
+    detachedSettings_.launchPower=launchPower;
+    detachedSettings_.groundHeight=groundHeight;
+    Die(direction*2.5f);
+}
+
 void Enemy::Die(const Vector3& direction) {
     if (!BeginEnemyDeath(parts_)) return;
     ai_.state=EnemyState::Dead;

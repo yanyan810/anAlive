@@ -12,7 +12,8 @@ int main() {
         const std::string fixture="camera-override-"+stage+".json";
         const auto path=CameraSequenceOverrides::PathFor(fixture);
         std::filesystem::remove(path); write(fixture,original);
-        StageLoader base; assert(base.Load(fixture) && base.cameraSequences.size()==1 && base.cameraOverrideWarning.empty());
+        StageLoader base; assert(base.Load(fixture) && !base.cameraSequences.empty() && base.cameraOverrideWarning.empty());
+        assert(base.cameraSequences.front().id=="start");
         const auto baseJson=CameraSequence::ToJson(base.cameraSequences);
         assert(CameraSequence::ToJson(CameraSequence::Parse({{"cameraSequences",baseJson}}))==baseJson);
         auto changed=base.cameraSequences.front(); changed.points[2].position.x+=1.25f; changed.points[2].fov=75;
@@ -20,7 +21,7 @@ int main() {
         CameraSequenceOverrides overrides; assert(overrides.Load(path,stage));
         overrides.sequences={changed,extra}; assert(overrides.Save(path));
         const auto firstBytes=CameraSequenceOverrides::Read(path);
-        StageLoader loaded; assert(loaded.Load(fixture) && loaded.cameraSequences.size()==2);
+        StageLoader loaded; assert(loaded.Load(fixture) && loaded.cameraSequences.size()==base.cameraSequences.size()+1);
         assert(CameraSequence::ToJson(loaded.blenderCameraSequences)==baseJson);
         assert(loaded.cameraSequences.front().points[2].position.x==changed.points[2].position.x);
         assert(!loaded.cameraSequences.back().enabled);
@@ -49,7 +50,7 @@ int main() {
         write(path,json{{"version",1},{"stage","wrong-stage"},{"cameraSequences",baseJson}}.dump());
         assert(loaded.Load(fixture) && !loaded.cameraOverrideWarning.empty());
         auto many=base.cameraSequences;
-        for (int i=1;i<128;++i) { auto d=many.front(); d.id="base-"+std::to_string(i); many.push_back(d); }
+        while (many.size()<128) { auto d=many.front(); d.id="base-"+std::to_string(many.size()); many.push_back(d); }
         exported["cameraSequences"]=CameraSequence::ToJson(many); write(fixture,exported.dump());
         write(path,json{{"version",1},{"stage",stage},{"cameraSequences",CameraSequence::ToJson({extra})}}.dump());
         assert(loaded.Load(fixture) && loaded.cameraSequences.size()==128 && !loaded.cameraOverrideWarning.empty());

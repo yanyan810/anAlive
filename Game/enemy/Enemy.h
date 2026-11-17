@@ -70,6 +70,7 @@ public:
     EnemyBulletHitResult ApplyBulletDamage(EnemyPartType part, float damage, const Vector3& direction);
     void ApplyExplosionDamage(const EnemyExplosion& explosion);
     void Die(const Vector3& direction = {0,1,0});
+    void BreakForImpact(const Vector3& direction, float launchPower, float groundHeight);
     void DrawPartDebug(const Matrix4x4& viewProjection, const Vector2& screenMin, const Vector2& screenMax, bool forceParts=false, bool forceMovement=false, bool rangeOnly=false) const;
     void DrawImGui();
     const EnemyDefinition& Definition() const { return definition_; }

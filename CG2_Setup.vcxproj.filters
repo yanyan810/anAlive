@@ -675,6 +675,7 @@
     <ClInclude Include="Game\enemy\EnemyPool.h" />
     <ClInclude Include="Game\enemy\EnemyExplosion.h" />
     <ClCompile Include="Game\scene\Main\GameScene.cpp" />
+    <ClCompile Include="Game\scene\Main\GameScene.HotelEscape.cpp" />
     <ClCompile Include="Game\scene\Flow\TitleScene.cpp" />
     <ClCompile Include="Game\scene\Flow\GameOverScene.cpp" />
     <ClInclude Include="Game\scene\Flow\GameOverScene.h" />
@@ -691,6 +692,7 @@
     <ClInclude Include="Game\enemy\DetachedEnemyPart.h" />
     <ClInclude Include="Game\enemy\EnemyAI.h" />
     <ClInclude Include="Game\StageLoader.h" />
+    <ClInclude Include="Game\HotelEscape.h" />
     <ClInclude Include="Game\CameraSequence.h" />
     <ClInclude Include="Game\CameraSequenceOverrides.h" />
     <ClInclude Include="Game\StartPlayerVisual.h" />

@@ -1,9 +1,9 @@
 """YanEngine level authoring. Blender 4.4+; install this file as a legacy add-on."""
-bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 17, 0),
+bl_info = {"name": "YanEngine Level", "author": "YanEngine", "version": (1, 24, 0),
            "blender": (4, 4, 0), "location": "View3D > Sidebar > YanEngine Level", "category": "Import-Export"}
 import bpy
 from bpy.app.handlers import persistent
-from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, CollectionProperty
+from bpy.props import BoolProperty, StringProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty, CollectionProperty
 from mathutils import Matrix, Vector, Euler
 import time
 import json
@@ -470,6 +470,9 @@ def build_level(scene, depsgraph):
     sequences = camera_sequences(scene)
     if sequences:
         data['cameraSequences'] = sequences
+    escape = hotel_escape(scene, objects, sequences)
+    if escape:
+        data['hotelEscape'] = escape
     json.dumps(data, allow_nan=False)
     return data, geometry
 
@@ -621,6 +624,8 @@ def export_level(context):
             raise ValueError("Exported glTF contains no meshes")
         removable_nodes = {exported[c[key]].name: c[key] for c in data['colliders']
                            for key in ('breakableMesh', 'eventMesh') if key in c}
+        for hidden in data.get('hotelEscape', {}).get('hiddenMeshes', []):
+            removable_nodes[exported[hidden].name] = hidden
         if removable_nodes:
             for node in gltf.get('nodes', []):
                 if 'mesh' in node and node.get('name') in removable_nodes:
@@ -720,7 +725,41 @@ class YAN_ObjectSettings(bpy.types.PropertyGroup):
         ('SHUTTER', 'Shutter', 'Independent upward-moving mesh and box collision'),
         ('CAMERA_POINT', 'Camera Point', 'Engine camera forward is local -Y; up is local +Z'),
         ('DOOR', 'Hinged Door', 'Upright box; place the object origin on the hinge'),
-        ('TRANSFER', 'Stage Transfer', 'One-way transfer from a volume to an arrival object')])
+        ('TRANSFER', 'Stage Transfer', 'One-way transfer from a volume to an arrival object'),
+        ('ESCAPE_CAR', 'Hotel Escape Car', 'Parked car origin and playback settings'),
+        ('ESCAPE_WAYPOINT', 'Hotel Escape Waypoint', 'Route point; local transforms are exported in world space'),
+        ('ESCAPE_ENEMY', 'Hotel Escape Enemy', 'Staged enemy used during escape playback')])
+    escape_goal: PointerProperty(name='Goal', type=bpy.types.Object)
+    escape_hide_during: BoolProperty(name='Hide During Hotel Escape')
+    escape_camera_1: StringProperty(name='Cut 1 Sequence ID', default='hotel_escape_1')
+    escape_camera_2: StringProperty(name='Cut 2 Sequence ID', default='hotel_escape_2')
+    escape_launch_camera: StringProperty(name='Launch Sequence ID', description='Optional shot from departure until Cut 2')
+    escape_departure: FloatProperty(name='Departure (s)', default=1.2, min=0, max=120)
+    escape_acceleration: FloatProperty(name='Acceleration (m/s²)', default=6.5, min=.01, max=100)
+    escape_max_speed: FloatProperty(name='Max Speed (m/s)', default=11.5, min=.01, max=100)
+    escape_cut: FloatProperty(name='Cut 2 Start (s)', default=3, min=0, max=120)
+    escape_fade: FloatProperty(name='Fade Start (s)', default=6, min=0, max=120)
+    escape_duration: FloatProperty(name='End (s)', default=7, min=.01, max=120)
+    escape_shake: FloatProperty(name='Impact Shake (m)', default=.065, min=0, max=1)
+    escape_road_width: FloatProperty(name='Road Width (m, 0 = off)', default=0, min=0, max=100)
+    escape_ignition_seconds: FloatProperty(name='Ignition (s)', default=.42, min=0, max=3)
+    escape_vibration_meters: FloatProperty(name='Vibration (m)', default=.009, min=0, max=.03, precision=3)
+    escape_roll_degrees: FloatProperty(name='Body Roll (deg)', default=2.25, min=0, max=12)
+    escape_launch_seconds: FloatProperty(name='Launch Motion (s)', default=.84, min=0, max=3)
+    escape_pitch_degrees: FloatProperty(name='Nose Lift (deg)', default=1.7, min=0, max=5)
+    escape_squat_meters: FloatProperty(name='Body Drop (m)', default=.018, min=0, max=.08, precision=3)
+    escape_boost_acceleration: FloatProperty(name='Launch Boost (m/s²)', default=0, min=0, max=80)
+    escape_rebound_degrees: FloatProperty(name='Nose Rebound (deg)', default=0, min=0, max=8)
+    escape_launch_roll_degrees: FloatProperty(name='Launch Roll (deg)', default=0, min=0, max=12)
+    escape_drift_lateral: FloatProperty(name='Side Offset (m)', default=0, min=-1.5, max=1.5,
+        description='Negative slides left, positive slides right, zero disables drift')
+    escape_drift_yaw: FloatProperty(name='Slip Angle (deg)', default=22, min=0, max=35,
+        description='Peak angle between the car body and its direction of travel')
+    escape_drift_slide: FloatProperty(name='Slide (s)', default=.72, min=.1, max=3)
+    escape_drift_recovery: FloatProperty(name='Recovery (s)', default=.52, min=.1, max=3)
+    escape_launch_power: FloatProperty(name='Launch Speed (m/s)', default=8, min=0, max=30)
+    escape_launch_direction: FloatVectorProperty(name='Launch Direction (Blender XYZ)', size=3,
+        description='World direction. Leave at zero to derive it from the car and contact side')
     camera_sequence: StringProperty(name='Sequence ID', default='start')
     camera_order: IntProperty(name='Order', default=0, min=0)
     camera_duration: FloatProperty(name='Duration to next (s)', default=1, min=0, max=1200)
@@ -1670,6 +1709,26 @@ class YAN_PT_level(bpy.types.Panel):
                               'shutter_progress_events','shutter_switch_sound','shutter_start_sound',
                               'shutter_motor_sound','shutter_complete_sound'):
                     layout.prop(settings,field)
+            if settings.role == 'ESCAPE_CAR':
+                for field in ('escape_goal', 'escape_camera_1', 'escape_launch_camera', 'escape_camera_2',
+                              'escape_departure', 'escape_acceleration', 'escape_max_speed', 'escape_cut',
+                              'escape_fade', 'escape_duration', 'escape_shake', 'escape_road_width'):
+                    layout.prop(settings, field)
+                motion = layout.box()
+                motion.label(text='Launch Motion')
+                for field in ('escape_ignition_seconds', 'escape_vibration_meters', 'escape_roll_degrees', 'escape_launch_seconds',
+                              'escape_pitch_degrees', 'escape_squat_meters', 'escape_boost_acceleration',
+                              'escape_rebound_degrees', 'escape_launch_roll_degrees'):
+                    motion.prop(settings, field)
+                drift = layout.box()
+                drift.label(text='Drift')
+                for field in ('escape_drift_lateral', 'escape_drift_yaw', 'escape_drift_slide', 'escape_drift_recovery'):
+                    drift.prop(settings, field)
+            if settings.role == 'ESCAPE_WAYPOINT':
+                layout.prop(settings, 'camera_order')
+            if settings.role == 'ESCAPE_ENEMY':
+                for field in ('enemy_definition', 'escape_launch_direction', 'escape_launch_power'):
+                    layout.prop(settings, field)
             if settings.role == 'TRANSFER':
                 layout.prop(settings, 'transfer_arrival')
                 layout.prop(settings, 'manual_group')
@@ -1678,6 +1737,8 @@ class YAN_PT_level(bpy.types.Panel):
                 layout.prop(settings, 'player_only')
             if settings.role == 'STATIC':
                 layout.prop(settings, 'collision')
+                if cfg.stage_id in {'stage03', 'stage04'}:
+                    layout.prop(settings, 'escape_hide_during')
                 if settings.collision == 'BOX':
                     layout.prop(settings, 'break_on_bullet')
                 if settings.collision == 'CUSTOM':
@@ -1818,6 +1879,77 @@ class YAN_PT_level(bpy.types.Panel):
         layout.operator('yanengine.export', icon='EXPORT')
 
 
+def hotel_escape(scene, objects, sequences):
+    markers = [obj for obj in objects if obj.yan_level.role.startswith('ESCAPE_')]
+    if not markers:
+        return None
+    cars = [obj for obj in markers if obj.yan_level.role == 'ESCAPE_CAR']
+    if scene.yan_level.stage_id not in {'stage03', 'stage04'} or len(cars) != 1:
+        raise ValueError('Hotel Escape: place one car in stage03 or stage04')
+    if any(obj.type != 'EMPTY' for obj in markers):
+        raise ValueError('Hotel Escape: use Empty objects for the car, waypoints and enemies')
+    car = cars[0]
+    cfg = car.yan_level
+    goal = cfg.escape_goal
+    if goal not in objects or goal.yan_level.role != 'GOAL':
+        raise ValueError('Hotel Escape: select the existing Goal object')
+    cameras = [cfg.escape_camera_1.strip(), cfg.escape_camera_2.strip()]
+    launch_camera = cfg.escape_launch_camera.strip()
+    usable = {seq['id'] for seq in sequences if seq['enabled'] and not seq['points'][-1]['playerEye']}
+    if any(camera not in usable for camera in cameras):
+        raise ValueError('Hotel Escape: both cuts require Camera Sequences without PlayerEye')
+    if launch_camera and launch_camera not in usable:
+        raise ValueError('Hotel Escape: Launch Sequence requires a Camera Sequence without PlayerEye')
+    if not 0 <= cfg.escape_departure < cfg.escape_cut < cfg.escape_fade < cfg.escape_duration:
+        raise ValueError('Hotel Escape: require departure < cut < fade < end')
+
+    def pose(obj):
+        transform, _ = engine_transform(obj.matrix_world)
+        return {key: transform[key] for key in ('position', 'rotation')}
+
+    waypoints = sorted((obj for obj in markers if obj.yan_level.role == 'ESCAPE_WAYPOINT'),
+                       key=lambda obj: obj.yan_level.camera_order)
+    orders = {obj.yan_level.camera_order for obj in waypoints}
+    if not 1 <= len(waypoints) <= 128 or len(orders) != len(waypoints):
+        raise ValueError('Hotel Escape: use 1–128 waypoints with unique Order values')
+    parked = pose(car)
+    path = [pose(obj)['position'] for obj in waypoints]
+    for start, end in zip([parked['position'], *path], path):
+        if math.hypot(end[0]-start[0], end[2]-start[2]) < .01:
+            raise ValueError('Hotel Escape: waypoints must advance horizontally')
+
+    actors = [obj for obj in markers if obj.yan_level.role == 'ESCAPE_ENEMY']
+    if len(actors) > 16:
+        raise ValueError('Hotel Escape: maximum 16 enemies')
+    choices = definitions(scene, 'enemies') if actors else {}
+    cast = []
+    for obj in actors:
+        actor = obj.yan_level
+        enemy = actor.enemy_definition.strip()
+        if enemy not in choices:
+            raise ValueError(f'{obj.name}: unknown escape enemy definition {enemy}')
+        direction = ENGINE_BASIS.to_3x3() @ Vector(actor.escape_launch_direction)
+        cast.append(dict(enemy=enemy, **pose(obj), launchDirection=list(direction), launchPower=actor.escape_launch_power))
+
+    result = dict(goal=object_id(goal), **parked, path=path, enemies=cast, cameras=cameras,
+                  departure=cfg.escape_departure, acceleration=cfg.escape_acceleration, maxSpeed=cfg.escape_max_speed,
+                  cut=cfg.escape_cut, fade=cfg.escape_fade, duration=cfg.escape_duration,
+                  shake=cfg.escape_shake, roadWidth=cfg.escape_road_width,
+                  bodyMotion=dict(ignitionSeconds=cfg.escape_ignition_seconds, vibrationMeters=cfg.escape_vibration_meters,
+                                  rollDegrees=cfg.escape_roll_degrees,
+                                  launchSeconds=cfg.escape_launch_seconds, pitchDegrees=cfg.escape_pitch_degrees,
+                                  squatMeters=cfg.escape_squat_meters, boostAcceleration=cfg.escape_boost_acceleration,
+                                  reboundDegrees=cfg.escape_rebound_degrees, launchRollDegrees=cfg.escape_launch_roll_degrees),
+                  drift=dict(lateralMeters=cfg.escape_drift_lateral, yawDegrees=cfg.escape_drift_yaw,
+                             slideSeconds=cfg.escape_drift_slide, recoverySeconds=cfg.escape_drift_recovery))
+    if launch_camera:
+        result['launchCamera'] = launch_camera
+    hidden = [obj.name for obj in objects if obj.yan_level.role == 'STATIC' and obj.yan_level.escape_hide_during]
+    if hidden:
+        result['hiddenMeshes'] = hidden
+    return result
+
+
 def camera_sequences(scene):
     """Export/Validate/Preview share the same ordered data; no generated path objects."""
     groups = {}
@@ -1847,7 +1979,7 @@ def camera_sequences(scene):
     if len(groups) > 128:
         raise ValueError('Camera: maximum 128 sequences')
     result = []
-    for seq, points in sorted(groups.items()):
+    for seq, points in sorted(groups.items(), key=lambda item: (item[0] != 'start', item[0])):
         points.sort(key=lambda p: p['order'])
         if not 2 <= len(points) <= 1024:
             raise ValueError(f'{seq}: require 2..1024 Camera Points')

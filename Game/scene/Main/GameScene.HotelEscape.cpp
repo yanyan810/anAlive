@@ -147,6 +147,30 @@ void GameScene::InitializeHotelEscape(GameApp& app) {
         static_cast<float>(WinApp::kClientHeight)/size.height,1});
 }
 
+void GameScene::PrepareHotelExitStart() {
+    if (!escapeCar_) return;
+    const auto& escape=*level_.hotelEscape;
+    const auto goal=std::find_if(stage_.Goals().begin(),stage_.Goals().end(),
+        [&](const auto& item) { return item.id==escape.goal; });
+    auto& shutters=level_.shutters.shutters;
+    const auto shutter=std::find_if(shutters.begin(),shutters.end(),
+        [](const auto& item) { return item.definition.id=="F1_ExitShutter"; });
+    if (goal==stage_.Goals().end() || shutter==shutters.end()) return;
+
+    const Vector3 heading{0,escape.route.front().Heading().y,0};
+    auto feet=goal->position-HotelEscape::CarPose{escape.start,heading}.Forward()*.75f;
+    feet.y=shutter->definition.closedPosition.y;
+    if (!goal->Contains(feet)) return;
+
+    // Start past the open shutter and let the first gameplay update trigger the normal Goal.
+    shutter->state=ShutterState::Open;
+    shutter->elapsedTime=shutter->definition.openDuration;
+    level_.shutters.Sync(level_.collision);
+    SyncShutterVisuals();
+    player_.SetStage(&level_.collision,feet,heading);
+    startSequenceEnabled_=false;
+}
+
 void GameScene::PositionEscapeCar(double elapsed) {
     const auto& escape=*level_.hotelEscape;
     const auto [position,heading]=escape.CarAt(elapsed);
@@ -204,8 +228,13 @@ bool GameScene::BeginHotelEscape(GameApp& app,bool preview) {
             definition=enemyDefinitions_.Find("normal");
         }
         if (!definition) continue;
+        auto facing = actor.rotation;
+        const auto toCar = escape.start - actor.position;
+        // Enemy meshes face local -X, matching EnemyAI's yaw convention.
+        if (std::hypot(toCar.x, toCar.z) > 1e-5f)
+            facing.y = std::atan2(toCar.x, toCar.z) + std::numbers::pi_v<float> * .5f;
         auto* enemy=enemyPool_.Acquire(definition->id,std::numeric_limits<uint64_t>::max()-i,
-            "hotelEscape",actor.position,actor.rotation);
+            "hotelEscape",actor.position,facing);
         enemy->SetAIPaused(true);
         escapeEnemies_.push_back({enemy,i,EscapeImpactTime(escape,actor.position,*definition)});
     }

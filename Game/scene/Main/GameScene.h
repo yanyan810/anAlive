@@ -13,6 +13,7 @@
 #include "StageProgress.h"
 #include "StageClearOverlay.h"
 #include "GameHUD.h"
+#include "ThrowableSystem.h"
 #include "BulletManager.h"
 #include "AudioSystem.h"
 #include "StartPlayerVisual.h"
@@ -33,7 +34,10 @@
 class TemporarySceneTransitionCheck;
 class GameScene : public IScene {
 public:
-    explicit GameScene(bool showroom=false,std::string stageId="stage01") : showroom_(showroom), stageId_(std::move(stageId)) {}
+    enum class EntryPoint { StageStart, HotelExit };
+    static constexpr const char* kHotelExitScene = "HotelExit";
+    explicit GameScene(bool showroom=false,std::string stageId="stage01",EntryPoint entryPoint=EntryPoint::StageStart)
+        : showroom_(showroom), stageId_(std::move(stageId)), entryPoint_(entryPoint) {}
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
     bool IsReadyForTransition() const override { return stageLoaded_; }
@@ -78,6 +82,7 @@ private:
     enum class EscapeMode { Idle, Preview, Clear, Results };
     bool EscapePlaying() const { return escapeMode_==EscapeMode::Preview || escapeMode_==EscapeMode::Clear; }
     void InitializeHotelEscape(GameApp& app);
+    void PrepareHotelExitStart();
     bool BeginHotelEscape(GameApp& app, bool preview);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     bool HandleHotelEscapeKey(GameApp& app);
@@ -134,6 +139,7 @@ private:
     friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunEnemyPoolTests(GameApp& app);
+    friend void RunThrowableRuntimeTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
@@ -148,8 +154,10 @@ private:
 
     void SyncProjectileVisuals(GameApp& app);
     void SyncWeaponVisuals(GameApp& app);
+    void SyncThrowableVisuals(GameApp& app);
     const char* SceneName() const {
         if (showroom_) return "Showroom";
+        if (entryPoint_==EntryPoint::HotelExit) return kHotelExitScene;
         if (stageId_=="stage03") return "Stage03";
         return stageId_=="stage04" ? "Stage04" : "Game";
     }
@@ -162,6 +170,7 @@ private:
     void DrawShowroomTools(GameApp& app);
     bool showroom_=false, freezeEnemies_=true;
     std::string stageId_;
+    EntryPoint entryPoint_;
     bool showEnemyLabels_=true, showWeaponLabels_=true, showEnemyMarkers_=true;
     bool showEnemyCollision_=false, showEnemyParts_=false, resetEnemiesPending_=false;
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
@@ -172,6 +181,7 @@ private:
         BulletSimulation bullets;
         EnemySpawnSystem spawns;
         WeaponSystem weapons;
+        ThrowableSystem::State throwables;
         StageProgress stage;
         StageShutterSystem shutters;
         StageDoorSystem doors;
@@ -251,6 +261,11 @@ private:
     unsigned long long hitCount_ = 0;
     float lastDamage_ = 0.0f;
     WeaponSystem weapons_;
+    ThrowableSystem throwables_;
+    ModelCommon throwableModelCommon_;
+    std::unique_ptr<Model> throwableModel_;
+    std::vector<std::unique_ptr<Object3d>> throwableVisuals_;
+    std::vector<ThrowableSystem::Visual> throwableDrawList_;
     GameHUD gameHUD_;
     std::vector<std::unique_ptr<Object3d>> weaponVisuals_;
     std::mt19937 pelletRandom_{std::random_device{}()};

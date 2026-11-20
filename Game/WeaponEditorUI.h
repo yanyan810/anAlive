@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include <functional>
 
-enum class WeaponEditorMode { Edit, Test };
+enum class WeaponEditorMode { Edit, Test, TestThrowables };
 
 class WeaponEditorUI {
 public:
@@ -22,7 +22,7 @@ public:
     std::optional<std::string> Draw(WeaponSystem& live,const std::string& level,bool canEquip,
         const std::function<void()>& preview={},const std::function<void()>& showroomControls={},
         const std::function<void()>& showroomSidebar={}) {
-        if (!visible || mode==WeaponEditorMode::Test) return std::nullopt;
+        if (!visible || mode!=WeaponEditorMode::Edit) return std::nullopt;
         std::optional<std::string> result;
         ImGuiWindowFlags flags=0;
         if (preview) {

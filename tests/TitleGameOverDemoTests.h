@@ -188,7 +188,7 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
     check(title && title->mode_==Mode::GameStart && title->player_.GetHP()==100 &&
         !app.Render()->DeathPostEffect().Active(),"Title did not restore default GAME START and clear death post effects");
     capture("10-title-restored");
-    // Exercise the normal mode retained in ImGui for debugging.
+    // Exercise the real GAME START shot and its configured destination.
     check(title->SetMode(Mode::GameStart),"Could not select normal mode after returning to Title");
     const auto origin=title->player_.EyePosition(); Vector3 normalDirection{}; bool found=false;
     for (const auto& face:title->startExplosion_.source.geometry->faces) {
@@ -203,10 +203,29 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
     title->UpdateWorld(app,title->start_.delay+.01f,false);
     check(scenes.IsTransitioning(),"Normal GAME START did not request transition");
     finishTransition(); game=dynamic_cast<GameScene*>(scenes.Current());
-    check(game && game->stageId_=="stage03" && !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
+    const bool submission = scenes.HasRegisteredScene(GameScene::kHotelExitScene);
+    check(game && game->stageLoaded_ && game->stageId_==(submission ? "stage04" : "stage03") &&
+        !game->IsGameOverDemo() && game->player_.GetHP()==100 &&
         game->player_.CurrentWeapon().Definition().id.empty() && game->player_.IsMovementEnabled(),
         "Demo HP/weapon/movement policy leaked into normal GAME START");
     check(!app.Render()->DeathPostEffect().Active(),"Demo post effects leaked to normal game");
+    if (submission) {
+        const auto& shutters=game->level_.shutters.shutters;
+        const auto exit=std::find_if(shutters.begin(),shutters.end(),
+            [](const auto& item) { return item.definition.id=="F1_ExitShutter"; });
+        check(scenes.CurrentName()==GameScene::kHotelExitScene && exit!=shutters.end() &&
+            exit->state==ShutterState::Open && game->stage_.IsPlaying() && !game->sequenceOwnsCamera_,
+            "Submission did not load the open hotel exit during the title fade");
+        scenes.Update(app,1.f/60);
+        check(game->EscapePlaying() && game->stage_.State()==StageState::Cleared && game->escapeEnemies_.size()==3,
+            "Submission did not start the real Goal cutscene without input");
+        scenes.Update(app,game->level_.hotelEscape->duration+.01f);
+        check(game->escapeMode_==GameScene::EscapeMode::Results && game->stage_.DefeatedCount()==0,
+            "Submission did not reach STAGE CLEAR");
+        check(game->ReturnToTitle(app),"Submission clear screen could not return to Title");
+        finishTransition();
+        check(scenes.CurrentName()=="Title","Submission clear did not return to Title");
+    }
     // Both other normal stages retain their ordinary HP, weapons and spawn data.
     for (const auto* id:{"stage01","stage02"}) {
         scenes.Register("NormalDemoIsolation",[id]{ return std::make_unique<GameScene>(false,id); });
@@ -216,5 +235,6 @@ inline void RunTitleGameOverDemoTests(GameApp& app) {
         draw();
     }
     app.Dx()->WaitForGPU();
-    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER visuals and precise hits, miss/wall rejection, dedicated exported stage, 6 non-overlapping normal enemies with clear sight/routes and natural attacks, HP20 unarmed player, held input suppression, no intro, ordinary death effects (double vision, impact blur, black eyelids, rainbow cover and enemy disappearance), Wander/menu, 3 full stage retries, default/returned title shows GAME START, GAME START reaches Stage03, no demo policy leakage to stage01/02/03.\n";
+    std::ofstream(dir/"result.txt")<<"PASS: title GAME START/GAME OVER visuals and precise hits, miss/wall rejection, dedicated exported stage, 6 non-overlapping normal enemies with clear sight/routes and natural attacks, HP20 unarmed player, held input suppression, no intro, ordinary death effects (double vision, impact blur, black eyelids, rainbow cover and enemy disappearance), Wander/menu, 3 full stage retries, default/returned title shows GAME START, no demo policy leakage to stage01/02. "
+        <<(submission ? "Release GAME START reaches the open Stage04 exit, automatic escape, STAGE CLEAR and Title." : "GAME START reaches Stage03.")<<'\n';
 }

@@ -16,6 +16,15 @@
       0.0
     ]
   },
+  "throwables": {
+    "initial": { "id": "corrosive_bottle", "count": 1 },
+    "reusablePickups": true,
+    "pickups": [
+      { "id": "corrosive_bottle", "position": [-6.2, 0.35, 6.0] },
+      { "id": "lure_grenade", "position": [-2.0, 0.35, 6.0] },
+      { "id": "burst_dart", "position": [2.2, 0.35, 6.0] }
+    ]
+  },
   "colliders": [
     {
       "id": "Floor",

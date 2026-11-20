@@ -260,6 +260,7 @@ void Enemy::RetireFromPool() {
     faceShards_.clear(); detachedParts_.clear();
     explosionTime_=0; blastHitTime_=0;
     animation_.Reset();
+    attractionNavigation_.reset();
 }
 void Enemy::ResetForSpawn(uint64_t spawnId,const std::string& trigger,const Vector3& position,const Vector3& rotation) {
     RetireFromPool();
@@ -393,11 +394,14 @@ const Matrix4x4& Enemy::PartWorldMatrix(size_t index) const {
     if (!splitVisuals_ && fallbackVisual_) return fallbackVisual_->GetWorldMatrix();
     return object_.GetWorldMatrix();
 }
+const Matrix4x4* Enemy::HittablePartWorld(size_t index) const {
+    if (splitVisuals_ && (index>=visuals_.size() || !visuals_[index].visible || !visuals_[index].object)) return nullptr;
+    return &PartWorldMatrix(index);
+}
 bool Enemy::Raycast(const Vector3& origin, const Vector3& direction, float maxDistance, RaycastHit& hit) const {
     hit = {};
     return hasHitBox_ && !IsDead() && RaycastEnemyPartsTransformed(parts_,[this](size_t index) -> const Matrix4x4* {
-        if (splitVisuals_ && (index>=visuals_.size() || !visuals_[index].visible || !visuals_[index].object)) return nullptr;
-        return &PartWorldMatrix(index);
+        return HittablePartWorld(index);
     },origin,direction,maxDistance,hit);
 }
 // 表示と起爆で同じ中心を使い、モデルの拡縮や部位位置による範囲のずれを防ぐ。
@@ -465,6 +469,100 @@ void Enemy::ApplyExplosionDamage(const EnemyExplosion& explosion) {
     UpdateVisuals(0); // 命中したフレームの描画から反映し、次のAI更新を待たない。
 }
 
+void Enemy::ApplyThrowableBlast(const AreaDamage& blast,const EnemyPartDamageMultipliers& blastMultipliers,
+    const PartDamage& direct,const EnemyPartDamageMultipliers& directMultipliers) {
+    if (IsDead() || !hasHitBox_) return;
+    std::vector<PartDamage> hits;
+    for (size_t i=0;i<parts_.size();++i) {
+        const auto& part=parts_[i];
+        if (part.Destroyed()) continue;
+        const auto* world=HittablePartWorld(i);
+        if (!world || !EnemyPartTransformIsInvertible(*world)) continue;
+        if (i==direct.index) {
+            const float multiplier=directMultipliers.For(part.role);
+            if (multiplier>0) hits.push_back({i,direct.local*multiplier,direct.shared*multiplier});
+            continue;
+        }
+        const float multiplier=blastMultipliers.For(part.role);
+        if (multiplier==0) continue;
+        // Measure to the closest point on each animated part's hit box.
+        const auto point=EnemyPartTransformPoint(blast.center,Matrix4x4::Inverse(*world));
+        const Vector3 clamped{std::clamp(point.x,part.bounds.min.x,part.bounds.max.x),
+            std::clamp(point.y,part.bounds.min.y,part.bounds.max.y),
+            std::clamp(point.z,part.bounds.min.z,part.bounds.max.z)};
+        const float distance=StageLength(EnemyPartTransformPoint(clamped,*world)-blast.center);
+        if (distance<blast.radius) {
+            const float scale=(1-distance/blast.radius)*multiplier;
+            hits.push_back({i,blast.local*scale,blast.shared*scale});
+        }
+    }
+    const auto outward=position_+Vector3{0,definition_.collisionHeight*.5f,0}-blast.center;
+    const float length=StageLength(outward);
+    ApplyPartHits(hits,length>1e-5f ? outward*(1/length) : Vector3{0,1,0},true);
+}
+
+void Enemy::ApplyCorrosionDamage(float legLocal,float legShared,float fallback,const EnemyPartDamageMultipliers& multipliers) {
+    if (IsDead()) return;
+    std::vector<PartDamage> hits;
+    const float legMultiplier=multipliers.For(EnemyPartRole::Leg);
+    for (size_t i=0;i<parts_.size();++i) {
+        if (parts_[i].role==EnemyPartRole::Leg && !parts_[i].Destroyed() && HittablePartWorld(i))
+            hits.push_back({i,legLocal*legMultiplier,legShared*legMultiplier});
+    }
+    if (!hits.empty()) {
+        ApplyPartHits(hits,{0,1,0},false);
+        return;
+    }
+    if (fallback<=0) return;
+
+    // Once the legs are gone, apply one corrosion hit to a surviving HP source.
+    size_t target=kNoEnemyPart;
+    int bestPriority=3;
+    for (size_t i=0;i<parts_.size();++i) {
+        const auto& part=parts_[i];
+        if (part.role==EnemyPartRole::Leg || part.Destroyed() || !HittablePartWorld(i)) continue;
+        const bool hasLocalHp=part.usesLocalHp && part.hp>0;
+        const bool hasSharedHp=part.sharedGroup<parts_.hpGroups.size() && part.sharedDamageRate>0 &&
+            parts_.hpGroups[part.sharedGroup].hp>0;
+        if (!hasLocalHp && !hasSharedHp) continue;
+        const int priority=(part.role==EnemyPartRole::Body || part.role==EnemyPartRole::Core) ? 0 : hasSharedHp ? 1 : 2;
+        if (priority>=bestPriority) continue;
+        target=i;
+        bestPriority=priority;
+        if (priority==0) break;
+    }
+    if (target!=kNoEnemyPart) ApplyDamage(target,fallback*multipliers.For(parts_[target].role),{0,1,0});
+}
+
+void Enemy::ApplyPartHits(const std::vector<PartDamage>& hits,const Vector3& direction,bool blast) {
+    if (hits.empty()) return;
+    std::vector<float> shared(parts_.hpGroups.size(),0);
+    float maxLoss=0;
+    for (const auto& hit:hits) {
+        auto& part=parts_[hit.index];
+        const float local=part.usesLocalHp ? ReduceEnemyHp(part.hp,hit.local) : 0;
+        maxLoss=std::max(maxLoss,local);
+        if (part.sharedGroup<shared.size()) {
+            auto& groupDamage=shared[part.sharedGroup];
+            const float contribution=hit.shared*part.sharedDamageRate;
+            groupDamage=std::max(groupDamage,contribution);
+            if (blast && contribution>0 && parts_.hpGroups[part.sharedGroup].hp>0) ShowHitFeedback(hit.index);
+        }
+        if (blast && local>0) ShowHitFeedback(hit.index);
+    }
+    // Shared pools receive the strongest contribution of the event only.
+    for (size_t i=0;i<shared.size();++i)
+        maxLoss=std::max(maxLoss,ReduceEnemyHp(parts_.hpGroups[i].hp,shared[i]));
+    if (maxLoss<=0) return;
+    if (EnemyPartsDead(parts_)) Die(direction);
+    else for (const auto& hit:hits)
+        if (parts_[hit.index].Destroyed()) DetachPart(hit.index,direction);
+    if (blast) {
+        lastBlastDamage_=maxLoss;
+        blastHitTime_=.35f;
+    }
+}
+
 float Enemy::ApplyDamage(EnemyPartType type,float damage,const Vector3& shotDirection) {
     return ApplyDamage(FindLegacyPart(type),damage,shotDirection);
 }
@@ -486,6 +584,7 @@ void Enemy::Die(const Vector3& direction) {
     if (!BeginEnemyDeath(parts_)) return;
     ai_.state=EnemyState::Dead;
     ai_.attacksThisUpdate=0;
+    attractionNavigation_.reset();
     const auto world=Matrix4x4::MakeAffineMatrix(definition_.VisualScale(scale_),rotation_,position_);
     const auto center=position_+Vector3{0,definition_.collisionHeight*.5f,0};
     for (size_t i=0;i<parts_.size();++i) {
@@ -563,10 +662,25 @@ void Enemy::ShowHitFeedback(size_t index) {
     if (index<parts_.size()) parts_[index].flashRemaining=0.2f;
 }
 float Enemy::Update(float dt, const Vector3& playerPosition,const StageWorld* world,float playerEyeHeight,
-    int navigationBudget,float speedMultiplier) {
+    int navigationBudget,float speedMultiplier,std::optional<Vector3> attraction) {
     const auto previous = position_;
-    const float attackDamage = ai_.Update(position_, rotation_, playerPosition, dt, IsDead(),world,
-        definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight,navigationBudget,speedMultiplier);
+    const bool dead=IsDead();
+    float attackDamage=0;
+    if (attraction && !dead && !ai_.paused && ai_.settings.moveSpeed>0 && speedMultiplier>0) {
+        if (!attractionNavigation_) attractionNavigation_.emplace();
+        ai_.attacksThisUpdate=0;
+        ai_.cooldown=std::max(0.0f,ai_.cooldown-dt);
+        attractionNavigation_->Move(position_,rotation_,*attraction,ai_.settings.moveSpeed*speedMultiplier,dt,world,
+            definition_.collisionRadius,definition_.collisionHeight,navigationBudget);
+        ai_.currentSpeed=dt>0 ? EnemyAI::distanceTo(previous,position_)/dt : 0;
+    } else {
+        if (attractionNavigation_) {
+            attractionNavigation_.reset();
+            ai_.navigation={};
+        }
+        attackDamage=ai_.Update(position_,rotation_,playerPosition,dt,dead,world,
+            definition_.collisionRadius,definition_.collisionHeight,playerEyeHeight,navigationBudget,speedMultiplier);
+    }
     const bool moving = !IsDead() && std::hypot(position_.x-previous.x, position_.z-previous.z) > 1e-6f;
     animation_.Advance(dt, moving, parts_);
     UpdateVisuals(dt);
@@ -1010,6 +1124,7 @@ void Enemy::DrawFaces(float cameraClearance) {
 Enemy::DebugState Enemy::CaptureDebug() const {
     DebugState state;
     state.definition=definition_; state.ai=ai_; state.parts=parts_;
+    state.attractionNavigation=attractionNavigation_;
     state.animation=animation_;
     state.position=position_; state.rotation=rotation_; state.scale=scale_;
     state.spawnId=spawnId_; state.trigger=spawnTriggerId_; state.nextOrder=nextSpawnOrder_;
@@ -1033,6 +1148,7 @@ Enemy::DebugState Enemy::CaptureDebug() const {
 }
 void Enemy::RestoreDebug(const DebugState& state) {
     definition_=state.definition; ai_=state.ai; parts_=state.parts;
+    attractionNavigation_=state.attractionNavigation;
     animation_=state.animation;
     asset_=state.asset; visuals_.resize(parts_.size());
     exploded_=state.exploded; splitVisuals_=state.splitVisuals; hasHitBox_=state.hasHitBox;

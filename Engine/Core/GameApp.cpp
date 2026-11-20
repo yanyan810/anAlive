@@ -55,6 +55,7 @@
 #include <cmath>
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "../../tests/EnemyPoolTests.h"
+#include "../../tests/ThrowableRuntimeTests.h"
 #include "../../tests/TitleSceneTests.h"
 #include "../../tests/ClothRuntimeTests.h"
 #endif
@@ -238,6 +239,16 @@ int GameApp::Run() {
         }
         Finalize_(); return result;
     }
+    if (HasLaunchArgument(L"--throwable-runtime-test")) {
+        int result=0;
+        std::filesystem::create_directories("generated/throwable-tests");
+        try { RunThrowableRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/throwable-tests/result.txt")<<"FAIL: "<<error.what()<<'\n';
+            result=1;
+        }
+        Finalize_(); return result;
+    }
     if (std::wstring(GetCommandLineW()).find(L"--enemy-pool-test")!=std::wstring::npos) {
         int result=0;
         try { RunEnemyPoolTests(*this); }
@@ -371,7 +382,15 @@ bool GameApp::Initialize_() {
     // SceneManager
     sceneMgr_ = std::make_unique<SceneManager>();
     sceneMgr_->Initialize(*this);
+#if defined(NDEBUG) && !defined(DEVELOPMENT_BUILD)
+    // The submission build shows the hotel escape directly from GAME START.
+    sceneMgr_->Register(GameScene::kHotelExitScene, [] {
+        return std::make_unique<GameScene>(false,"stage04",GameScene::EntryPoint::HotelExit);
+    });
+    sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(GameScene::kHotelExitScene); });
+#else
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
+#endif
     sceneMgr_->Register("EnemyAITest", [] { return std::make_unique<EnemyAITestScene>(); });
     sceneMgr_->Register("EnemyPlacementEditor", [] { return std::make_unique<EnemyPlacementEditorScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });

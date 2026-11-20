@@ -4,8 +4,8 @@
 #include <cmath>
 #include <string>
 
-void GameHUD::Initialize(SpriteCommon* common, DirectXCommon* dx,bool hasDoors) {
-    font_.Initialize(common, dx, hasDoors ? 24 : 16);
+void GameHUD::Initialize(SpriteCommon* common, DirectXCommon* dx,bool hasDoors,bool hasThrowables) {
+    font_.Initialize(common, dx, hasThrowables ? 160 : hasDoors ? 24 : 16);
     weaponHUD_.Initialize(common, dx);
     for (Sprite* sprite : {&hpBackground_, &hpBar_}) {
         sprite->Initialize(common, dx, "resources/white1x1.png");
@@ -18,7 +18,7 @@ void GameHUD::Initialize(SpriteCommon* common, DirectXCommon* dx,bool hasDoors) 
 }
 
 void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float width, float height,
-    bool showPickup,std::string_view doorPrompt) {
+    bool showPickup,std::string_view doorPrompt,std::string_view throwable,std::string_view throwablePickup) {
     constexpr float maxHP = 100.0f;
     hp_ = std::isfinite(player.GetHP()) ? std::clamp(player.GetHP(), 0.0f, maxHP) : 0.0f;
     // Match the weapon panel's bottom margin, scaling both panels on smaller viewports.
@@ -42,6 +42,20 @@ void GameHUD::Update(const Player& player, const WeaponSystem& weapons, float wi
     const auto nearest = weapons.Nearest(player.GetTransform().translate);
     const auto* nearby = showPickup && nearest ? weapons.PickupDefinition(weapons.Pickups()[*nearest]) : nullptr;
     weaponHUD_.Update(player.CurrentWeapon(), nearby, width, height);
+    if (!throwable.empty()) {
+        const float left=width-484*scale;
+        const float y=height-176*scale;
+        const float advance=std::min(16.0f,460.0f/static_cast<float>(throwable.size()))*scale;
+        font_.DrawText(throwable,left+1,y+1,advance,{0,0,0,1});
+        font_.DrawText(throwable,left,y,advance,{.8f,1,.8f,1});
+    }
+    if (!throwablePickup.empty() && !nearby) {
+        const std::string prompt="E PICK UP "+std::string(throwablePickup);
+        const float advance=std::min(16.0f,800.0f/static_cast<float>(prompt.size()))*scale;
+        const float left=(width-static_cast<float>(prompt.size())*advance)*.5f;
+        font_.DrawText(prompt,left+1,height*.70f+1,advance,{0,0,0,1});
+        font_.DrawText(prompt,left,height*.70f,advance,{1,1,1,1});
+    }
 }
 
 void GameHUD::Draw(const Matrix4x4& view, const Matrix4x4& projection) {

@@ -108,7 +108,7 @@ bool InvestigateEvidence(const SourceReader& source, const Limits& limits, std::
         const auto world = check({"Game/StageWorld.h", "bool Raycast(const Vector3& origin", 20, {
             "for(const auto&c:colliders){if(c.playerOnly)continue;if(sight&&!c.blocksSight)continue;",
             "if(CastBox(c,origin,unit,range,padding,candidate)){found=true;hit=candidate;range=hit.distance;} } return found;"}});
-        const auto caller = check({kEnemy, "float Enemy::Update(", 10, {"ai_.Update(position_,rotation_,playerPosition,dt,IsDead(),world,", "return attackDamage;"}});
+        const auto caller = check({kEnemy, "attackDamage=ai_.Update(", 10, {"ai_.Update(position_,rotation_,playerPosition,dt,dead,world,", "return attackDamage;"}});
         claim("初回発見では、視界を遮る壁で両方の視認サンプルが遮られると認識できません。Enemy::Update から渡されたワールドの Raycast が、視界を遮るコライダーとの交差を判定します。",
             "ワールドの衝突判定から初回発見までの接続を確認できませんでした。", {sight, world, caller});
         claim("遮蔽なし・視野内・視認距離内を満たすサンプルがなければ視認は失敗します。視認できても、初回で検知時間に達していなければ認識は成立しません。既に出ている追跡指示は tracking を継続させます。",
@@ -137,16 +137,16 @@ bool InvestigateEvidence(const SourceReader& source, const Limits& limits, std::
             "if(IsDead()||part>=parts_.size()||parts_[part].Destroyed())return{};", "result.damage=ApplyDamage(part,damage,direction);"}});
         const auto apply = check({kEnemy, "float Enemy::ApplyDamage(size_t", 8, {
             "const float lost=DamageEnemyPart(parts_,index,damage); if(lost<=0)return lost;"}});
-        const auto hp = check({"Game/enemy/EnemyParts.h", "inline float DamageEnemyPart(EnemyParts& parts,size_t", 17, {
-            "if(part.usesLocalHp){const float before=part.hp;part.hp=std::max(0.0f,before-damage);localLost=before-part.hp;}",
-            "if(part.sharedGroup<parts.hpGroups.size()){auto&group=parts.hpGroups[part.sharedGroup];const float before=group.hp;group.hp=std::max(0.0f,before-damage*part.sharedDamageRate);sharedLost=before-group.hp;}", "return std::max(localLost,sharedLost);"}});
+        const auto hp = check({"Game/enemy/EnemyParts.h", "inline float ReduceEnemyHp(", 19, {
+            "hp=std::max(0.0f,before-damage);", "if(part.usesLocalHp)localLost=ReduceEnemyHp(part.hp,damage);",
+            "if(part.sharedGroup<parts.hpGroups.size()){auto&group=parts.hpGroups[part.sharedGroup];sharedLost=ReduceEnemyHp(group.hp,damage*part.sharedDamageRate);}", "return std::max(localLost,sharedLost);"}});
         claim("武器定義JSONの damage が WeaponDefinition.damage に読み込まれ、弾を生成するときに各ペレットへコピーされます。",
             "武器定義の damage から各ペレットまでの値の経路を確認できませんでした。", {json, scene, definition, bullet});
         claim("弾が敵に当たると BulletManager が部位と弾のダメージを ApplyBulletDamage に渡します。ApplyDamage を経由して DamageEnemyPart が部位HPを減らし、共有HPには sharedDamageRate を掛けた値を適用します。HPの下限は0です。",
             "弾の命中から部位HP・共有HPの減算までの全経路を確認できませんでした。", {impact, wrapper, apply, hp});
     } else if (topic == "update") {
         const auto definition = check({kAi, "float Update(Vector3& position", 10, {"float Update(Vector3&position,Vector3&rotation,const Vector3&target,float dt,bool dead,"}});
-        const auto caller = check({kEnemy, "float Enemy::Update(", 10, {"ai_.Update(position_,rotation_,playerPosition,dt,IsDead(),world,", "return attackDamage;"}});
+        const auto caller = check({kEnemy, "attackDamage=ai_.Update(", 10, {"ai_.Update(position_,rotation_,playerPosition,dt,dead,world,", "return attackDamage;"}});
         claim("EnemyAI::Update は EnemyAI.h に定義され、Enemy::Update から位置・回転・プレイヤー位置・ワールドを渡して呼ばれます。",
             "EnemyAI::Update の定義と呼び出し元を確認できませんでした。", {definition, caller});
     } else if (topic == "spawn") {

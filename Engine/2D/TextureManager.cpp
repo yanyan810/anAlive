@@ -160,6 +160,24 @@ void TextureManager::RegisterImage_(const std::string& key,const DirectX::Scratc
     textureDatas_.emplace(key,std::move(tex));
 }
 
+TextureManager::OwnedTexture::~OwnedTexture() {
+    if (manager && index) manager->Retire(index,std::move(resource));
+}
+
+std::shared_ptr<const TextureManager::OwnedTexture> TextureManager::CreateOwnedTexture(const PreparedTexture& prepared) {
+    if (!prepared.image) return {};
+    auto texture=std::make_shared<OwnedTexture>();
+    texture->manager=srvManager_;
+    texture->index=srvManager_->Allocate();
+    const auto& metadata=prepared.image->GetMetadata();
+    texture->resource=dx_->CreateTextureResource(metadata);
+    dx_->UploadTextureData(texture->resource,*prepared.image);
+    texture->handle=srvManager_->GetGPUDescriptionHandle(texture->index);
+    if (metadata.IsCubemap()) srvManager_->CreateSRVTextureCube(texture->index,texture->resource.Get(),metadata.format,static_cast<UINT>(metadata.mipLevels));
+    else srvManager_->CreateSRVTexture2D(texture->index,texture->resource.Get(),metadata.format,static_cast<UINT>(metadata.mipLevels));
+    return texture;
+}
+
 // TextureManager.cpp
 bool TextureManager::HasTexture(const std::string& key) const {
     return textureDatas_.contains(key);

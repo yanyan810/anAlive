@@ -27,6 +27,7 @@
 #include "DebugTimeline.h"
 #include "DebugJsonEditor.h"
 #ifdef USE_IMGUI
+#include "EnemyEditor.h"
 #include "WeaponEditorUI.h"
 #endif
 #endif
@@ -165,6 +166,13 @@ private:
         stageLoaded_ ? StagePath() : "resources/levels/fps_spawns.json"; }
     std::string StagePath() const { return "resources/levels/"+stageId_+"/"+stageId_+".json"; }
     void ResetShowroomEnemies(GameApp& app);
+    bool LoadShowroomTestConfig(GameApp& app,const std::filesystem::path& config);
+    bool ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path& path);
+    void ReplaceShowroomTest(GameApp& app,const std::shared_ptr<const EnemyAsset>& asset,const std::string& behavior);
+    std::filesystem::path showroomTestAsset_;
+    std::string showroomTestBehavior_,showroomTestAssetError_;
+    std::shared_ptr<const EnemyAsset> showroomSavedAsset_;
+    bool showroomDraftApplied_=false;
     void RecycleEnemies();
     void DrawEnemyPoolStats();
     void DrawShowroomTools(GameApp& app);
@@ -207,12 +215,12 @@ private:
     std::optional<WeaponRuntime> beforeWeaponTest_;
     float weaponPreviewAspect_=1.0f;
     bool showTestAssetPanel_=false;
-    std::filesystem::path showroomTestAsset_;
+    EnemyEditor enemyEditor_;
+    bool showEnemyEditor_=false,enemyEditorTest_=false,showroomConfigPending_=false;
     std::optional<std::filesystem::path> pendingShowroomTestAsset_;
     std::vector<std::filesystem::path> showroomTestAssets_;
-    std::string showroomTestAssetError_;
-    bool ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path& path);
     void DrawShowroomTestAssetControls();
+    void OpenShowroomEnemyEditor();
     void DrawWeaponWorkspace(GameApp& app);
     void UpdateWeaponPreview();
 #endif

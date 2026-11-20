@@ -47,7 +47,7 @@ struct EnemyDefinition {
 };
 class EnemyDefinitions {
 public:
-    bool Load(const std::string& path) {
+    bool Load(const std::string& path,EnemyAsset::ModelLoader modelLoader=nullptr) {
         try {
             std::ifstream file(path);
             if (!file) throw std::runtime_error("Cannot open " + path);
@@ -63,7 +63,7 @@ public:
                 const auto assetPath=reference.empty()?std::string{}:ResolveEnemyResource(reference,path);
                 if (!assetPath.empty()) {
                     auto& asset=assets[assetPath];
-                    if (!asset) asset=EnemyAsset::Load(assetPath);
+                    if (!asset) asset=EnemyAsset::Load(EnemyUtf8Path(assetPath),modelLoader);
                     d.partAsset=asset;
                 }
                 const auto type=item.at("type").get<std::string>();

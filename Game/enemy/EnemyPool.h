@@ -32,6 +32,7 @@ public:
         Clear(); common_=common; dx_=dx; camera_=camera;
         for (const auto& [id,definition]:definitions.All()) {
             auto& bucket=buckets_[id]; bucket.definition=definition;
+            if (definition.partAsset && definition.partAsset->model) bucket.renderAsset=Enemy::BuildAssetModels(definition.partAsset);
             const auto found=settings.overrides.find(id);
             const auto count=found==settings.overrides.end() ? settings.perDefinition : found->second;
             bucket.slots.reserve(count);
@@ -72,15 +73,29 @@ public:
             slot.enemy->RetireFromPool(); slot.active=false;
         }
     }
-    // Caller waits for GPU and rebuilds its borrowed pointers after replacement.
-    void ReplaceDefinition(const EnemyDefinition& definition) {
+    struct ReplacementSpawn {
+        uint64_t id;
+        std::string trigger;
+        Vector3 position,rotation;
+    };
+    // Build and optionally spawn the replacement before invalidating any borrowed pointers.
+    // Caller waits for GPU and updates its borrowed pointer after replacement.
+    Enemy* ReplaceDefinition(const EnemyDefinition& definition,const ReplacementSpawn* spawn=nullptr) {
         auto& current=buckets_.at(definition.id);
         Bucket next;
         next.definition=definition;
         if (definition.partAsset) next.renderAsset=Enemy::BuildAssetModels(definition.partAsset);
         next.slots.reserve(current.slots.size());
         for (size_t i=0;i<current.slots.size();++i) Add(next,false);
+        Enemy* replacement=nullptr;
+        if (spawn) {
+            auto& slot=next.slots.empty() ? Add(next,false) : next.slots.front();
+            slot.enemy->ResetForSpawn(spawn->id,spawn->trigger,spawn->position,spawn->rotation);
+            slot.active=true;
+            replacement=slot.enemy.get();
+        }
         current=std::move(next);
+        return replacement;
     }
     void Clear() { buckets_.clear(); runtimeAllocations_=0; }
     size_t Active() const {

@@ -1,6 +1,7 @@
 #pragma once
 #include "Raycast.h"
 #include <array>
+#include <cstdint>
 #include <algorithm>
 #include <limits>
 #include <vector>
@@ -65,6 +66,7 @@ struct EnemyPartVertex { Vector3 position{},normal{0,1,0}; Vector2 uv{}; };
 struct EnemyPartGeometry {
     std::vector<std::array<EnemyPartVertex,3>> triangles;
     std::vector<std::array<Vector3,3>> faces; // shared with Face Shatter; never copied per enemy
+    std::vector<uint32_t> materials; // Per-triangle material for model-referenced assets.
 };
 inline auto PartitionEnemyChunks(const EnemyPartGeometry& geometry,const AABB& bounds) {
     std::array<std::vector<std::array<EnemyPartVertex,3>>,8> buckets;
@@ -182,6 +184,24 @@ inline bool EnemyPartTransformIsInvertible(const Matrix4x4& world) {
         +world.m[0][2]*(world.m[1][0]*world.m[2][1]-world.m[1][1]*world.m[2][0]);
     return std::isfinite(determinant) && std::abs(determinant)>=1e-8f;
 }
+inline bool RaycastEnemyTriangle(const Vector3& origin,const Vector3& direction,
+    const std::array<Vector3,3>& triangle,float& nearest) {
+    const auto edge1=triangle[1]-triangle[0],edge2=triangle[2]-triangle[0];
+    const auto p=Matrix4x4::Cross(direction,edge2);
+    const auto dot=[](Vector3 a,Vector3 b) { return a.x*b.x+a.y*b.y+a.z*b.z; };
+    const float det=dot(edge1,p);
+    if (std::abs(det)<1e-9f) return false;
+    const auto delta=origin-triangle[0];
+    const float u=dot(delta,p)/det;
+    if (u<0 || u>1) return false;
+    const auto q=Matrix4x4::Cross(delta,edge1);
+    const float v=dot(direction,q)/det;
+    if (v<0 || u+v>1) return false;
+    const float distance=dot(edge2,q)/det;
+    if (!(distance>=0 && distance<=nearest)) return false;
+    nearest=distance;
+    return true;
+}
 inline EnemyParts MakeEnemyParts(const AABB& model) {
     // Boss bind pose: local Y is up, Z is arm span, X is depth.
     // Left/right are the enemy's own sides (+Z = left), not camera-relative.
@@ -227,22 +247,8 @@ inline bool RaycastEnemyPartsTransformed(const EnemyParts& parts, WorldForPart w
             // Two-sided Moller-Trumbore in model space; t remains world distance.
             bool found=false;
             float nearest=closest;
-            const auto cross=[](Vector3 a,Vector3 b) { return Vector3{a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x}; };
-            const auto dot=[](Vector3 a,Vector3 b) { return a.x*b.x+a.y*b.y+a.z*b.z; };
-            for (const auto& triangle:part.geometry->faces) {
-                const auto edge1=triangle[1]-triangle[0],edge2=triangle[2]-triangle[0];
-                const auto p=cross(localDirection,edge2);
-                const float det=dot(edge1,p);
-                if (std::abs(det)<1e-9f) continue;
-                const auto delta=localOrigin-triangle[0];
-                const float u=dot(delta,p)/det;
-                if (u<0 || u>1) continue;
-                const auto q=cross(delta,edge1);
-                const float v=dot(localDirection,q)/det;
-                if (v<0 || u+v>1) continue;
-                const float t=dot(edge2,q)/det;
-                if (t>=0 && t<=nearest) { nearest=t; found=true; }
-            }
+            for (const auto& triangle:part.geometry->faces)
+                if (RaycastEnemyTriangle(localOrigin,localDirection,triangle,nearest)) found=true;
             if (!found) continue;
             localDistance=nearest*factor;
         }

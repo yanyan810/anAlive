@@ -16,12 +16,17 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 EXAMPLES = ROOT / 'resources/enemy/boss' if '--write-examples' in sys.argv else OUTPUT
 
 
-def new_mesh(name, triangles):
+def new_mesh(name, triangles, weld=False):
     if bpy.context.object and bpy.context.object.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.select_all(action='DESELECT')
     mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata([v for tri in triangles for v in tri], [], [tuple(range(i*3,i*3+3)) for i in range(len(triangles))])
+    if weld:
+        vertices, faces = addon.welded_triangles(triangles)
+    else:
+        vertices = [v for tri in triangles for v in tri]
+        faces = [tuple(range(i*3,i*3+3)) for i in range(len(triangles))]
+    mesh.from_pydata(vertices, [], faces)
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
@@ -118,6 +123,43 @@ assert len(data['parts'][0]['triangles']) == 4
 assert sum(len(p['triangles']) for p in data['parts']) == 12
 assert data['parts'][0]['localHp'] is None and not data['hpGroups'][0]['deathOnZero']
 
+# A selection of native meshes shares the active object's Part settings.
+bpy.ops.object.mode_set(mode='OBJECT')
+a = new_mesh('Multi A', [[(0,0,0),(1,0,0),(0,0,1)]])
+b = new_mesh('Multi B', [[(0,0,0),(1,0,0),(0,0,1)]])
+b.location.x = 2
+a.select_set(True)
+bpy.context.view_layer.objects.active = a
+addon.add_part(a.data, 'Both')
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.select_all(action='SELECT')
+assert bpy.ops.yan.enemy_part(action='ASSIGN') == {'FINISHED'}
+multi = addon.export_asset(a, OUTPUT / 'multi.enemy.json', [a,b])
+assert multi['parts'][0]['faces'] == [0,1] and len(multi['parts'][0]['triangles']) == 2
+bpy.ops.object.mode_set(mode='OBJECT')
+
+# Engine exchange mesh: independent mesh instances, source IDs and fit scale.
+reference = dict(path='resources/cube/cube.obj', geometrySignature='fixture', faceCount=2, scale=2)
+face_keys = [[0,0,0,0], [1,0,0,0]]
+referenced = dict(version=2, coordinateSystem='yanengine', model=reference, hpGroups=[],
+                  parts=[dict(name='Core', role='Core', localHp=50, breakable=True,
+                              sharedHpGroup='', sharedDamageRate=1, deathOnZero=True, faces=[face_keys[0]])])
+ref_path = OUTPUT / 'reference.enemy.json'
+addon.write_asset(ref_path, referenced)
+addon.write_asset(ref_path.with_name(ref_path.name + '.mesh.json'), dict(model=reference,
+    materials=[dict(color=[1,1,1,1], texture='')],
+    faces=[dict(id=key, vertices=record['vertices']) for key, record in zip(face_keys, multi['parts'][0]['triangles'])]))
+objects = addon.import_asset(bpy.context, ref_path)
+assert len(objects) == 2
+assert addon.export_asset(objects[1], OUTPUT / 'reference-roundtrip.enemy.json') == referenced
+objects[1].data.vertices[0].co.x += .5
+try:
+    addon.export_asset(objects[1], OUTPUT / 'reference-roundtrip.enemy.json')
+    raise AssertionError('Changed reference geometry accepted')
+except ValueError as error:
+    assert 'mesh changed' in str(error)
+assert json.loads((OUTPUT / 'reference-roundtrip.enemy.json').read_text()) == referenced
+
 # Normal compatibility sample from the SAME 712 original, already-classified faces.
 # A single mesh is authored; no separate glTF files are produced/required by the new asset.
 legacy = json.loads((ROOT / 'resources/enemy/boss/faces/faces.json').read_text())
@@ -126,7 +168,7 @@ names = ['Head','Body','LeftArm','RightArm','LeftLeg','RightLeg']
 roles = ['Head','Body','Arm','Arm','Leg','Leg']
 hps = [50,100,60,60,70,70]
 faces = [tri for key in keys for tri in legacy['parts'][key]]
-obj = new_mesh('NormalFaceParts', [[(x,-z,y) for x,y,z in tri] for tri in faces])
+obj = new_mesh('NormalFaceParts', [[(x,-z,y) for x,y,z in tri] for tri in faces], weld=True)
 for name,role,hp in zip(names,roles,hps):
     p = addon.add_part(obj.data, name, role)
     p.local_hp = hp
@@ -142,6 +184,10 @@ normal = addon.export_asset(obj, EXAMPLES / 'normal.enemy.json')
 assert sum(len(p['triangles']) for p in normal['parts']) == 712
 assert [len(p['triangles']) for p in normal['parts']] == [len(legacy['parts'][key]) for key in keys]
 bpy.ops.object.mode_set(mode='OBJECT')
+islands = addon.connected_face_sizes(obj.data)
+assert len(obj.data.vertices) < 2136 and sum(islands) == 712
+print('Normal: %d vertices, %d edge-connected islands (triangles per island: %s)' %
+      (len(obj.data.vertices), len(islands), ', '.join(map(str,islands))))
 # Keep only example object in saved file; preserve source assets on disk.
 for other in list(bpy.data.objects):
     if other != obj:
@@ -156,4 +202,4 @@ for p in obj.data.yan_enemy_parts:
     p.death_on_zero = False
 obj.data.yan_enemy_parts[1].breakable = False
 addon.export_asset(obj, EXAMPLES / 'shared-boss.enemy.json')
-print('PASS: edit-mode assign/select/clear/remove, stable IDs, 9 parts, unique membership, unassigned faces, roundtrip, invalid group, six-part normal and shared boss exports.')
+print('PASS: edit-mode assignment, multi-mesh snapshots, v2 mesh roundtrip and topology guard, welded Normal, shared boss.')

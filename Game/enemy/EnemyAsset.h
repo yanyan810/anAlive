@@ -1,5 +1,5 @@
 #pragma once
-#include "EnemyParts.h"
+#include "EnemyModelSurface.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <filesystem>
@@ -9,12 +9,12 @@
 // Resource references are game-root relative. Walking source ancestors also supports
 // tools/tests opening the same asset from a generated working directory.
 inline std::string ResolveEnemyResource(const std::string& reference,const std::filesystem::path& source) {
-    const std::filesystem::path requested(reference);
-    if (std::filesystem::is_regular_file(requested)) return std::filesystem::relative(std::filesystem::weakly_canonical(requested)).generic_string();
+    const auto requested=EnemyUtf8Path(reference);
+    if (std::filesystem::is_regular_file(requested)) return EnemyPathText(std::filesystem::relative(requested));
     auto base=std::filesystem::absolute(source).parent_path();
     while (!base.empty()) {
         const auto candidate=base/requested;
-        if (std::filesystem::is_regular_file(candidate)) return std::filesystem::relative(std::filesystem::weakly_canonical(candidate)).generic_string();
+        if (std::filesystem::is_regular_file(candidate)) return EnemyPathText(std::filesystem::relative(candidate));
         const auto parent=base.parent_path();
         if (parent==base) break;
         base=parent;
@@ -23,7 +23,11 @@ inline std::string ResolveEnemyResource(const std::string& reference,const std::
 }
 // Immutable CPU asset; instances copy only HP/configuration and share triangle storage.
 struct EnemyAsset {
+    using ModelLoader=std::shared_ptr<const EnemyModelSurface>(*)(const std::string&);
     std::string path,texture="resources/white1x1.png";
+    std::string modelPath;
+    std::shared_ptr<const EnemyModelSurface> model;
+    float modelScale=1;
     EnemyParts defaults;
     EnemyParts Instantiate(float multiplier=1) const {
         auto result=defaults;
@@ -31,17 +35,25 @@ struct EnemyAsset {
         for (auto& group:result.hpGroups) group.hp=group.maxHp*=multiplier;
         return result;
     }
-    static std::shared_ptr<const EnemyAsset> Load(const std::filesystem::path& path) {
-        const auto utf8Path=path.generic_u8string();
-        const std::string pathText(utf8Path.begin(),utf8Path.end());
+    static std::shared_ptr<const EnemyAsset> Load(const std::filesystem::path& path,ModelLoader loader=nullptr) {
+        const auto pathText=EnemyPathText(path);
         std::ifstream input(path);
         if (!input) throw std::runtime_error("Cannot open EnemyAsset: "+pathText);
         nlohmann::json data; input>>data;
-        auto asset=std::make_shared<EnemyAsset>(); asset->path=pathText;
-        if (data.at("version")!=1 || data.at("coordinateSystem")!="yanengine")
-            throw std::runtime_error("Unsupported EnemyAsset format: "+pathText);
-        asset->texture=ResolveEnemyResource(data.value("texture",asset->texture),path);
-        if (!std::filesystem::is_regular_file(asset->texture)) throw std::runtime_error("Missing EnemyAsset texture: "+asset->texture);
+        std::shared_ptr<const EnemyModelSurface> model;
+        if (data.at("version")==2) {
+            if (!loader) throw std::runtime_error("EnemyAsset version 2 requires a model importer");
+            model=loader(data.at("model").at("path").get<std::string>());
+        }
+        return Parse(data,path,std::move(model));
+    }
+    static std::shared_ptr<EnemyAsset> Parse(const nlohmann::json& data,const std::filesystem::path& path,
+        std::shared_ptr<const EnemyModelSurface> model={}) {
+        auto asset=std::make_shared<EnemyAsset>(); asset->path=EnemyPathText(path);
+        const bool version2=data.at("version")==2;
+        if ((!version2 && data.at("version")!=1) || data.at("coordinateSystem")!="yanengine")
+            throw std::runtime_error("Unsupported EnemyAsset format: "+asset->path);
+        if (!version2) asset->texture=ResolveEnemyResource(data.value("texture",asset->texture),path);
         const auto number=[](const nlohmann::json& value,bool positive) {
             if (!value.is_number()) throw std::runtime_error("Expected numeric EnemyAsset value");
             const float result=value.get<float>();
@@ -49,6 +61,17 @@ struct EnemyAsset {
                 throw std::runtime_error("Invalid EnemyAsset number");
             return result;
         };
+        std::vector<bool> modelAssigned;
+        if (version2) {
+            const auto& reference=data.at("model");
+            if (!model || reference.at("geometrySignature")!=model->signature || reference.at("faceCount")!=model->faces.size())
+                throw std::runtime_error("Model geometry changed. Reopen the source model and assign its faces again.");
+            asset->modelPath=reference.at("path").get<std::string>();
+            asset->modelScale=number(reference.value("scale",nlohmann::json(1)),true);
+            if (asset->modelScale<.01f || asset->modelScale>100.f) throw std::runtime_error("Model scale must be in [0.01, 100]");
+            asset->model=std::move(model);
+            modelAssigned.resize(asset->model->faces.size());
+        }
         const auto vector=[](const nlohmann::json& value) {
             if (!value.is_array() || value.size()!=3) throw std::runtime_error("Expected EnemyAsset vec3");
             Vector3 result{value.at(0).get<float>(),value.at(1).get<float>(),value.at(2).get<float>()};
@@ -56,6 +79,7 @@ struct EnemyAsset {
             return result;
         };
         std::map<std::string,size_t> groups;
+        if (!data.at("hpGroups").is_array() || data.at("hpGroups").size()>4096) throw std::runtime_error("Invalid HP groups");
         for (const auto& item:data.at("hpGroups")) {
             EnemyHpGroup group;
             group.id=item.at("id").get<std::string>(); group.hp=group.maxHp=number(item.at("maxHp"),true);
@@ -65,13 +89,14 @@ struct EnemyAsset {
         }
         std::set<std::string> names;
         std::set<int> assignedFaces;
-        if (!data.at("parts").is_array() || data.at("parts").empty() || data.at("parts").size()>4096)
+        if (!data.at("parts").is_array() || (!version2 && data.at("parts").empty()) || data.at("parts").size()>4096)
             throw std::runtime_error("EnemyAsset requires 1..4096 parts");
         size_t triangleCount=0;
         for (const auto& item:data.at("parts")) {
             EnemyPart part;
             part.name=item.at("name").get<std::string>();
             if (part.name.empty() || !names.insert(part.name).second) throw std::runtime_error("Duplicate/empty part name");
+            if (version2 && part.name=="__Unassigned") throw std::runtime_error("__Unassigned is a reserved part name");
             const auto role=item.value("role",std::string("Generic"));
             bool known=false;
             for (auto r:kEnemyPartRoles)
@@ -93,6 +118,22 @@ struct EnemyAsset {
                 if (found==groups.end()) throw std::runtime_error("Unknown sharedHpGroup: "+group);
                 part.sharedGroup=found->second;
             }
+            if (!item.at("faces").is_array()) throw std::runtime_error("Part faces must be an array");
+            auto geometry=std::make_shared<EnemyPartGeometry>();
+            if (version2) {
+                for (const auto& face:item.at("faces")) {
+                    const auto id=ReadModelFaceId(face);
+                    const auto index=asset->model->FindFace(id);
+                    if (index==kNoEnemyPart) throw std::runtime_error("Unknown model face in "+part.name);
+                    if (modelAssigned[index]) throw std::runtime_error("Model face belongs to multiple parts");
+                    modelAssigned[index]=true;
+                    AppendModelFace(*geometry,part.bounds,*asset->model,index,asset->modelScale);
+                }
+                if (geometry->faces.empty()) throw std::runtime_error("Assign at least one face to "+part.name);
+                part.geometry=std::move(geometry);
+                asset->defaults.push_back(std::move(part));
+                continue;
+            }
             std::set<int> partFaces;
             for (const auto& face:item.at("faces")) {
                 if (!face.is_number_integer()) throw std::runtime_error("Face ID must be integer");
@@ -100,7 +141,6 @@ struct EnemyAsset {
                 if (id<0 || !assignedFaces.insert(id).second) throw std::runtime_error("Face belongs to multiple parts");
                 partFaces.insert(id);
             }
-            auto geometry=std::make_shared<EnemyPartGeometry>();
             std::set<int> usedFaces;
             for (const auto& triangle:item.at("triangles")) {
                 if (++triangleCount>1000000) throw std::runtime_error("EnemyAsset triangle limit");
@@ -110,24 +150,44 @@ struct EnemyAsset {
                 const auto& vertices=triangle.at("vertices");
                 if (vertices.size()!=3) throw std::runtime_error("EnemyAsset expects triangles");
                 std::array<EnemyPartVertex,3> tri;
-                std::array<Vector3,3> positions;
                 for (size_t i=0;i<3;++i) {
-                    tri[i].position=positions[i]=vector(vertices[i].at("p"));
+                    tri[i].position=vector(vertices[i].at("p"));
                     tri[i].normal=vector(vertices[i].at("n"));
                     const auto& uv=vertices[i].at("uv");
                     if (!uv.is_array() || uv.size()!=2) throw std::runtime_error("Invalid UV");
                     tri[i].uv={uv[0].get<float>(),uv[1].get<float>()};
                     if (!std::isfinite(tri[i].uv.x) || !std::isfinite(tri[i].uv.y)) throw std::runtime_error("Invalid UV");
-                    const auto p=positions[i];
-                    if (geometry->triangles.empty() && i==0) part.bounds={p,p};
-                    part.bounds.min={std::min(part.bounds.min.x,p.x),std::min(part.bounds.min.y,p.y),std::min(part.bounds.min.z,p.z)};
-                    part.bounds.max={std::max(part.bounds.max.x,p.x),std::max(part.bounds.max.y,p.y),std::max(part.bounds.max.z,p.z)};
                 }
-                geometry->triangles.push_back(tri); geometry->faces.push_back(positions);
+                AppendEnemyTriangle(*geometry,part.bounds,tri);
             }
             if (geometry->faces.empty() || usedFaces!=partFaces) throw std::runtime_error("Empty part / face without triangles: "+part.name);
             part.geometry=std::move(geometry); asset->defaults.push_back(std::move(part));
         }
+        if (version2) {
+            EnemyPart other;
+            other.name="__Unassigned";
+            other.usesLocalHp=false;
+            other.hp=other.maxHp=0;
+            other.breakable=false;
+            auto geometry=std::make_shared<EnemyPartGeometry>();
+            for (size_t i=0;i<modelAssigned.size();++i)
+                if (!modelAssigned[i]) AppendModelFace(*geometry,other.bounds,*asset->model,i,asset->modelScale);
+            if (!geometry->faces.empty()) {
+                other.geometry=std::move(geometry);
+                asset->defaults.push_back(std::move(other));
+            }
+        }
         return asset;
+    }
+    static EnemyModelFaceId ReadModelFaceId(const nlohmann::json& face) {
+        if (!face.is_array() || face.size()!=4) throw std::runtime_error("Expected [instance, mesh, material, triangle]");
+        for (const auto& index:face) if (!index.is_number_integer() || index.get<double>()<0 || index.get<double>()>UINT32_MAX)
+            throw std::runtime_error("Invalid model face index");
+        return {face[0].get<uint32_t>(),face[1].get<uint32_t>(),face[2].get<uint32_t>(),face[3].get<uint32_t>()};
+    }
+    static void AppendModelFace(EnemyPartGeometry& geometry,AABB& bounds,const EnemyModelSurface& model,size_t index,float scale) {
+        auto triangle=model.faces[index].vertices;
+        for (auto& vertex:triangle) vertex.position=model.Fit(vertex.position,scale);
+        AppendEnemyTriangle(geometry,bounds,triangle,model.faces[index].id.material);
     }
 };

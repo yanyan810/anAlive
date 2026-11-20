@@ -142,7 +142,7 @@ public:
 		const std::string& directoryPath,
 		const std::string& filename, std::optional<ModelData> prepared = std::nullopt);
 	// CPU-only import/cache path; safe for the model preload worker.
-	static ModelData ReadSourceData(const std::string& directoryPath, const std::string& filename);
+	static ModelData ReadSourceData(const std::string& directoryPath, const std::string& filename, bool useCache=true);
 
 	void Draw(ID3D12GraphicsCommandList* cmd);
 	//パーティクル用
@@ -306,6 +306,7 @@ public:
 
 	// ModelDataを直接入れる
 	void InitializeFromModelData(ModelCommon* modelCommon, const ModelData& modelData);
+	void SetOwnedTextures(std::vector<std::shared_ptr<const TextureManager::OwnedTexture>> textures) { ownedTextures_=std::move(textures); }
 
 private:
 	static Skeleton CreateSkeleton(const Node& rootNode);
@@ -318,12 +319,14 @@ private:
 	void DebugValidateAnimationTracks_() const;
 	void CreatePerMaterialResources_(DirectXCommon* dx);
 	void BindMaterialForMesh_(ID3D12GraphicsCommandList* cmd, const MeshData& mesh);
+	D3D12_GPU_DESCRIPTOR_HANDLE MeshTexture_(const MeshData& mesh) const;
 
 private:
 
 	ModelCommon* modelCommon_;
 
 	ModelData modelData_;
+	std::vector<std::shared_ptr<const TextureManager::OwnedTexture>> ownedTextures_;
 
 	// 頂点データ（バッファ）
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;   // 頂点リソース

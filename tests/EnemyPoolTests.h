@@ -2,6 +2,7 @@
 // Runs in the Debug executable with real D3D resources: --enemy-pool-test.
 #include "GameApp.h"
 #include "scene/Main/GameScene.h"
+#include "EnemyModelSource.h"
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -462,6 +463,73 @@ inline void RunEnemyPoolTests(GameApp& app) {
     showroom.ResetShowroomEnemies(app);
     check(showroom.enemies_==showroomPointers,"reset after recycle");
 #ifdef USE_IMGUI
+    {
+        auto model=std::make_shared<EnemyModelSurface>();
+        model->bounds={{-1,0,0},{1,2,1}};
+        const auto addFace=[&](float x,float z) {
+            EnemyModelSurface::Face face{};
+            face.vertices[0].position={x-.1f,.1f,z};
+            face.vertices[1].position={x+.1f,.1f,z};
+            face.vertices[2].position={x,.4f,z};
+            model->faces.push_back(face);
+        };
+        addFace(0,.1f); addFace(0,.8f); addFace(-.65f,.3f); addFace(.65f,.3f);
+        EnemyEditor editor;
+        editor.draft_.model=model;
+        editor.draft_.parts.resize(2);
+        const std::vector<size_t> initialOwners{0,kNoEnemyPart,kNoEnemyPart,1};
+        editor.draft_.owners=initialOwners;
+        editor.facePicking_=EnemyEditor::FacePicking(model.get());
+        editor.selectionSlots_.assign(4,EnemyEditor::noSelection);
+        editor.partFaceCounts_={1,1};
+        editor.assignedFaceCount_=2;
+        const auto viewport=Matrix4x4::Scale({.5f,.5f,.5f})*Matrix4x4::Translation({0,0,.5f});
+        const ImVec2 lo{0,0},hi{100,100};
+        const auto selected=[&](uint32_t face) { return editor.selectionSlots_[face]!=EnemyEditor::noSelection; };
+        const auto hit=editor.PickFace(editor.facePicking_.Fit({0,.2f,-1}),{0,0,1},10);
+        check(editor.lockAssignedFaces_ && hit==0,"assigned surface did not remain in the editor raycast");
+        editor.ApplyPickedFace(static_cast<uint32_t>(hit));
+        check(editor.selectedFaces_.empty(),"locked click picked an assigned face");
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        check(editor.selectedFaces_.size()==2 && selected(1) && selected(2),"select rectangle was not additive with the lock");
+        editor.selectionMode_=EnemyEditor::SelectionMode::Deselect;
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,{40,100});
+        editor.ApplyPickedFace(3);
+        check(editor.selectedFaces_.size()==1 && selected(1),"deselect rectangle or click removed the wrong faces");
+        editor.ApplyPickedFace(1);
+        check(editor.selectedFaces_.empty() && editor.draft_.owners==initialOwners && !editor.dirty_,
+            "selection operation changed the asset");
+        editor.selectionMode_=EnemyEditor::SelectionMode::Select;
+        editor.activePart_=0;
+        editor.SelectPartFaces();
+        check(editor.selectedFaces_.size()==1 && selected(0),"locked part could not be inspected");
+        editor.ApplySelection(1);
+        check(editor.draft_.owners==initialOwners && selected(0),"inspection alone changed locked assignments");
+        editor.ApplyPickedFace(2);
+        editor.ApplySelection(1);
+        check(editor.draft_.owners==std::vector<size_t>{0,kNoEnemyPart,1,1} &&
+            editor.partFaceCounts_==std::vector<size_t>{1,2} && editor.selectedFaces_.empty(),
+            "locked assignment included an inspected face or left the selection");
+        editor.SetAssignedFaceLock(false);
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        check(editor.selectedFaces_.size()==4,"unlocked rectangle skipped assigned faces");
+        editor.SetAssignedFaceLock(true);
+        check(editor.selectedFaces_.size()==1 && selected(1),"enabling the lock failed to remove assigned selections");
+        editor.SetAssignedFaceLock(false);
+        editor.ApplyPickedFace(0);
+        editor.SetFaceSelected(1,false);
+        editor.ApplySelection(1);
+        check(editor.draft_.owners[0]==1 && editor.partFaceCounts_==std::vector<size_t>{0,3},
+            "unlocked reassignment failed");
+        editor.ApplySelection(kNoEnemyPart);
+        editor.SetAssignedFaceLock(true);
+        check(selected(0) && editor.draft_.owners[0]==kNoEnemyPart && editor.selectedAssignedCount_==0,
+            "unassigned face did not remain selectable");
+        editor.ClearFaceSelection();
+        editor.ApplyPickedFace(0);
+        check(selected(0),"previously assigned face could not be picked again");
+    }
     const auto testEnemy=[&]() -> Enemy& {
         for (auto* enemy:showroom.enemies_) if (enemy->Definition().id=="normal_test") return *enemy;
         throw std::runtime_error("Showroom Normal Test is missing");
@@ -496,7 +564,111 @@ inline void RunEnemyPoolTests(GameApp& app) {
     showroom.Update(app,0);
     check(!showroom.showroomTestAssetError_.empty() && &testEnemy()==reloaded && testEnemy().CaptureDebug().parts.front().hp==90,
         "invalid Showroom JSON replaced the current enemy");
+
+    const auto documentFor=[](const std::string& path,const EnemyModelSurface& model) {
+        nlohmann::json faces=nlohmann::json::array();
+        for (const auto& face:model.faces) {
+            const auto& id=face.id;
+            faces.push_back({id.instance,id.mesh,id.material,id.triangle});
+        }
+        const nlohmann::json part{{"name","Model Body"},{"role","Body"},{"localHp",5},{"breakable",true},
+            {"sharedHpGroup","Team"},{"sharedDamageRate",.5},{"faces",std::move(faces)}};
+        return nlohmann::json{{"version",2},{"coordinateSystem","yanengine"},
+            {"model",{{"path",path},{"geometrySignature",model.signature},{"faceCount",model.faces.size()}}},
+            {"hpGroups",nlohmann::json::array({{{"id","Team"},{"maxHp",50}}})},
+            {"parts",nlohmann::json::array({part})}};
+    };
+    const auto pmxPath=EnemyPathText(std::filesystem::path(u8"resources/MyGtYUhe6t/安比.pmx"));
+    const auto pmx=ReadEnemyModel(pmxPath);
+    check(pmx->materials.size()>1 && pmx->faces.size()>1000,"PMX multi-material import");
+    {
+        EnemyEditor editor;
+        editor.draft_.model=pmx;
+        editor.draft_.owners.resize(pmx->faces.size(),kNoEnemyPart);
+        editor.facePicking_=EnemyEditor::FacePicking(pmx.get());
+        editor.selectionSlots_.resize(pmx->faces.size(),EnemyEditor::noSelection);
+        const auto viewport=Matrix4x4::Scale({.25f,.25f,.25f})*Matrix4x4::Translation({0,0,.5f});
+        const ImVec2 lo{0,0},hi{1280,720};
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        check(editor.selectedFaces_.size()==pmx->faces.size(),"PMX rectangle did not select all visible centroids");
+        editor.selectionMode_=EnemyEditor::SelectionMode::Deselect;
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        check(editor.selectedFaces_.empty(),"PMX rectangle skipped faces during deselection");
+    }
+    const auto pmxAssetPath="generated/enemy-pool-tests/pmx.enemy.json";
+    std::ofstream(pmxAssetPath)<<documentFor(pmxPath,*pmx);
+    const auto configPath="generated/enemy-pool-tests/showroom-test.json";
+    std::ofstream(configPath)<<nlohmann::json{{"enemyAsset",pmxAssetPath},{"enemyDefinition","normal"}};
+    check(showroom.LoadShowroomTestConfig(app,configPath),"Showroom PMX config load");
+    check(testEnemy().Definition().partAsset->modelPath==pmxPath &&
+        testEnemy().CaptureDebug().models[0]->GetMeshCount()>1,"Showroom PMX render materials");
+    check(showroom.enemies_.front()==showroomPointers.front() && showroom.enemies_.front()->Definition().partAsset==normalAsset,
+        "model reference replaced regular Normal");
+    app.Srv()->CollectRetired();
+    const auto pmxDescriptors=app.Srv()->ActiveCount();
+
+    const std::string gltfPath="resources/levels/stage03/shutter_000.gltf";
+    const auto gltf=ReadEnemyModel(gltfPath);
+    const auto skinnedGltf=ReadEnemyModel("resources/CGTest/RobotExpressive.glb");
+    check(!skinnedGltf->faces.empty() && skinnedGltf->materials.size()>1,"skinned GLB rest geometry");
+    const auto gltfDoc=documentFor(gltfPath,*gltf);
+    const auto gltfAssetPath="generated/enemy-pool-tests/gltf.enemy.json";
+    std::ofstream(gltfAssetPath)<<gltfDoc;
+    const auto gltfAsset=EnemyAsset::Load(gltfAssetPath,ReadEnemyModel);
+    check(gltfAsset->defaults.front().geometry->faces.size()==gltf->faces.size(),"glTF JSON did not restore faces");
+    auto* beforeInvalid=&testEnemy();
+    auto invalid=gltfDoc;
+    invalid["model"]["geometrySignature"]="modified-source";
+    std::ofstream(testAssetPath)<<invalid;
+    check(!showroom.ApplyShowroomTestAsset(app,testAssetPath) && &testEnemy()==beforeInvalid,
+        "invalid v2 geometry signature replaced the active target");
+    {
+        showroom.ReplaceShowroomTest(app,gltfAsset,"normal");
+        showroom.showroomDraftApplied_=true;
+        check(testEnemy().Definition().partAsset->modelPath==gltfPath,"glTF draft model switch");
+        const auto partGeometry=gltfAsset->defaults.front().geometry;
+        const auto pose=testEnemy().CaptureDebug();
+        const auto transform=Matrix4x4::MakeAffineMatrix(testEnemy().Definition().VisualScale(pose.scale),pose.rotation,pose.position);
+        Matrix4x4 view;
+        bool aimed=false;
+        for (const auto& tri:partGeometry->faces) {
+            const auto a=EnemyPartTransformPoint(tri[0],transform);
+            const auto b=EnemyPartTransformPoint(tri[1],transform);
+            const auto c=EnemyPartTransformPoint(tri[2],transform);
+            const auto n=Matrix4x4::Normalize(Matrix4x4::Cross(b-a,c-a));
+            const auto eye=(a+b+c)*(1.f/3)+n*4;
+            const auto direction=n*(-1.f);
+            EnemyPartHit hit;
+            if (!testEnemy().Raycast(eye,direction,10,hit)) continue;
+            view=Matrix4x4::MakeAffineMatrix({1,1,1},{-std::asin(direction.y),std::atan2(direction.x,direction.z),0},eye);
+            aimed=true;
+            break;
+        }
+        check(aimed,"glTF runtime triangle raycast missed");
+        showroom.bullets_.Spawn(weapon,view,0,random,world,showroom.enemies_);
+        size_t modelHits=0;
+        showroom.bullets_.Update(.25f,world,showroom.enemies_,[&](const BulletEnemyImpact& hit) {
+            if (hit.partName=="Model Body" && hit.result.damage>0) ++modelHits;
+        });
+        const auto damageState=testEnemy().CaptureDebug();
+        check(modelHits==1 && damageState.parts.front().Destroyed() && !damageState.detached.empty() &&
+            damageState.parts.hpGroups.front().hp==45,"glTF bullet did not break referenced part or route shared HP");
+    }
+    showroom.resetEnemiesPending_=true;
+    showroom.Update(app,0);
+    app.Srv()->CollectRetired();
+    check(!showroom.showroomDraftApplied_ && testEnemy().Definition().partAsset->modelPath==pmxPath &&
+        testEnemy().CaptureDebug().parts.front().hp==5 && testEnemy().CaptureDebug().detached.empty(),
+        "F5 did not restore saved model, HP and debris");
+    for (int i=0;i<3;++i) {
+        check(showroom.ApplyShowroomTestAsset(app,gltfAssetPath),"repeated glTF asset load");
+        app.Srv()->CollectRetired();
+        check(showroom.LoadShowroomTestConfig(app,configPath),"repeated PMX asset load");
+        app.Srv()->CollectRetired();
+        check(app.Srv()->ActiveCount()==pmxDescriptors && showroom.enemyPool_.Capacity()==capacity,
+            "model switching leaked texture descriptors or pool capacity");
+    }
 #endif
     showroom.OnExit(app);
-    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Showroom reset, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
+    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Enemy Editor selection modes and assignment lock, Showroom reset and PMX / glTF switching, runtime hit and break, shared HP, descriptor lifetime, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
 }

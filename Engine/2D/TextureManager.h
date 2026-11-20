@@ -16,6 +16,14 @@ public:
         std::string key,canonical;
         std::shared_ptr<DirectX::ScratchImage> image;
     };
+    struct OwnedTexture {
+        ~OwnedTexture();
+        SrvManager* manager=nullptr;
+        uint32_t index=0;
+        Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+        D3D12_GPU_DESCRIPTOR_HANDLE handle{};
+    };
+    std::shared_ptr<const OwnedTexture> CreateOwnedTexture(const PreparedTexture& prepared);
     // CPU-only preparation; the worker must initialize COM before using WIC.
     static PreparedTexture PrepareFile(const std::string& path);
     static PreparedTexture PrepareMemory(const std::string& key,const uint8_t* bytes,size_t size);

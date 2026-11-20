@@ -6,9 +6,9 @@ class Player;
 
 class GameHUD {
 public:
-    void Initialize(SpriteCommon* common, DirectXCommon* dx,bool hasDoors=false);
+    void Initialize(SpriteCommon* common, DirectXCommon* dx,bool hasDoors=false,bool hasThrowables=false);
     void Update(const Player& player, const WeaponSystem& weapons, float width, float height,
-        bool showPickup=true,std::string_view doorPrompt={});
+        bool showPickup=true,std::string_view doorPrompt={},std::string_view throwable={},std::string_view throwablePickup={});
     void Draw(const Matrix4x4& view, const Matrix4x4& projection);
 private:
     UIFont font_;

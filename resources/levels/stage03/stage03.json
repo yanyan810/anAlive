@@ -17,6 +17,14 @@
       -0.0
     ]
   },
+  "throwables": {
+    "initial": { "id": "burst_dart", "count": 5 },
+    "pickups": [
+      { "id": "corrosive_bottle", "position": [32.2, 12.35, 19.1] },
+      { "id": "lure_grenade", "position": [34.0, 12.35, 20.8] },
+      { "id": "burst_dart", "position": [36.85, 12.35, 20.5] }
+    ]
+  },
   "colliders": [
     {
       "id": "COL_F1_SpawnRoom_Lower_01_PlayerGate",

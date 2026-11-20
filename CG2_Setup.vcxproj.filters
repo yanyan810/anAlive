@@ -656,12 +656,15 @@
     <ClCompile Include="Game\enemy\EnemySpawnSystem.cpp" />
     <ClCompile Include="Game\StageProgress.cpp" />
     <ClCompile Include="Game\WeaponSystem.cpp" />
+    <ClCompile Include="Game\ThrowableSystem.cpp" />
     <ClCompile Include="Game\Bullet.cpp" />
     <ClInclude Include="Game\Bullet.h" />
     <ClCompile Include="Game\BulletManager.cpp" />
     <ClInclude Include="Game\BulletManager.h" />
     <ClInclude Include="Game\TitleStartSequence.h" />
     <ClInclude Include="Game\WeaponSystem.h" />
+    <ClInclude Include="Game\ThrowableSystem.h" />
+    <ClInclude Include="tests\ThrowableRuntimeTests.h" />
     <ClInclude Include="Game\WeaponHUD.h" />
     <ClInclude Include="Game\UIFont.h" />
     <ClCompile Include="Game\UIFont.cpp" />

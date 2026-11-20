@@ -18,6 +18,7 @@
 class TemporarySceneTransitionCheck;
 class TitleScene : public IScene {
 public:
+    explicit TitleScene(std::string gameStartScene="Stage03") : gameStartScene_(std::move(gameStartScene)) {}
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
     bool IsReadyForTransition() const override { return ready_; }
@@ -35,6 +36,7 @@ private:
 #endif
 private:
     friend void RunTitleGameOverDemoTests(GameApp& app);
+    std::string gameStartScene_;
     enum class Mode { GameStart, GameOver };
     bool SetMode(Mode mode);
     void PrepareDemoText(GameApp& app);

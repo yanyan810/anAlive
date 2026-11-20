@@ -21,6 +21,8 @@ inline const char* EnemyPartName(EnemyPartType type) {
 }
 // Legacy tags remain adapters for old assets/tools; runtime hit identity is partIndex.
 enum class EnemyPartRole { Generic, Head, Body, Arm, Leg, Core, Armor };
+inline constexpr std::array kEnemyPartRoles{EnemyPartRole::Generic,EnemyPartRole::Head,EnemyPartRole::Body,
+    EnemyPartRole::Arm,EnemyPartRole::Leg,EnemyPartRole::Core,EnemyPartRole::Armor};
 inline const char* EnemyPartRoleName(EnemyPartRole role) {
     switch(role) {
     case EnemyPartRole::Head: return "Head"; case EnemyPartRole::Body: return "Body";
@@ -29,6 +31,17 @@ inline const char* EnemyPartRoleName(EnemyPartRole role) {
     default: return "Generic";
     }
 }
+class EnemyPartDamageMultipliers {
+public:
+    constexpr EnemyPartDamageMultipliers() { multipliers_.fill(1.0f); }
+    void Set(EnemyPartRole role,float multiplier) { multipliers_.at(static_cast<size_t>(role))=multiplier; }
+    float For(EnemyPartRole role) const {
+        const auto index=static_cast<size_t>(role);
+        return index<multipliers_.size() ? multipliers_[index] : multipliers_.front();
+    }
+private:
+    std::array<float,kEnemyPartRoles.size()> multipliers_{};
+};
 inline EnemyPartRole LegacyPartRole(EnemyPartType type) {
     switch(type) {
     case EnemyPartType::Head: return EnemyPartRole::Head;
@@ -126,19 +139,20 @@ inline bool BeginEnemyDeath(EnemyParts& parts) {
 inline void ApplyEnemyHpMultiplier(EnemyParts& parts, float multiplier) {
     for (auto& part : parts) part.hp = part.maxHp = EnemyPartMaxHp(part.type)*multiplier;
 }
+inline float ReduceEnemyHp(float& hp,float damage) {
+    const float before=hp;
+    hp=std::max(0.0f,before-damage);
+    return before-hp;
+}
 inline float DamageEnemyPart(EnemyParts& parts,size_t index,float damage) {
     if (index>=parts.size() || !std::isfinite(damage) || damage<=0) return 0;
     auto& part=parts[index];
     if (part.Destroyed()) return 0;
     float localLost=0,sharedLost=0;
-    if (part.usesLocalHp) {
-        const float before=part.hp;
-        part.hp=std::max(0.0f,before-damage); localLost=before-part.hp;
-    }
+    if (part.usesLocalHp) localLost=ReduceEnemyHp(part.hp,damage);
     if (part.sharedGroup<parts.hpGroups.size()) {
         auto& group=parts.hpGroups[part.sharedGroup];
-        const float before=group.hp;
-        group.hp=std::max(0.0f,before-damage*part.sharedDamageRate); sharedLost=before-group.hp;
+        sharedLost=ReduceEnemyHp(group.hp,damage*part.sharedDamageRate);
     }
     // Feedback counts the greater loss, not double the same impact in LocalAndShared.
     return std::max(localLost,sharedLost);
@@ -161,6 +175,12 @@ inline Vector3 EnemyPartTransformPoint(const Vector3& p, const Matrix4x4& m) {
     return {p.x*m.m[0][0]+p.y*m.m[1][0]+p.z*m.m[2][0]+m.m[3][0],
         p.x*m.m[0][1]+p.y*m.m[1][1]+p.z*m.m[2][1]+m.m[3][1],
         p.x*m.m[0][2]+p.y*m.m[1][2]+p.z*m.m[2][2]+m.m[3][2]};
+}
+inline bool EnemyPartTransformIsInvertible(const Matrix4x4& world) {
+    const float determinant=world.m[0][0]*(world.m[1][1]*world.m[2][2]-world.m[1][2]*world.m[2][1])
+        -world.m[0][1]*(world.m[1][0]*world.m[2][2]-world.m[1][2]*world.m[2][0])
+        +world.m[0][2]*(world.m[1][0]*world.m[2][1]-world.m[1][1]*world.m[2][0]);
+    return std::isfinite(determinant) && std::abs(determinant)>=1e-8f;
 }
 inline EnemyParts MakeEnemyParts(const AABB& model) {
     // Boss bind pose: local Y is up, Z is arm span, X is depth.
@@ -193,10 +213,7 @@ inline bool RaycastEnemyPartsTransformed(const EnemyParts& parts, WorldForPart w
         if (!currentWorld) continue;
         const auto& world=*currentWorld;
         // Reject singular transforms before inversion (including collapsed scale axes).
-        const float determinant=world.m[0][0]*(world.m[1][1]*world.m[2][2]-world.m[1][2]*world.m[2][1])
-            -world.m[0][1]*(world.m[1][0]*world.m[2][2]-world.m[1][2]*world.m[2][0])
-            +world.m[0][2]*(world.m[1][0]*world.m[2][1]-world.m[1][1]*world.m[2][0]);
-        if (!std::isfinite(determinant)||std::abs(determinant)<1e-8f) continue;
+        if (!EnemyPartTransformIsInvertible(world)) continue;
         const auto inverse=Matrix4x4::Inverse(world);
         const Vector3 localOrigin=EnemyPartTransformPoint(origin,inverse);
         const Vector3 localDirection{unit.x*inverse.m[0][0]+unit.y*inverse.m[1][0]+unit.z*inverse.m[2][0],

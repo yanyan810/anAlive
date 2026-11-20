@@ -9,7 +9,7 @@ Debug／Developmentでは、開始カメラ終了後にゲームウィンドウ�
 1. `Tools/blender/yanengine_level_exporter.py` の **YanEngine Level 1.24** を有効にします。対象ホテルの `.blend` を開き、**ViewLayer** に切り替えます。Outlinerの **Hotel Escape** コレクションに、車・経路・敵・カメラのマーカーがあります。
 2. **Escape_Car** を移動・回転して停車位置と初期向きを設定します。**N → YanEngine Level** にある **Goal** で対応するゴールを選びます。既定では1.2秒で発進して正面カットに切り替わり、**Cut 2 Start** の1.45秒から後方追走に入ります。6秒で暗転を開始し、7秒で終了します。
 3. **Escape_Road_End** を移動して終点を設定します。途中で曲がる場合は **Hotel Escape Waypoint** を追加し、一意の **Order** を付けます。車は番号の昇順に直線で移動します。**Road Width** は再生中に描く道路の幅です。既存の道路を使う場合は `0` を指定できます。Stage03では道路終端の壁とその奥の仮構造物に **Hide During Hotel Escape** を設定しています。
-4. **Escape_Enemy_1〜3** の位置・向きと **敵定義** を編集します。**Launch Speed** で吹き飛びの強さを設定します。**Launch Direction** はBlenderのワールド座標で入力します。ゼロベクトルの場合は車の進行方向と敵が当たった側から求めます。
+4. **Escape_Enemy_1〜3** の位置と **敵定義** を編集します。再生時は停車中の車の方を向きます。**Launch Speed** で吹き飛びの強さを設定します。**Launch Direction** はBlenderのワールド座標で入力します。ゼロベクトルの場合は車の進行方向と敵が当たった側から求めます。
 5. **Cut 1 Sequence ID** は空転を低い斜め正面から捉え、**Launch Sequence ID** は発進を短く正面から映します。`Escape_Cut1_*` と `Escape_Launch_*` の `*_Target` マーカー、`Duration to next`、補間方式でこの2カットを調整できます。
 6. **レベルを検証 → レベルを書き出す** を実行し、ゲームでステージを再読み込みします。ゲーム用JSONには `hotelEscape` とカメラシーケンスが出力されます。
 

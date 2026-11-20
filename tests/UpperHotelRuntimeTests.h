@@ -83,6 +83,13 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
         Require(cast.size()==3 && cast[0].impactTime>escape.departure && cast[0].impactTime<slideEnd &&
             cast[1].impactTime>recoveryEnd && cast[2].impactTime>cast[1].impactTime,
             "One drift impact and two straight impacts");
+        for (const auto& entry : cast) {
+            const auto rotation = entry.enemy->GetRotation();
+            const auto facing = StagePoint({-1,0,0},Matrix4x4::RotateXYZ(rotation.x,rotation.y,rotation.z));
+            const auto toCar = escape.start - entry.enemy->GetPosition();
+            Require(StageDot(facing, toCar) >= .999f * std::hypot(toCar.x, toCar.z),
+                "Each escape actor faces the parked car");
+        }
         Require(game->escapeLaunchCamera_.has_value() && escape.cut<cast[0].impactTime && cast[2].impactTime<escape.fade,
             "The front launch cut precedes the chase through all three impacts");
         const auto aligned=escape.DistanceAt(recoveryEnd);
@@ -164,6 +171,7 @@ inline void RunUpperHotelRuntimeTests(GameApp& app) {
             slipAngle(game->escapeTime_)<.5f*deg,
             "Countersteer follows travel back to the centerline");
         seek(recoveryEnd);
+        captureFrame(("escape-"+game->level_.id+"-facing").c_str());
         const float initialScreenY=projectCar(.8f).y;
         const float initialScreenHeight=projectCar(1.55f).y-projectCar(0).y;
         auto previousPosition=game->escapeCar_->GetTranslate();

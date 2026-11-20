@@ -5,6 +5,7 @@
 #include "ImGuiManagaer.h"
 #include "WinApp.h"
 #include "EnemySpawnDebug.h"
+#include "GeometryGenerator.h"
 #include <string>
 #include <numbers>
 #ifdef USE_IMGUI
@@ -296,6 +297,9 @@ void GameScene::OnEnter(GameApp& app) {
         if (!showroom_ && !stage_.LoadGoals(fallback)) OutputDebugStringA(stage_.Error().c_str());
     }
     player_.SetStage(&level_.collision,level_.playerPosition,level_.playerRotation);
+    throwables_={};
+    if (stageLoaded_ && !IsGameOverDemo() && !throwables_.Load("resources/Data/throwables.json",levelPath,stageDraft))
+        OutputDebugStringA(("Throwable configuration error: "+throwables_.Error()+"\n").c_str());
     if (placementTest_) spawnSystem_.SetPlacements(*placementTest_);
     InitializeShutters(app);
     InitializeDoors(app);
@@ -310,7 +314,7 @@ void GameScene::OnEnter(GameApp& app) {
         player_.RefreshVisuals();
     } else if (const auto* initial = weapons_.InitialWeapon()) player_.EquipWeapon(*initial);
     pelletRandom_.seed(weapons_.ActualSeed() ^ 0x9e3779b9u); // independent of placement lottery
-    gameHUD_.Initialize(app.SpriteCom(),app.Dx(),!doorVisuals_.empty());
+    gameHUD_.Initialize(app.SpriteCom(),app.Dx(),!doorVisuals_.empty(),throwables_.Enabled());
     bullets_.Initialize(app.ObjCom(),app.Dx(),&camera_);
     SyncWeaponVisuals(app);
     enemies_.clear();
@@ -346,6 +350,7 @@ void GameScene::OnEnter(GameApp& app) {
     ground_.SetSpotLightIntensity(0.0f);
     BindRemovableMeshes();
     InitializeHotelEscape(app);
+    if (entryPoint_==EntryPoint::HotelExit) PrepareHotelExitStart();
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
         sprite->Initialize(app.SpriteCom(), app.Dx(), "resources/white1x1.png");
         sprite->SetAnchorPoint({0.5f, 0.5f});
@@ -437,6 +442,7 @@ void GameScene::OnExit(GameApp& app) {
     enemies_.clear();
     enemyPool_.Clear();
     enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
+    throwables_={}; throwableDrawList_.clear(); throwableVisuals_.clear(); throwableModel_.reset();
     // Reuse retired skin descriptors before the destination scene allocates its pool.
     app.Srv()->CollectRetired();
     app.ObjCom()->SetDefaultCamera(nullptr);
@@ -501,6 +507,7 @@ void GameScene::Update(GameApp& app, float dt) {
         app.Dx()->WaitForGPU();
         ResetShowroomEnemies(app); resetEnemiesPending_=false;
         weapons_.ResetPickups();
+        throwables_.Reset();
         const auto equipped=player_.CurrentWeapon().Definition();
         player_.EquipWeapon(equipped);
         shotCount_=0; hitCount_=0; lastDamage_=0;
@@ -512,7 +519,8 @@ void GameScene::Update(GameApp& app, float dt) {
     dt = std::isfinite(dt) ? std::max(dt, 0.0f) : 0.0f;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
-        if (weaponEditor_.mode==WeaponEditorMode::Test && input.IsKeyTrigger(DIK_ESCAPE)) {
+        if (weaponEditor_.mode!=WeaponEditorMode::Edit && input.IsKeyTrigger(DIK_ESCAPE)) {
+            if (weaponEditor_.mode==WeaponEditorMode::TestThrowables) throwables_.Reset();
             weaponEditor_.mode=WeaponEditorMode::Edit;
             showTestAssetPanel_=false;
             if (beforeWeaponTest_) player_.RestoreWeaponForDebug(*beforeWeaponTest_);
@@ -528,7 +536,7 @@ void GameScene::Update(GameApp& app, float dt) {
             ground_.Update(0);
             return;
         }
-        if (input.HasFocus() && input.IsKeyTrigger(DIK_TAB) && !ImGui::GetIO().WantTextInput) {
+        if (weaponEditor_.mode==WeaponEditorMode::Test && input.HasFocus() && input.IsKeyTrigger(DIK_TAB) && !ImGui::GetIO().WantTextInput) {
             showTestAssetPanel_=!showTestAssetPanel_;
             initialCapturePending_=!showTestAssetPanel_;
             suppressFireUntilRelease_=true;
@@ -710,7 +718,9 @@ bool GameScene::LeaveGameOver(GameApp& app,bool retry) {
     if (retry) {
         // Capture the actual stage ID, including editor/test-launched stage02.
         // A fresh scene reloads the saved start position, HP, pool and stage data.
-        app.Scenes().Register("GameOverRetry",[id=stageId_,showroom=showroom_] { return std::make_unique<GameScene>(showroom,id); });
+        app.Scenes().Register("GameOverRetry",[id=stageId_,showroom=showroom_,entryPoint=entryPoint_] {
+            return std::make_unique<GameScene>(showroom,id,entryPoint);
+        });
     }
     return app.Scenes().TransitionTo(retry ? "GameOverRetry" : "Title",.5f,.5f);
 }
@@ -859,7 +869,10 @@ bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
     if (!pressed) return false;
     if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
     if (level_.doors.TryInteract(level_.collision,player_.GetTransform().translate)) return false;
-    return !IsGameOverDemo() && allowPickup && player_.TryPickupWeapon(weapons_);
+    if (IsGameOverDemo() || !allowPickup) return false;
+    if (player_.TryPickupWeapon(weapons_)) return true;
+    throwables_.TryPickup(player_.GetTransform().translate,level_.collision);
+    return false;
 }
 
 void GameScene::SyncWeaponVisuals(GameApp& app) {
@@ -905,13 +918,13 @@ void GameScene::ShareEnemyAlerts() {
     // Snapshot direct observers before issuing orders: an alerted ally must not
     // relay a hidden target through a chain of enemies on the same frame.
     std::vector<Enemy*> observers;
-    for (auto* enemy:enemies_) if (!enemy->IsDead() && !enemy->AI().paused && enemy->AI().visible && enemy->AI().hasLastSeen)
+    for (auto* enemy:enemies_) if (!enemy->IsDead() && !enemy->IsAttracted() && !enemy->AI().paused && enemy->AI().visible && enemy->AI().hasLastSeen)
         observers.push_back(enemy);
     const auto target=player_.GetTransform().translate;
     for (auto* observer:observers) {
         if (!observer->AI().pursuitOrdered) observer->PursuePlayer(target);
         for (auto* ally:enemies_) {
-            if (ally==observer || ally->IsDead() || ally->AI().paused || ally->AI().pursuitOrdered) continue;
+            if (ally==observer || ally->IsDead() || ally->IsAttracted() || ally->AI().paused || ally->AI().pursuitOrdered) continue;
             if (observer->AI().CanShareAlert(observer->GetPosition(),observer->Definition().collisionHeight,
                 ally->GetPosition(),ally->Definition().collisionHeight,&level_.collision)) ally->PursuePlayer(target);
         }
@@ -939,6 +952,8 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     const int weaponShots = player_.UpdateShooting(input, pickedUp ? 0.0f : dt,
         allowFire, controls, cancelBurst && !pickedUp);
     UpdateEnemySpawns(dt);
+    throwables_.Update(dt,level_.collision,enemies_);
+    if (controls && allowPickup && input.IsKeyTrigger(DIK_G)) throwables_.Throw(camera_.GetWorldMatrix());
     playerDamagedFlash_ = std::max(0.0f, playerDamagedFlash_-dt);
     Vector3 projectileDirection{};
     const float projectileDamage=stageLoaded_ ? UpdateStageProjectiles(enemyProjectiles_,dt,player_.GetTransform().translate,level_.collision,&projectileDirection) :
@@ -968,7 +983,9 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         const auto& definition=enemies_[i]->Definition();
         const auto separated=EnemyNavigation::ConstrainMotion(level_.collision,previous,previous+correction[i],definition.collisionRadius,definition.collisionHeight);
         enemies_[i]->SetPosition(separated);
-        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate,&level_.collision,player_.Settings().cameraHeight,navigationBudget);
+        const auto effect=throwables_.EffectFor(*enemies_[i]);
+        enemyDamage[i]=enemies_[i]->Update(dt,player_.GetTransform().translate,&level_.collision,
+            player_.Settings().cameraHeight,navigationBudget,effect.speedMultiplier,effect.attraction);
         const auto desired=enemies_[i]->GetPosition();
         if (!enemies_[i]->IsDead() && (desired.x!=separated.x || desired.y!=separated.y || desired.z!=separated.z)) {
             const auto constrained=EnemyNavigation::ConstrainMotion(level_.collision,separated,desired,definition.collisionRadius,definition.collisionHeight);
@@ -1072,6 +1089,44 @@ void GameScene::DrawRender(GameApp& app) {
     // 半透明の爆発球は不透明な敵・弾の後に描き、Releaseでも範囲を見せる。
     if (gameOver_.EnemiesVisible())
         for (auto& enemy : enemies_) enemy->DrawExplosion();
+    if (!gameOver_.Active()) {
+        SyncThrowableVisuals(app);
+        for (size_t i=0;i<throwableDrawList_.size();++i) throwableVisuals_[i]->Draw();
+    }
+}
+
+void GameScene::SyncThrowableVisuals(GameApp& app) {
+    throwables_.CollectVisuals(throwableDrawList_);
+    if (throwableDrawList_.empty()) return;
+    if (!throwableModel_) {
+        Model::ModelData geometry;
+        geometry.materials.push_back({"resources/white1x1.png"});
+        Model::MeshData mesh;
+        mesh.vertices=GeometryGenerator::GenerateSphereTriList(24,12,1.0f);
+        mesh.indexCount=static_cast<uint32_t>(mesh.vertices.size());
+        geometry.indices.resize(mesh.indexCount);
+        for (uint32_t i=0;i<mesh.indexCount;++i) geometry.indices[i]=i;
+        geometry.meshes.push_back(std::move(mesh));
+        geometry.rootNode.meshIndices.push_back(0);
+        throwableModelCommon_.Initialize(app.Dx());
+        throwableModel_=std::make_unique<Model>();
+        throwableModel_->InitializeFromModelData(&throwableModelCommon_,geometry);
+    }
+    while (throwableVisuals_.size()<throwableDrawList_.size()) {
+        auto visual=std::make_unique<Object3d>();
+        visual->Initialize(app.ObjCom(),app.Dx()); visual->SetCamera(&camera_);
+        visual->SetModel(throwableModel_.get()); visual->SetEnableLighting(0);
+        throwableVisuals_.push_back(std::move(visual));
+    }
+    for (size_t i=0;i<throwableDrawList_.size();++i) {
+        const auto& entry=throwableDrawList_[i];
+        auto& visual=*throwableVisuals_[i];
+        visual.SetTranslate(entry.position); visual.SetScale(entry.scale);
+        visual.SetMaterialColor({entry.color.x,entry.color.y,entry.color.z,entry.opacity});
+        visual.SetBlendMode(entry.opacity<1 ? Object3dCommon::BlendMode::kBlendModeNormal
+            : Object3dCommon::BlendMode::kBlendModeNone);
+        visual.Update(0);
+    }
 }
 
 
@@ -1448,8 +1503,23 @@ void GameScene::DrawOverlay2D(GameApp&) {
     const auto closed=level_.shutters.Nearest(player_.GetTransform().translate);
     const auto door=level_.doors.Nearest(level_.collision,player_.GetTransform().translate);
     const char* doorPrompt=door ? (level_.doors.doors[*door].targetOpen ? "E CLOSE" : "E OPEN") : "";
+    std::string throwableLabel;
+    const ThrowableDefinition* throwablePickup=nullptr;
+    bool showPickups=!closed && !door;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    const bool weaponTest=showroom_ && weaponEditor_.mode==WeaponEditorMode::Test;
+#else
+    constexpr bool weaponTest=false;
+#endif
+    if (throwables_.Enabled() && !weaponTest) {
+        const auto* item=throwables_.Equipped();
+        throwableLabel=item ? "G THROW  "+item->displayName+"  "+std::to_string(throwables_.Count())+
+            " / "+std::to_string(item->maxCount) : "THROWABLE EMPTY";
+        if (showPickups) throwablePickup=throwables_.Nearby(player_.GetTransform().translate,level_.collision);
+    }
     gameHUD_.Update(player_, weapons_, static_cast<float>(WinApp::kClientWidth),
-        static_cast<float>(WinApp::kClientHeight),!closed && !door,closed ? "" : doorPrompt);
+        static_cast<float>(WinApp::kClientHeight),showPickups,closed ? "" : doorPrompt,throwableLabel,
+        throwablePickup ? std::string_view(throwablePickup->displayName) : std::string_view{});
     gameHUD_.Draw(view, projection);
     const auto nearby=closed ? closed : level_.shutters.Nearest(player_.GetTransform().translate,false);
     if (nearby) {
@@ -1485,6 +1555,7 @@ GameScene::DebugFrame GameScene::CaptureDebug() const {
     for (const auto& enemy : enemies_) state.enemies.push_back(enemy->CaptureDebug());
     state.bullets=bullets_.Capture();
     state.projectiles=enemyProjectiles_; state.spawns=spawnSystem_; state.weapons=weapons_; state.stage=stage_;
+    state.throwables=throwables_.GetState();
     state.shutters=level_.shutters;
     state.doors=level_.doors;
     state.transferUsed=transferUsed_;
@@ -1509,6 +1580,7 @@ void GameScene::RestoreDebug(GameApp& app,const DebugFrame& state) {
     player_.RestoreDebug(state.player); camera_.SetFovY(state.fov); camera_.Update();
     bullets_.Restore(state.bullets);
     enemyProjectiles_=state.projectiles; spawnSystem_=state.spawns; weapons_=state.weapons; stage_=state.stage;
+    throwables_.Restore(state.throwables);
     if (escapeMode_==EscapeMode::Results && stage_.IsPlaying()) {
         escapeMode_=EscapeMode::Idle;
         PositionEscapeCar(0);
@@ -1817,12 +1889,28 @@ void GameScene::DrawShowroomTestAssetControls() {
 }
 
 void GameScene::DrawWeaponWorkspace(GameApp& app) {
-    if (weaponEditor_.mode==WeaponEditorMode::Test) {
+    if (weaponEditor_.mode!=WeaponEditorMode::Edit) {
         const auto* viewport=ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos); ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::Begin("Weapon Test",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|
             ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoDocking);
+        if (weaponEditor_.mode==WeaponEditorMode::TestThrowables) {
+            ImGui::TextWrapped("Click the view to aim | G: Throw | E: Pick up / refill | F5: Reset | Esc: Editor");
+            ImGui::BeginDisabled(app.GetInput()->IsCameraControlEnabled());
+            ImGui::Checkbox("Freeze Enemies",&freezeEnemies_);
+            ImGui::SameLine();
+            if (ImGui::Button("Group Two Targets") && enemies_.size()>=2 && !enemies_[0]->IsDead() && !enemies_[1]->IsDead()) {
+                freezeEnemies_=true;
+                const auto p=enemies_[0]->GetPosition();
+                enemies_[1]->SetPosition(p+Vector3{.95f,0,0});
+                enemies_[1]->UpdateVisuals(0);
+            }
+            ImGui::EndDisabled();
+            app.ImGui()->DrawScenePreview();
+            ImGui::End();
+            return;
+        }
         ImGui::TextWrapped("Test Weapon | LMB: Fire | RMB: ADS | R: Reload | Tab: Enemy JSON | F5: Reset | Esc: Weapon Editor");
         DrawEnemyPoolStats();
         if (!showTestAssetPanel_) app.ImGui()->DrawScenePreview();
@@ -1844,6 +1932,15 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         weaponPreviewAspect_=std::max(size.x,1.0f)/std::max(size.y,1.0f);
         app.ImGui()->DrawScenePreview(true);
     },[&] {
+        if (!throwables_.Pickups().empty() && ImGui::Button("Test Throwables")) {
+            const auto p=throwables_.Pickups().front().position;
+            player_.SetStage(&level_.collision,{p.x,level_.playerPosition.y,p.z-1.5f},{});
+            player_.RefreshDebug();
+            throwables_.Reset();
+            weaponEditor_.mode=WeaponEditorMode::TestThrowables;
+            initialCapturePending_=false;
+            debugPaused_=false; debugHistory_.Clear();
+        }
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
         ImGui::SameLine();
         if (ImGui::Button("Reset Showroom (F5)")) resetEnemiesPending_=true;

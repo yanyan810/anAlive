@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "corrosive_bottle",
+      "displayName": "CORROSIVE BOTTLE",
+      "type": "Corrosive",
+      "maxCount": 1,
+      "flight": {
+        "speed": 12.0,
+        "lift": 1.5,
+        "gravityMultiplier": 1.0,
+        "lifetime": 5.0,
+        "maxBounces": 1,
+        "bounceRetention": 0.55
+      },
+      "corrosion": {
+        "radius": 2.0,
+        "duration": 8.0,
+        "slowMultiplier": 0.5,
+        "legDamagePerSecond": 10.0,
+        "legSharedDamageMultiplier": 0.0,
+        "fallbackDamagePerSecond": 10.0,
+        "partMultipliers": { "Leg": 1.0, "Body": 1.0 }
+      },
+      "visual": {
+        "color": [0.2, 1.0, 0.3],
+        "size": 0.17
+      }
+    },
+    {
+      "id": "lure_grenade",
+      "displayName": "LURE GRENADE",
+      "type": "LureGrenade",
+      "maxCount": 1,
+      "flight": {
+        "speed": 11.0,
+        "lift": 2.0,
+        "gravityMultiplier": 1.0,
+        "lifetime": 5.0,
+        "maxBounces": 1,
+        "bounceRetention": 0.45
+      },
+      "lure": {
+        "radius": 8.0,
+        "fuseSeconds": 4.0
+      },
+      "blast": {
+        "radius": 2.5,
+        "damage": 35.0,
+        "partMultiplier": 1.0,
+        "sharedMultiplier": 1.0,
+        "partMultipliers": { "Head": 1.0, "Body": 1.0, "Arm": 1.0, "Leg": 1.0 }
+      },
+      "visual": {
+        "color": [1.0, 0.5, 0.1],
+        "size": 0.19,
+        "flashHz": 4.0,
+        "blastSeconds": 0.35
+      }
+    },
+    {
+      "id": "burst_dart",
+      "displayName": "BURST DART",
+      "type": "Dart",
+      "maxCount": 5,
+      "flight": {
+        "speed": 32.0,
+        "gravityMultiplier": 0.45,
+        "lifetime": 3.0
+      },
+      "directHit": {
+        "partDamage": 80.0,
+        "sharedDamage": 25.0,
+        "partMultipliers": { "Head": 1.0, "Body": 1.0, "Arm": 1.0, "Leg": 1.0 }
+      },
+      "blast": {
+        "radius": 1.0,
+        "damage": 20.0,
+        "partMultiplier": 1.0,
+        "sharedMultiplier": 0.5,
+        "partMultipliers": { "Head": 1.0, "Body": 1.0, "Arm": 1.0, "Leg": 1.0 }
+      },
+      "visual": {
+        "color": [0.25, 0.75, 1.0],
+        "size": 0.11,
+        "blastSeconds": 0.25
+      }
+    }
+  ]
+}

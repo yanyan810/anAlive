@@ -175,6 +175,14 @@
       ]
     }
   ],
+  "throwables": {
+    "initial": { "id": "corrosive_bottle", "count": 1 },
+    "pickups": [
+      { "id": "corrosive_bottle", "position": [0.0, 0.35, -6.0] },
+      { "id": "lure_grenade", "position": [3.0, 0.35, -9.0] },
+      { "id": "burst_dart", "position": [6.0, 0.35, -6.0] }
+    ]
+  },
   "colliders": [
     {
       "id": "COL_Building",

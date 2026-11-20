@@ -69,6 +69,11 @@ public:
     float ApplyDamage(EnemyPartType part, float damage, const Vector3& shotDirection);
     EnemyBulletHitResult ApplyBulletDamage(EnemyPartType part, float damage, const Vector3& direction);
     void ApplyExplosionDamage(const EnemyExplosion& explosion);
+    struct AreaDamage { Vector3 center; float radius, local, shared; };
+    struct PartDamage { size_t index=kNoEnemyPart; float local=0, shared=0; };
+    void ApplyThrowableBlast(const AreaDamage& blast,const EnemyPartDamageMultipliers& blastMultipliers,
+        const PartDamage& direct,const EnemyPartDamageMultipliers& directMultipliers);
+    void ApplyCorrosionDamage(float legLocal,float legShared,float fallback,const EnemyPartDamageMultipliers& multipliers);
     void Die(const Vector3& direction = {0,1,0});
     void BreakForImpact(const Vector3& direction, float launchPower, float groundHeight);
     void DrawPartDebug(const Matrix4x4& viewProjection, const Vector2& screenMin, const Vector2& screenMax, bool forceParts=false, bool forceMovement=false, bool rangeOnly=false) const;
@@ -84,6 +89,7 @@ public:
     struct DebugState {
         EnemyDefinition definition;
         EnemyAI ai;
+        std::optional<EnemyNavigation> attractionNavigation;
         EnemyProceduralAnimation animation;
         EnemyParts parts;
         Vector3 position{},rotation{},scale{};
@@ -133,7 +139,9 @@ public:
 #endif
 #endif
     float Update(float dt, const Vector3& playerPosition,const StageWorld* world=nullptr,float playerEyeHeight=1.65f,
-        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f);
+        int navigationBudget=std::numeric_limits<int>::max(),float speedMultiplier=1.0f,
+        std::optional<Vector3> attraction=std::nullopt);
+    bool IsAttracted() const { return attractionNavigation_.has_value(); }
     const EnemyAI& AI() const { return ai_; }
     const EnemySenses& Senses() const { return ai_.settings.senses; }
     bool ConfigureSenses(const EnemySenses& senses) {
@@ -146,6 +154,7 @@ public:
     void ResetAI() {
         const auto settings=ai_.settings; ai_={}; ai_.settings=settings;
         ai_.random=static_cast<uint32_t>(spawnId_)^0x9e3779b9u;
+        attractionNavigation_.reset();
     }
     void UpdateVisuals(float dt); // Includes fragment lifetime/physics, but no AI or attacks.
     const Vector3& GetPosition() const { return position_; }
@@ -166,6 +175,8 @@ public:
     void SetPartVisible(EnemyPartType type, bool visible);
     void SetPartVisible(size_t index,bool visible) { if (index<visuals_.size()) visuals_[index].visible=visible; }
 private:
+    void ApplyPartHits(const std::vector<PartDamage>& hits,const Vector3& direction,bool blast);
+    const Matrix4x4* HittablePartWorld(size_t index) const;
     void ApplyDefinition(const EnemyDefinition& definition,const std::shared_ptr<const EnemyRenderAsset>& renderAsset={});
     void SetSpawnIdentity(uint64_t id, const std::string& trigger) {
         spawnId_ = id;
@@ -204,6 +215,7 @@ private:
     std::string spawnTriggerId_;
     EnemyDefinition definition_{};
     EnemyAI ai_{};
+    std::optional<EnemyNavigation> attractionNavigation_;
     EnemyProceduralAnimation animation_{};
     unsigned long long attackCount_ = 0;
     float lastAttackDamage_ = 0;

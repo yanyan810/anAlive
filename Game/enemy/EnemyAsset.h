@@ -74,7 +74,7 @@ struct EnemyAsset {
             if (part.name.empty() || !names.insert(part.name).second) throw std::runtime_error("Duplicate/empty part name");
             const auto role=item.value("role",std::string("Generic"));
             bool known=false;
-            for (auto r:{EnemyPartRole::Generic,EnemyPartRole::Head,EnemyPartRole::Body,EnemyPartRole::Arm,EnemyPartRole::Leg,EnemyPartRole::Core,EnemyPartRole::Armor})
+            for (auto r:kEnemyPartRoles)
                 if (role==EnemyPartRoleName(r)) { part.role=r; known=true; }
             if (!known) throw std::runtime_error("Unknown part role: "+role);
             part.type=LegacyRoleType(part.role);

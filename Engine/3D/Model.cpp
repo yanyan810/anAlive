@@ -418,11 +418,11 @@ void Model::DebugValidateAnimationTracks_() const
 }
 
 
-Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const std::string& filename) {
+Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const std::string& filename,bool useCache) {
     const std::string path=AssetLoading::Canonical(directoryPath+"/"+filename);
     const std::string sourceDirectory=StringUtility::ConvertString(AssetLoading::Path(path).parent_path().wstring());
     ModelData data;
-    if(ModelCache::Load(path,data)) return data;
+    if(useCache && ModelCache::Load(path,data)) return data;
     {
         AssetLoading::Timer timer("model.import",path);
         auto extension=AssetLoading::Path(filename).extension().wstring();
@@ -440,7 +440,7 @@ Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const st
         } else data=LoadObjFile(sourceDirectory,filename);
     }
     if(!data.animations.empty()) data.defaultAnimationName=data.animations.begin()->first;
-    ModelCache::Save(path,data);
+    if(useCache) ModelCache::Save(path,data);
     return data;
 }
 
@@ -795,6 +795,16 @@ void Model::BindMaterialForMesh_(ID3D12GraphicsCommandList* cmd, const MeshData&
 		0, perMaterialResources_[mesh.materialIndex]->GetGPUVirtualAddress());
 }
 
+D3D12_GPU_DESCRIPTOR_HANDLE Model::MeshTexture_(const MeshData& mesh) const {
+    const auto index=mesh.materialIndex;
+    auto* textures=TextureManager::GetInstance();
+    if (index<ownedTextures_.size()) return ownedTextures_[index] ? ownedTextures_[index]->handle : textures->GetSrvHandleGPU("");
+    if (index>=modelData_.materials.size()) return textures->GetSrvHandleGPU("");
+    const auto& path=modelData_.materials[index].textureFilePath;
+    if (!path.empty() && !textures->HasTexture(path)) textures->LoadTexture(path);
+    return textures->GetSrvHandleGPU(path);
+}
+
 void Model::Draw(ID3D12GraphicsCommandList* cmd) {
 	if (!vertexResource_ || !materialResource_ || !materialData_) {
 		OutputDebugStringA("[Model] Draw skipped: resources not initialized\n");
@@ -812,30 +822,7 @@ void Model::Draw(ID3D12GraphicsCommandList* cmd) {
 
 	for (const auto& mesh : modelData_.meshes) {
 		BindMaterialForMesh_(cmd, mesh);
-
-		std::string texPath;
-		if (mesh.materialIndex < modelData_.materials.size()) {
-			texPath = modelData_.materials[mesh.materialIndex].textureFilePath;
-		}
-
-		D3D12_GPU_DESCRIPTOR_HANDLE handle{};
-		bool useWhite = false;
-
-		if (!texPath.empty()) {
-			if (!TextureManager::GetInstance()->HasTexture(texPath)) {
-				TextureManager::GetInstance()->LoadTexture(texPath);
-			}
-			handle = TextureManager::GetInstance()->GetSrvHandleGPU(texPath);
-		}
-		else {
-			useWhite = true;
-		}
-
-		if (useWhite) {
-			handle = TextureManager::GetInstance()->GetSrvHandleGPU(""); // 空→白
-		}
-
-		cmd->SetGraphicsRootDescriptorTable(2, handle);
+		cmd->SetGraphicsRootDescriptorTable(2, MeshTexture_(mesh));
 
 		// ★Indexed
 		cmd->DrawIndexedInstanced(
@@ -2185,28 +2172,7 @@ void Model::DrawOneMesh(ID3D12GraphicsCommandList* cmd, uint32_t meshIndex, uint
 	const auto& mesh = modelData_.meshes[meshIndex];
 	BindMaterialForMesh_(cmd, mesh);
 
-	D3D12_GPU_DESCRIPTOR_HANDLE handle{};
-	if (overrideSrv) {
-		handle = *overrideSrv;
-	}
-	else {
-		std::string texPath;
-		if (mesh.materialIndex < modelData_.materials.size()) {
-			texPath = modelData_.materials[mesh.materialIndex].textureFilePath;
-		}
-
-		if (!texPath.empty()) {
-			if (!TextureManager::GetInstance()->HasTexture(texPath)) {
-				TextureManager::GetInstance()->LoadTexture(texPath);
-			}
-			handle = TextureManager::GetInstance()->GetSrvHandleGPU(texPath);
-		}
-		else {
-			handle = TextureManager::GetInstance()->GetSrvHandleGPU("");
-		}
-	}
-
-	cmd->SetGraphicsRootDescriptorTable(texRootParam, handle);
+	cmd->SetGraphicsRootDescriptorTable(texRootParam, overrideSrv ? *overrideSrv : MeshTexture_(mesh));
 
 	// ★Indexed 前提（あなたの Model::Draw と同じ）
 	cmd->DrawIndexedInstanced(mesh.indexCount, 1, mesh.startIndex, 0, 0);

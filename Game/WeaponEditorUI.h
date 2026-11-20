@@ -80,7 +80,9 @@ public:
             ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0);
             ImGui::BeginChild("List",{0,0});
             if (showroomSidebar) { showroomSidebar(); ImGui::Separator(); }
-            search_.Draw("Search",-1);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputTextWithHint("##WeaponSearch","Search weapons",search_.InputBuf,IM_ARRAYSIZE(search_.InputBuf)))
+                search_.Build();
             if (ImGui::Button("New Weapon")) { duplicate_=-1; newId_.clear(); newName_.clear(); ImGui::OpenPopup("Create Weapon"); }
             const bool hasSelection=selected_>=0 && static_cast<size_t>(selected_)<model_.entries.size();
             ImGui::BeginDisabled(!hasSelection);

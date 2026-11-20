@@ -6,6 +6,7 @@
 #include "WinApp.h"
 #include "EnemySpawnDebug.h"
 #include "GeometryGenerator.h"
+#include "EnemyModelSource.h"
 #include <string>
 #include <numbers>
 #ifdef USE_IMGUI
@@ -18,14 +19,8 @@ namespace {
 
     constexpr float kDegreesToRadians =
         std::numbers::pi_v<float> / 180.0f;
-#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     constexpr auto kShowroomTestEnemy="normal_test";
-    constexpr auto kEnemyAssetDirectory="resources/enemy";
-    std::string AssetPathLabel(const std::filesystem::path& path) {
-        const auto utf8=path.generic_u8string();
-        return {utf8.begin(),utf8.end()};
-    }
-#endif
+    constexpr auto kShowroomTestConfig="resources/Data/showroom_enemy_test.json";
 }
 
 void GameScene::ApplySequenceCamera() {
@@ -274,7 +269,7 @@ void GameScene::OnEnter(GameApp& app) {
     player_.SetLookSensitivityMultiplier(1.0f);
 
     enemyDefinitions_=EnemyDefinitions{};
-    const bool enemiesLoaded=enemyDefinitions_.Load("resources/Data/enemies.json");
+    const bool enemiesLoaded=enemyDefinitions_.Load("resources/Data/enemies.json",ReadEnemyModel);
     if (!enemiesLoaded) OutputDebugStringA(("Enemy configuration error: " + enemyDefinitions_.Error() + "\n").c_str());
     StageLoader nextLevel;
     WeaponSystem nextWeapons;
@@ -362,17 +357,25 @@ void GameScene::OnEnter(GameApp& app) {
     const float height = static_cast<float>(texture.height);
     crosshairHorizontal_.SetScale({12.0f / width, 2.0f / height, 1.0f});
     crosshairVertical_.SetScale({2.0f / width, 12.0f / height, 1.0f});
-    if (showroom_) { freezeEnemies_=true; ResetShowroomEnemies(app); }
+    if (showroom_) {
+        freezeEnemies_=true;
+        showroomTestBehavior_=kShowroomTestEnemy;
+        showroomTestAsset_.clear(); showroomSavedAsset_.reset(); showroomDraftApplied_=false;
+        if (const auto* test=enemyDefinitions_.Find(kShowroomTestEnemy);test && test->partAsset) {
+            showroomSavedAsset_=test->partAsset;
+            showroomTestAsset_=EnemyUtf8Path(test->partAsset->path);
+        }
+        if (!LoadShowroomTestConfig(app,kShowroomTestConfig))
+            OutputDebugStringA(("Showroom Enemy Asset: "+showroomTestAssetError_+"\n").c_str());
+        ResetShowroomEnemies(app);
+    }
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
         weaponEditor_.visible=true; weaponEditor_.returnToGame=false;
         beforeWeaponTest_.reset();
         weaponEditor_.mode=WeaponEditorMode::Edit;
         showTestAssetPanel_=false;
-        if (const auto* test=enemyDefinitions_.Find(kShowroomTestEnemy);test && test->partAsset) {
-            const auto& path=test->partAsset->path;
-            showroomTestAsset_=std::u8string(path.begin(),path.end());
-        }
+        showEnemyEditor_=enemyEditorTest_=showroomConfigPending_=false;
         app.ImGui()->SetWeaponWorkspace(true);
         debugPaused_=false;
         weaponPreview_=std::make_unique<Object3d>();
@@ -432,7 +435,9 @@ void GameScene::OnExit(GameApp& app) {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) app.ImGui()->SetWeaponWorkspace(false);
     beforeWeaponTest_.reset(); weaponPreview_.reset();
+    enemyEditor_=EnemyEditor{};
 #endif
+    showroomSavedAsset_.reset();
     app.GetInput()->SetCameraControlEnabled(false);
     app.GetInput()->SetMouseCaptureRect(nullptr);
     app.GetInput()->SetCameraToggleKeyEnabled(true);
@@ -495,15 +500,27 @@ void GameScene::Update(GameApp& app, float dt) {
         if (app.Scenes().IsTransitioning()) return;
     }
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    if (showroom_ && std::exchange(showroomConfigPending_,false)) LoadShowroomTestConfig(app,kShowroomTestConfig);
     if (showroom_ && pendingShowroomTestAsset_) {
         const auto path=std::move(*pendingShowroomTestAsset_);
         pendingShowroomTestAsset_.reset();
-        if (ApplyShowroomTestAsset(app,path)) resetEnemiesPending_=true;
+        ApplyShowroomTestAsset(app,path);
     }
-    if (showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F5) && !ImGui::GetIO().WantTextInput)
-        resetEnemiesPending_=true;
 #endif
+#ifdef USE_IMGUI
+    if (showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F5) && !ImGui::GetIO().WantTextInput)
+#else
+    if (showroom_ && input.HasFocus() && input.IsKeyTrigger(DIK_F5))
+#endif
+        resetEnemiesPending_=true;
     if (showroom_ && resetEnemiesPending_) {
+        if (showroomDraftApplied_) {
+            try {
+                ReplaceShowroomTest(app,showroomSavedAsset_,showroomTestBehavior_);
+                showroomDraftApplied_=false;
+                showroomTestAssetError_.clear();
+            } catch (const std::exception& error) { showroomTestAssetError_=error.what(); }
+        }
         app.Dx()->WaitForGPU();
         ResetShowroomEnemies(app); resetEnemiesPending_=false;
         weapons_.ResetPickups();
@@ -519,10 +536,45 @@ void GameScene::Update(GameApp& app, float dt) {
     dt = std::isfinite(dt) ? std::max(dt, 0.0f) : 0.0f;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
+        if (const auto draft=enemyEditor_.TakeTestRequest()) {
+            try {
+                ReplaceShowroomTest(app,draft,showroomTestBehavior_);
+                showroomDraftApplied_=true; showroomTestAssetError_.clear();
+                showEnemyEditor_=false; enemyEditorTest_=true; showTestAssetPanel_=false;
+                beforeWeaponTest_=player_.CurrentWeapon();
+                if (player_.CurrentWeapon().Definition().id.empty()) {
+                    const auto* selection=weaponEditor_.Selected();
+                    const auto* weapon=selection ? weapons_.Find(selection->id) : nullptr;
+                    if (!weapon) weapon=weapons_.InitialWeapon();
+                    if (!weapon && !weapons_.Definitions().empty()) weapon=&weapons_.Definitions().front();
+                    if (weapon) EquipWeaponForDebug(*weapon);
+                }
+                weaponEditor_.mode=WeaponEditorMode::Test;
+                camera_.SetAspect(1280.f/720.f);
+                for (const auto& point:spawnSystem_.Points()) {
+                    if (point.enemyPool.empty() || point.enemyPool.front().id!=kShowroomTestEnemy) continue;
+                    const auto start=point.position+Vector3{-5,0,0};
+                    const auto* test=enemyDefinitions_.Find(kShowroomTestEnemy);
+                    const auto scale=test ? test->VisualScale({2,2,2}) : Vector3{2,2,2};
+                    const auto world=Matrix4x4::MakeAffineMatrix(scale,point.rotation,point.position);
+                    const auto& bounds=draft->defaults.front().bounds;
+                    const auto aim=EnemyPartTransformPoint((bounds.min+bounds.max)*.5f,world);
+                    const auto look=aim-start-Vector3{0,player_.Settings().cameraHeight,0};
+                    player_.SetStage(&level_.collision,start,{-std::atan2(look.y,std::hypot(look.x,look.z)),
+                        std::atan2(look.x,look.z),0});
+                    break;
+                }
+                player_.RefreshDebug();
+                initialCapturePending_=true;
+                suppressFireUntilRelease_=true;
+                debugPaused_=false;
+            } catch (const std::exception& error) { enemyEditor_.ReportError(error.what()); }
+        }
         if (weaponEditor_.mode!=WeaponEditorMode::Edit && input.IsKeyTrigger(DIK_ESCAPE)) {
             if (weaponEditor_.mode==WeaponEditorMode::TestThrowables) throwables_.Reset();
             weaponEditor_.mode=WeaponEditorMode::Edit;
             showTestAssetPanel_=false;
+            if (std::exchange(enemyEditorTest_,false)) showEnemyEditor_=true;
             if (beforeWeaponTest_) player_.RestoreWeaponForDebug(*beforeWeaponTest_);
             beforeWeaponTest_.reset();
             bullets_.Clear(); enemyProjectiles_.Clear(); projectileVisuals_.clear();
@@ -532,6 +584,7 @@ void GameScene::Update(GameApp& app, float dt) {
             input.SetCameraControlEnabled(false);
             initialCapturePending_=false;
             ImGui::GetIO().ConfigFlags=(ImGui::GetIO().ConfigFlags & ~kCapturedMouseFlags) | savedMouseFlags_;
+            if (showEnemyEditor_) { enemyEditor_.Update(app); return; }
             UpdateWeaponPreview();
             ground_.Update(0);
             return;
@@ -1058,6 +1111,9 @@ void GameScene::DrawRender(GameApp& app) {
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     if (!gameOver_.Active()) app.Render()->ApplyViewPostPreview();
     if (escapeMode_==EscapeMode::Results) return;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    if (showroom_ && showEnemyEditor_) { enemyEditor_.DrawPreview(); return; }
+#endif
     ground_.Draw();
     if (EscapePlaying()) for (auto& road:escapeRoad_) road->Draw();
     if (escapeCar_) escapeCar_->Draw();
@@ -1182,7 +1238,11 @@ void GameScene::DrawImGui(GameApp& app) {
     app.Render()->DrawViewPostEffectsImGui(gameOver_.settings.post.doubleVision,gameOver_.settings.post.impactBlur);
     if (gameOver_.Active()) return;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
-    if (showroom_) { DrawWeaponWorkspace(app); return; }
+    if (showroom_) {
+        if (showEnemyEditor_) enemyEditor_.DrawUI(app,showEnemyEditor_);
+        else DrawWeaponWorkspace(app);
+        return;
+    }
     ImGui::BeginDisabled(sequenceOwnsCamera_);
     DrawDebugTools(app);
     ImGui::EndDisabled();
@@ -1668,7 +1728,7 @@ void GameScene::DrawDebugTools(GameApp& app) {
             const auto enemyPath=debugJsonSelection_==0 ? temporary : files[0];
             const auto weaponPath=debugJsonSelection_==1 ? temporary : files[1];
             const auto stagePath=debugJsonSelection_==2 ? temporary : files[2];
-            EnemyDefinitions definitions; if (!definitions.Load(enemyPath)) return definitions.Error();
+            EnemyDefinitions definitions; if (!definitions.Load(enemyPath,ReadEnemyModel)) return definitions.Error();
             EnemySpawnSystem spawns; if (!spawns.Load(stagePath,definitions)) return spawns.Error();
             WeaponSystem weapons; if (!weapons.Load(weaponPath,stagePath,weaponSeedOverride_)) return weapons.Error();
             StageProgress progress; if (!progress.LoadGoals(stagePath)) return progress.Error();
@@ -1711,6 +1771,74 @@ void GameScene::DrawEnemyPoolStats() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Runtime Allocations counts Enemy slots created after prewarm (including rewind overflow), not all CPU allocations.");
 #endif
 }
+void GameScene::ReplaceShowroomTest(GameApp& app,const std::shared_ptr<const EnemyAsset>& asset,const std::string& behavior) {
+    const auto* behaviorDefinition=enemyDefinitions_.Find(behavior);
+    if (!behaviorDefinition) throw std::runtime_error("Unknown Showroom enemyDefinition: "+behavior);
+    auto definition=*behaviorDefinition;
+    definition.id=kShowroomTestEnemy;
+    definition.displayName="Normal Test";
+    definition.partAsset=asset;
+    definition.hpMultiplier=1;
+    definition.typeMarker.enabled=false;
+    if (const auto* test=enemyDefinitions_.Find(kShowroomTestEnemy))
+        definition.visualScaleMultiplier=test->visualScaleMultiplier;
+    const auto& points=spawnSystem_.Points();
+    const auto point=std::find_if(points.begin(),points.end(),[](const auto& p) {
+        return !p.enemyPool.empty() && p.enemyPool.front().id==kShowroomTestEnemy;
+    });
+    if (point==points.end()) throw std::runtime_error("Normal Test spawn point is missing from Showroom.");
+    const auto current=std::find_if(enemies_.begin(),enemies_.end(),[](const auto* enemy) {
+        return enemy->Definition().id==kShowroomTestEnemy;
+    });
+    const auto index=static_cast<size_t>(current-enemies_.begin());
+    const bool newSpawn=current==enemies_.end();
+    EnemyPool::ReplacementSpawn spawn{newSpawn ? nextEnemyId_ : (*current)->GetSpawnId(),
+        point->id,point->position,point->rotation};
+    if (newSpawn) enemies_.reserve(enemies_.size()+1);
+    app.Dx()->WaitForGPU();
+    auto* target=enemyPool_.ReplaceDefinition(definition,&spawn);
+    if (newSpawn) { enemies_.push_back(target); ++nextEnemyId_; }
+    else enemies_[index]=target;
+    bullets_.Clear();
+    lastHitEnemy_=-1; lastHitPart_=EnemyPartType::None; lastHitPartName_="None";
+    shotCount_=0; hitCount_=0; lastDamage_=0;
+    suppressFireUntilRelease_=true;
+#if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
+    debugHistory_.Clear();
+#endif
+}
+
+bool GameScene::LoadShowroomTestConfig(GameApp& app,const std::filesystem::path& config) {
+    try {
+        std::ifstream input(config);
+        if (!input) throw std::runtime_error("Cannot open "+EnemyPathText(config));
+        const auto data=nlohmann::json::parse(input);
+        auto behavior=data.value("enemyDefinition",std::string("normal"));
+        auto path=EnemyUtf8Path(ResolveEnemyResource(data.at("enemyAsset").get<std::string>(),config));
+        const auto asset=EnemyAsset::Load(path,ReadEnemyModel);
+        ReplaceShowroomTest(app,asset,behavior);
+        showroomSavedAsset_=asset;
+        showroomTestBehavior_=std::move(behavior);
+        showroomTestAsset_=std::move(path);
+        showroomDraftApplied_=false;
+        showroomTestAssetError_.clear();
+        return true;
+    } catch (const std::exception& error) { showroomTestAssetError_=error.what(); return false; }
+}
+
+bool GameScene::ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path& path) {
+    try {
+        auto selected=path;
+        const auto asset=EnemyAsset::Load(path,ReadEnemyModel);
+        ReplaceShowroomTest(app,asset,showroomTestBehavior_);
+        showroomSavedAsset_=asset;
+        showroomTestAsset_=std::move(selected);
+        showroomDraftApplied_=false;
+        showroomTestAssetError_.clear();
+        return true;
+    } catch (const std::exception& error) { showroomTestAssetError_=error.what(); return false; }
+}
+
 void GameScene::ResetShowroomEnemies(GameApp& app) {
     (void)app;
     enemyPool_.ReleaseAll();
@@ -1840,33 +1968,15 @@ void GameScene::UpdateWeaponPreview() {
     weaponPreview_->Update(0);
 }
 
-bool GameScene::ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path& path) {
-    try {
-        const auto* original=enemyDefinitions_.Find(kShowroomTestEnemy);
-        if (!original) throw std::runtime_error("Normal Test is missing from enemies.json.");
-        auto definition=*original;
-        definition.partAsset=EnemyAsset::Load(path);
-        auto selected=path;
-        app.Dx()->WaitForGPU();
-        enemyPool_.ReplaceDefinition(definition);
-        showroomTestAsset_=std::move(selected);
-        showroomTestAssetError_.clear();
-        return true;
-    } catch (const std::exception& error) {
-        showroomTestAssetError_=error.what();
-        return false;
-    }
-}
-
 void GameScene::DrawShowroomTestAssetControls() {
     ImGui::TextUnformatted("Normal Test (.enemy.json)");
-    const auto current=AssetPathLabel(showroomTestAsset_.filename());
+    const auto current=EnemyPathText(showroomTestAsset_.filename());
     ImGui::SetNextItemWidth(-1);
     if (ImGui::BeginCombo("##TestEnemyAsset",current.empty() ? "Select an asset" : current.c_str())) {
         if (ImGui::IsWindowAppearing()) {
             showroomTestAssets_.clear();
             std::error_code error;
-            std::filesystem::recursive_directory_iterator it(kEnemyAssetDirectory,
+            std::filesystem::recursive_directory_iterator it("resources",
                 std::filesystem::directory_options::skip_permission_denied,error),end;
             for (;!error && it!=end;it.increment(error)) {
                 std::error_code fileError;
@@ -1876,16 +1986,29 @@ void GameScene::DrawShowroomTestAssetControls() {
             std::sort(showroomTestAssets_.begin(),showroomTestAssets_.end());
         }
         for (const auto& path:showroomTestAssets_) {
-            const auto label=AssetPathLabel(path.lexically_relative(kEnemyAssetDirectory));
+            const auto label=EnemyPathText(path.lexically_relative("resources"));
             if (ImGui::Selectable(label.c_str(),path==showroomTestAsset_)) pendingShowroomTestAsset_=path;
         }
-        if (showroomTestAssets_.empty()) ImGui::TextDisabled("No .enemy.json files in resources/enemy.");
+        if (showroomTestAssets_.empty()) ImGui::TextDisabled("No .enemy.json files in resources.");
         ImGui::EndCombo();
     }
     ImGui::BeginDisabled(showroomTestAsset_.empty());
     if (ImGui::Button("Reload JSON")) pendingShowroomTestAsset_=showroomTestAsset_;
     ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Reload Test Config")) showroomConfigPending_=true;
+    if (showroomDraftApplied_) ImGui::TextWrapped("Draft active. F5 restores the selected saved asset.");
     if (!showroomTestAssetError_.empty()) ImGui::TextWrapped("%s",showroomTestAssetError_.c_str());
+}
+
+void GameScene::OpenShowroomEnemyEditor() {
+    if (beforeWeaponTest_) player_.RestoreWeaponForDebug(*beforeWeaponTest_);
+    beforeWeaponTest_.reset();
+    weaponEditor_.mode=WeaponEditorMode::Edit;
+    enemyEditorTest_=false;
+    showTestAssetPanel_=false;
+    showEnemyEditor_=true;
+    enemyEditor_.Open(showroomTestAsset_);
 }
 
 void GameScene::DrawWeaponWorkspace(GameApp& app) {
@@ -1911,13 +2034,16 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
             ImGui::End();
             return;
         }
-        ImGui::TextWrapped("Test Weapon | LMB: Fire | RMB: ADS | R: Reload | Tab: Enemy JSON | F5: Reset | Esc: Weapon Editor");
+        ImGui::TextWrapped("LMB: Fire | RMB: ADS | R: Reload | Tab: Enemy Asset | F5: Reset | Esc: %s",
+            enemyEditorTest_ ? "Enemy Editor" : "Weapon Editor");
+        ImGui::Text("Hits: %llu | Last part: %s | Damage: %.1f",static_cast<unsigned long long>(hitCount_),lastHitPartName_.c_str(),lastDamage_);
         DrawEnemyPoolStats();
         if (!showTestAssetPanel_) app.ImGui()->DrawScenePreview();
         else if (ImGui::BeginTable("Test Enemy Layout",2,ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableSetupColumn("Enemy JSON",ImGuiTableColumnFlags_WidthFixed,std::min(290.f,viewport->WorkSize.x*.38f));
             ImGui::TableSetupColumn("Test View",ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableNextColumn();
+            if (ImGui::Button("Open Enemy Editor")) OpenShowroomEnemyEditor();
             DrawShowroomTestAssetControls();
             ImGui::TextWrapped("Tab: resume testing");
             ImGui::TableNextColumn();
@@ -1932,14 +2058,18 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         weaponPreviewAspect_=std::max(size.x,1.0f)/std::max(size.y,1.0f);
         app.ImGui()->DrawScenePreview(true);
     },[&] {
-        if (!throwables_.Pickups().empty() && ImGui::Button("Test Throwables")) {
-            const auto p=throwables_.Pickups().front().position;
-            player_.SetStage(&level_.collision,{p.x,level_.playerPosition.y,p.z-1.5f},{});
-            player_.RefreshDebug();
-            throwables_.Reset();
-            weaponEditor_.mode=WeaponEditorMode::TestThrowables;
-            initialCapturePending_=false;
-            debugPaused_=false; debugHistory_.Clear();
+        if (ImGui::Button("Open Enemy Editor")) OpenShowroomEnemyEditor();
+        if (!throwables_.Pickups().empty()) {
+            ImGui::SameLine();
+            if (ImGui::Button("Test Throwables")) {
+                const auto p=throwables_.Pickups().front().position;
+                player_.SetStage(&level_.collision,{p.x,level_.playerPosition.y,p.z-1.5f},{});
+                player_.RefreshDebug();
+                throwables_.Reset();
+                weaponEditor_.mode=WeaponEditorMode::TestThrowables;
+                initialCapturePending_=false;
+                debugPaused_=false; debugHistory_.Clear();
+            }
         }
         if (ImGui::Button("Cloth Physics Showroom")) RequestChangeScene_("ClothShowroom");
         ImGui::SameLine();

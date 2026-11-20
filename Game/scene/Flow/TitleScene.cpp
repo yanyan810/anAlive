@@ -1,4 +1,5 @@
 #include "TitleScene.h"
+#include "EnemyModelSource.h"
 #include "GameApp.h"
 #include "ImGuiManagaer.h"
 #include "WinApp.h"
@@ -454,7 +455,7 @@ bool TitleScene::LoadLayout() {
         startDefinition_.id = "title_game_start";
         startDefinition_.displayName = "GAME START";
         startDefinition_.visualScaleMultiplier = {.5f,.5f,.5f}; // Enemy's base scale is 2; asset is world-baked.
-        startDefinition_.partAsset = EnemyAsset::Load(assetPath);
+        startDefinition_.partAsset = EnemyAsset::Load(assetPath, ReadEnemyModel);
         const auto& parts = startDefinition_.partAsset->defaults;
         if (parts.size()!=1 || parts[0].role!=EnemyPartRole::Head || !parts[0].usesLocalHp ||
             !parts[0].breakable || !parts[0].deathOnZero || parts[0].maxHp!=1)

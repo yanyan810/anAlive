@@ -2,6 +2,7 @@
 #include "DebugEnemyTuning.h"
 #endif
 #include "Enemy.h"
+#include "EnemyModelSource.h"
 
 #if defined(_DEBUG) && defined(_M_X64) && defined(USE_IMGUI)
 std::pair<float, float> Enemy::LiveHealth() const noexcept {
@@ -159,10 +160,10 @@ void Enemy::PreloadAssets() {
         } catch (const std::exception&) { /* Face -> Chunk -> whole part. */ }
     }
     EnemyDefinitions definitions;
-    if (definitions.Load("resources/Data/enemies.json")) {
+    if (definitions.Load("resources/Data/enemies.json",ReadEnemyModel)) {
         for (const auto& [id,definition]:definitions.All()) {
             (void)id;
-            if (definition.partAsset) PrepareAssetModels(definition.partAsset);
+            if (definition.partAsset && !definition.partAsset->model) PrepareAssetModels(definition.partAsset);
         }
     } else OutputDebugStringA(("Enemy asset preload: "+definitions.Error()+"\n").c_str());
     assetsPreloaded_ = true;
@@ -308,7 +309,7 @@ void Enemy::ApplyDefinition(const EnemyDefinition& definition,const std::shared_
             visual.object->SetDirection({.3f,-1,.5f}); visual.object->SetIntensity(1);
             visual.object->SetPointLightIntensity(0); visual.object->SetSpotLightIntensity(0);
         }
-        if (!placementPreview_) PrepareFaceBatch();
+        if (!placementPreview_ && !asset_->source->model) PrepareFaceBatch();
     } else {
         if (asset_) {
             asset_.reset();
@@ -598,7 +599,8 @@ void Enemy::DetachPart(size_t i,const Vector3& shotDirection,bool forceFaces) {
     if (!splitVisuals_ || i>=visuals_.size()) return;
     auto& visual = visuals_[i];
     if (!visual.object || !visual.visible) return;
-    if ((forceFaces || breakMode_ == FragmentMode::Face) && SpawnFaces(i, shotDirection,forceFaces)) { visual.visible=false; return; }
+    if (!(asset_ && asset_->source->model) && (forceFaces || breakMode_ == FragmentMode::Face) &&
+        SpawnFaces(i,shotDirection,forceFaces)) { visual.visible=false; return; }
     AABB bounds{};
     if (!visual.object->GetModel()->GetLocalAABB(bounds)) return;
     std::uniform_real_distribution<float> magnitude(2.0f,6.0f);
@@ -730,8 +732,8 @@ void Enemy::UpdateVisuals(float dt) {
         if (!visuals_[i].object) continue;
         auto& obj = *visuals_[i].object;
         const auto render = animation_.TransformFor(pose, &parts_[i], visualScale, rotation_, position_);
-        obj.SetTranslate(render.translate);
-        obj.SetRotate(render.rotate);
+        obj.SetTranslate(asset_ && asset_->source->model ? position_ : render.translate);
+        obj.SetRotate(asset_ && asset_->source->model ? rotation_ : render.rotate);
         obj.SetScale(visualScale);
         Vector4 color{1,1,1,1};
         switch (parts_[i].DamageState()) {
@@ -1208,6 +1210,7 @@ void Enemy::PrepareFaceBatch() {
 }
 
 std::shared_ptr<const EnemyRenderAsset> Enemy::PrepareAssetModels(std::shared_ptr<const EnemyAsset> asset) {
+    if (asset->model) return BuildAssetModels(std::move(asset));
     if (const auto found=assetModels_.find(asset->path);found!=assetModels_.end()) return found->second;
     auto result=BuildAssetModels(asset);
     assetModels_[asset->path]=result;
@@ -1216,6 +1219,20 @@ std::shared_ptr<const EnemyRenderAsset> Enemy::PrepareAssetModels(std::shared_pt
 
 std::shared_ptr<const EnemyRenderAsset> Enemy::BuildAssetModels(std::shared_ptr<const EnemyAsset> asset) {
     auto result=std::make_shared<EnemyRenderAsset>(); result->source=asset;
+    if (asset->model) {
+        const auto textures=BuildEnemyModelTextures(*asset->model);
+        for (const auto& part:asset->defaults) {
+            result->ownedModels.push_back(BuildEnemyPartModel(*part.geometry,*asset->model,textures));
+            result->models.push_back(result->ownedModels.back().get());
+        }
+        result->chunks.resize(result->models.size());
+        return result;
+    }
+    auto* textures=TextureManager::GetInstance();
+    // Reuse textures already owned by the game. A texture first seen on a replaceable
+    // asset follows that asset's lifetime instead of growing the global cache.
+    const bool cached=textures->HasTexture(asset->texture);
+    const auto binding=cached ? nullptr : textures->CreateOwnedTexture(TextureManager::PrepareFile(asset->texture));
     const auto build=[&](const std::vector<std::array<EnemyPartVertex,3>>& triangles) {
         Model::ModelData geometry; geometry.materials.push_back({asset->texture});
         Model::MeshData mesh;
@@ -1226,6 +1243,7 @@ std::shared_ptr<const EnemyRenderAsset> Enemy::BuildAssetModels(std::shared_ptr<
         mesh.indexCount=static_cast<uint32_t>(geometry.indices.size());
         geometry.meshes.push_back(std::move(mesh)); geometry.rootNode.meshIndices.push_back(0);
         result->ownedModels.push_back(ModelManager::GetInstance()->CreateOwnedPrimitiveModel(geometry));
+        if (!cached) result->ownedModels.back()->SetOwnedTextures({binding});
         return result->ownedModels.back().get();
     };
     for (size_t i=0;i<asset->defaults.size();++i) {

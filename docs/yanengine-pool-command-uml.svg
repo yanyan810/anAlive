@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title">
+<title id="title">YanEngine ｜ 敵の再利用と編集履歴</title>
+<defs>
+  <marker id="inherit" markerWidth="25" markerHeight="22" refX="23" refY="11" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M2 2L23 11L2 20Z" fill="white" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="owned" markerWidth="25" markerHeight="18" refX="0" refY="9" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0 9L12 2L24 9L12 16Z" fill="#3a5067" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="borrowed" markerWidth="25" markerHeight="18" refX="0" refY="9" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0 9L12 2L24 9L12 16Z" fill="white" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="arrow" markerWidth="17" markerHeight="17" refX="14" refY="8" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M2 2L14 8L2 14" fill="none" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <style>
+    text { fill:#102c45; font-family:"Yu Gothic UI",Meiryo,sans-serif }
+    .heading { font-size:42px;font-weight:700 }
+    .subtitle { fill:#385672;font-size:22px }
+    .section { fill:#0c5b60;font-size:25px;font-weight:700 }
+    .classname,.abstract-name,.stereo { text-anchor:middle }
+    .classname,.abstract-name { font-family:"Segoe UI",sans-serif;font-size:24px;font-weight:700 }
+    .abstract-name { font-style:italic }
+    .stereo { font-size:17px;fill:#346371 }
+    .member { font-family:Consolas,monospace;font-size:19px }
+    .note { font-size:21px;fill:#304e67 }
+    .label { font-size:18px;fill:#304e67 }
+    .count { font-size:18px;font-family:Consolas,monospace;fill:#304e67 }
+    .box { fill:white;stroke:#3a5067;stroke-width:2 }
+    .rule { fill:none;stroke:#a8bbc8;stroke-width:1.4 }
+    .relation,.dependency { fill:none;stroke:#3a5067;stroke-width:2.1 }
+    .dependency { stroke-dasharray:7 5 }
+  </style>
+</defs>
+<rect width="1600" height="1160" fill="#f4f8fa"/>
+<rect width="1600" height="10" fill="#127278"/>
+<text x="58" y="72" class="heading">YanEngine ｜ 敵の再利用と編集履歴</text>
+<text x="60" y="112" class="subtitle">クラス図　•　GameScene、EnemyPool、EnemySpawnSystem、EnemyEditor</text>
+
+<text x="62" y="156" class="section">Object Pool とスポーン管理</text>
+<g transform="translate(550 181)">
+  <rect width="475" height="184" rx="7" class="box"/>
+  <path d="M0 52H475" class="rule"/>
+  
+  <text x="237.5" y="34" class="classname">GameScene</text>
+  <text x="16" y="81" class="member">- enemyPool_: EnemyPool</text>
+  <text x="16" y="110" class="member">- spawnSystem_: EnemySpawnSystem</text>
+  <text x="16" y="139" class="member">- enemies_: vector&lt;Enemy*&gt;</text>
+  <text x="16" y="168" class="member">- UpdateEnemySpawns(...)</text>
+</g>
+<g transform="translate(65 425)">
+  <rect width="395" height="126" rx="7" class="box"/>
+  <path d="M0 52H395" class="rule"/>
+  
+  <text x="197.5" y="34" class="classname">EnemySpawnSystem</text>
+  <text x="16" y="81" class="member">+ Update(dt, player, spawn, isAlive)</text>
+  <text x="16" y="110" class="member">+ SelectEnemyId(point): string</text>
+</g>
+<g transform="translate(550 425)">
+  <rect width="445" height="155" rx="7" class="box"/>
+  <path d="M0 52H445" class="rule"/>
+  
+  <text x="222.5" y="34" class="classname">EnemyPool</text>
+  <text x="16" y="81" class="member">- buckets_: map&lt;string, Bucket&gt;</text>
+  <text x="16" y="110" class="member">+ Acquire(...): Enemy*</text>
+  <text x="16" y="139" class="member">+ Release(enemy): bool</text>
+</g>
+<g transform="translate(1160 425)">
+  <rect width="375" height="126" rx="7" class="box"/>
+  <path d="M0 52H375" class="rule"/>
+  
+  <text x="187.5" y="34" class="classname">Enemy</text>
+  <text x="16" y="81" class="member">+ ResetForSpawn(...)</text>
+  <text x="16" y="110" class="member">+ CanReturnToPool(): bool</text>
+</g>
+<g transform="translate(550 632)">
+  <rect width="305" height="97" rx="7" class="box"/>
+  <path d="M0 52H305" class="rule"/>
+  
+  <text x="152.5" y="34" class="classname">EnemyPool::Bucket</text>
+  <text x="16" y="81" class="member">+ slots: vector&lt;Slot&gt;</text>
+</g>
+<g transform="translate(955 632)">
+  <rect width="355" height="126" rx="7" class="box"/>
+  <path d="M0 52H355" class="rule"/>
+  
+  <text x="177.5" y="34" class="classname">EnemyPool::Slot</text>
+  <text x="16" y="81" class="member">+ enemy: unique_ptr&lt;Enemy&gt;</text>
+  <text x="16" y="110" class="member">+ active: bool</text>
+</g>
+<path d="M660 365V388H265V425" class="relation" marker-start="url(#owned)"/>
+<text x="273" y="415" class="count">1</text>
+<path d="M790 365V425" class="relation" marker-start="url(#owned)"/>
+<text x="804" y="416" class="count">1</text>
+<path d="M1025 258H1360V425" class="relation" marker-start="url(#borrowed)"/>
+<text x="1129" y="246" class="label">アクティブ敵の借用</text>
+<text x="1374" y="415" class="count">0..*</text>
+<path d="M705 580V632" class="relation" marker-start="url(#owned)"/>
+<text x="718" y="620" class="count">0..*</text>
+<path d="M855 685H955" class="relation" marker-start="url(#owned)"/>
+<text x="909" y="674" class="count">0..*</text>
+<path d="M1227 632V551" class="relation" marker-start="url(#owned)"/>
+<text x="1240" y="574" class="count">1</text>
+<path d="M60 785H1540" class="rule"/>
+<text x="62" y="830" class="section">Command と面割り当ての Undo / Redo</text>
+<g transform="translate(90 855)">
+  <rect width="565" height="155" rx="7" class="box"/>
+  <path d="M0 52H565" class="rule"/>
+  
+  <text x="282.5" y="34" class="classname">EnemyEditor</text>
+  <text x="16" y="81" class="member">- assignmentHistory_: deque&lt;AssignmentEdit&gt;</text>
+  <text x="16" y="110" class="member">- ApplySelection(owner)</text>
+  <text x="16" y="139" class="member">- StepAssignmentHistory(redo)</text>
+</g>
+<g transform="translate(920 855)">
+  <rect width="590" height="155" rx="7" class="box"/>
+  <path d="M0 52H590" class="rule"/>
+  
+  <text x="295" y="34" class="classname">EnemyEditor::AssignmentEdit</text>
+  <text x="16" y="81" class="member">+ faces: vector&lt;Face&gt;  ／  + owner: size_t</text>
+  <text x="16" y="110" class="member">+ Execute(editor: EnemyEditor&amp;) const</text>
+  <text x="16" y="139" class="member">+ Undo(editor: EnemyEditor&amp;) const</text>
+</g>
+<path d="M655 904H920" class="relation" marker-start="url(#owned)"/>
+<text x="861" y="892" class="count">0..32</text>
+<path d="M920 960H655" class="dependency" marker-end="url(#arrow)"/>
+<text x="713" y="948" class="label">変更先を引数で受け取る</text>
+<path d="M91 1074H142" class="relation" marker-start="url(#owned)"/> <text x="155" y="1081" class="label">所有（コンポジション）</text>
+<path d="M455 1074H506" class="relation" marker-start="url(#borrowed)"/> <text x="520" y="1081" class="label">非所有の集約</text>
+<path d="M712 1074H765" class="dependency" marker-end="url(#arrow)"/> <text x="778" y="1081" class="label">依存</text>
+
+</svg>

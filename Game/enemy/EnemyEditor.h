@@ -69,6 +69,9 @@ private:
         struct Face { uint32_t index,previous; };
         std::vector<Face> faces;
         size_t owner;
+
+        void Execute(EnemyEditor& editor) const;
+        void Undo(EnemyEditor& editor) const;
     };
 
     void RequestChange(Action action,const std::filesystem::path& path={});

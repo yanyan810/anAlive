@@ -696,6 +696,7 @@
   <ItemGroup>
     <ClInclude Include="Game\enemy\DetachedEnemyPart.h" />
     <ClInclude Include="Game\enemy\EnemyAI.h" />
+    <ClInclude Include="Game\enemy\EnemyAIStates.inl" />
     <ClInclude Include="Game\StageLoader.h" />
     <ClInclude Include="Game\HotelEscape.h" />
     <ClInclude Include="Game\CameraSequence.h" />

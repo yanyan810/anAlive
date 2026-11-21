@@ -648,6 +648,17 @@ void EnemyEditor::ChangeOwner(uint32_t index,size_t owner) {
     current=owner;
 }
 
+void EnemyEditor::AssignmentEdit::Execute(EnemyEditor& editor) const {
+    for (const auto& face:faces) editor.ChangeOwner(face.index,owner);
+}
+
+void EnemyEditor::AssignmentEdit::Undo(EnemyEditor& editor) const {
+    for (const auto& face:faces) {
+        const size_t previous=face.previous==UINT32_MAX ? kNoEnemyPart : static_cast<size_t>(face.previous);
+        editor.ChangeOwner(face.index,previous);
+    }
+}
+
 void EnemyEditor::ApplySelection(size_t owner) {
     AssignmentEdit edit{{},owner};
     for (uint32_t index:selectedFaces_) {
@@ -660,7 +671,7 @@ void EnemyEditor::ApplySelection(size_t owner) {
         assignmentHistory_.push_back(std::move(edit));
         if (assignmentHistory_.size()>32) assignmentHistory_.pop_front();
         assignmentCursor_=assignmentHistory_.size();
-        for (const auto& face:assignmentHistory_.back().faces) ChangeOwner(face.index,owner);
+        assignmentHistory_.back().Execute(*this);
         dirty_=otherDirty_ || draft_.owners!=saved_.owners;
         previewDirty_=outlineDirty_=true;
     }
@@ -672,10 +683,8 @@ void EnemyEditor::StepAssignmentHistory(bool redo) {
     if ((redo && assignmentCursor_==assignmentHistory_.size()) || (!redo && !assignmentCursor_)) return;
     const auto& edit=assignmentHistory_[redo ? assignmentCursor_++ : --assignmentCursor_];
     ClearFaceSelection();
-    for (const auto& face:edit.faces) {
-        const size_t previous=face.previous==UINT32_MAX ? kNoEnemyPart : face.previous;
-        ChangeOwner(face.index,redo ? edit.owner : previous);
-    }
+    if (redo) edit.Execute(*this);
+    else edit.Undo(*this);
     dirty_=otherDirty_ || draft_.owners!=saved_.owners;
     previewDirty_=true;
 }

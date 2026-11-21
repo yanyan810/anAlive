@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="935" viewBox="0 0 1600 935" role="img" aria-labelledby="title">
+<title id="title">YanEngine ｜ 敵AIの State</title>
+<defs>
+  <marker id="inherit" markerWidth="25" markerHeight="22" refX="23" refY="11" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M2 2L23 11L2 20Z" fill="white" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="owned" markerWidth="25" markerHeight="18" refX="0" refY="9" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0 9L12 2L24 9L12 16Z" fill="#3a5067" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="borrowed" markerWidth="25" markerHeight="18" refX="0" refY="9" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0 9L12 2L24 9L12 16Z" fill="white" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <marker id="arrow" markerWidth="17" markerHeight="17" refX="14" refY="8" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M2 2L14 8L2 14" fill="none" stroke="#3a5067" stroke-width="2"/>
+  </marker>
+  <style>
+    text { fill:#102c45; font-family:"Yu Gothic UI",Meiryo,sans-serif }
+    .heading { font-size:42px;font-weight:700 }
+    .subtitle { fill:#385672;font-size:22px }
+    .section { fill:#0c5b60;font-size:25px;font-weight:700 }
+    .classname,.abstract-name,.stereo { text-anchor:middle }
+    .classname,.abstract-name { font-family:"Segoe UI",sans-serif;font-size:24px;font-weight:700 }
+    .abstract-name { font-style:italic }
+    .stereo { font-size:17px;fill:#346371 }
+    .member { font-family:Consolas,monospace;font-size:19px }
+    .note { font-size:21px;fill:#304e67 }
+    .label { font-size:18px;fill:#304e67 }
+    .count { font-size:18px;font-family:Consolas,monospace;fill:#304e67 }
+    .box { fill:white;stroke:#3a5067;stroke-width:2 }
+    .rule { fill:none;stroke:#a8bbc8;stroke-width:1.4 }
+    .relation,.dependency { fill:none;stroke:#3a5067;stroke-width:2.1 }
+    .dependency { stroke-dasharray:7 5 }
+  </style>
+</defs>
+<rect width="1600" height="935" fill="#f4f8fa"/>
+<rect width="1600" height="10" fill="#127278"/>
+<text x="58" y="72" class="heading">YanEngine ｜ 敵AIの State</text>
+<text x="60" y="112" class="subtitle">クラス図　•　Game/enemy/Enemy.h、EnemyAI.h、EnemyAIStates.inl</text>
+
+<g transform="translate(62 167)">
+  <rect width="294" height="126" rx="7" class="box"/>
+  <path d="M0 52H294" class="rule"/>
+  
+  <text x="147" y="34" class="classname">Enemy</text>
+  <text x="16" y="81" class="member">- ai_: EnemyAI</text>
+  <text x="16" y="110" class="member">+ Update(...)</text>
+</g>
+<g transform="translate(460 150)">
+  <rect width="410" height="184" rx="7" class="box"/>
+  <path d="M0 52H410" class="rule"/>
+  
+  <text x="205" y="34" class="classname">EnemyAI</text>
+  <text x="16" y="81" class="member">+ state: EnemyState</text>
+  <text x="16" y="110" class="member">+ navigation: EnemyNavigation</text>
+  <text x="16" y="139" class="member">+ Update(...): float</text>
+  <text x="16" y="168" class="member">- BehaviorFor(...): const Behavior&amp;</text>
+</g>
+<g transform="translate(1000 150)">
+  <rect width="535" height="140" rx="7" class="box"/>
+  <path d="M0 66H535" class="rule"/>
+  <text x="267.5" y="25" class="stereo">«abstract»</text>
+  <text x="267.5" y="52" class="abstract-name">EnemyAI::Behavior</text>
+  <text x="16" y="95" class="member">+ Tick(ai, frame, recognized): float</text>
+  <text x="16" y="124" class="member">+ Update(ai, frame): float {abstract}</text>
+</g>
+<g transform="translate(65 385)">
+  <rect width="380" height="140" rx="7" class="box"/>
+  <path d="M0 66H380" class="rule"/>
+  <text x="190" y="25" class="stereo">«enumeration»</text>
+  <text x="190" y="52" class="classname">EnemyState</text>
+  <text x="16" y="95" class="member">Idle, Chase, Investigate, Search</text>
+  <text x="16" y="124" class="member">Wander, Attack, Dead</text>
+</g>
+<path d="M356 235H460" class="relation" marker-start="url(#owned)"/>
+<text x="430" y="226" class="count">1</text>
+<path d="M870 234H1000" class="dependency" marker-end="url(#arrow)"/>
+<text x="887" y="222" class="label">委譲</text>
+<path d="M510 334V450H445" class="dependency" marker-end="url(#arrow)"/>
+<path d="M1267 595V290" class="relation" marker-end="url(#inherit)"/>
+<path d="M175 595H1425" class="relation"/>
+<path d="M175 595V640" class="relation"/>
+<path d="M425 595V640" class="relation"/>
+<path d="M675 595V640" class="relation"/>
+<path d="M925 595V640" class="relation"/>
+<path d="M1175 595V640" class="relation"/>
+<path d="M1425 595V640" class="relation"/>
+<g transform="translate(58 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">IdleState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<g transform="translate(308 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">PursuitState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<g transform="translate(558 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">InvestigateState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<g transform="translate(808 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">SearchState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<g transform="translate(1058 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">WanderState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<g transform="translate(1308 640)">
+  <rect width="234" height="111" rx="7" class="box"/>
+  <path d="M0 66H234" class="rule"/>
+  <text x="117" y="25" class="stereo">EnemyAI のネスト型</text>
+  <text x="117" y="52" class="classname">DeadState</text>
+  <text x="16" y="95" class="member">- Update(...): float</text>
+</g>
+<text x="62" y="804" class="note">Chase と Attack は PursuitState を共有。状態オブジェクトは共用し、進行データは個別の EnemyAI に保存する。</text>
+<path d="M66 852H112" class="relation" marker-start="url(#owned)"/> <text x="124" y="859" class="label">所有（コンポジション）</text>
+<path d="M402 852H450" class="relation" marker-end="url(#inherit)"/> <text x="463" y="859" class="label">継承</text>
+<path d="M589 852H641" class="dependency" marker-end="url(#arrow)"/> <text x="653" y="859" class="label">依存</text>
+
+</svg>

@@ -65,11 +65,11 @@ int main() try {
     {
         auto ai=Ready(); Vector3 p{},r{}; EastHistory(ai,p,r); p=ai.lastSeen;
         ai.settings.senses.searchDirectionPriority=1; ai.BeginSearch(p,false);
-        Check(ai.PickSearchGoal(p,nullptr,.4f,1.8f) && ai.moveTarget.x>p.x+.5f && std::abs(ai.moveTarget.z-p.z)<.01f,"clear Search did not continue east beyond observed trail");
+        Check(ai.PickSearchGoal(p,nullptr,.4f,1.8f,ai.settings.moveSpeed) && ai.moveTarget.x>p.x+.5f && std::abs(ai.moveTarget.z-p.z)<.01f,"clear Search did not continue east beyond observed trail");
         Check(ai.moveTarget.x>ai.memory.samples[ai.memory.count-1].position.x,"Search retraced old coordinates");
         StageWorld world; world.colliders.push_back(Box({1,3,6},{.2f,3,3}));
         ai.BeginSearch(p,false);
-        Check(ai.PickSearchGoal(p,&world,.4f,1.8f),"blocked forward route did not choose reachable side alternative");
+        Check(ai.PickSearchGoal(p,&world,.4f,1.8f,ai.settings.moveSpeed),"blocked forward route did not choose reachable side alternative");
         Check(ai.moveTarget.x>-.1f && std::abs(ai.moveTarget.z-p.z)>.5f && EnemyNavigation::Clear(&world,ai.moveTarget,ai.moveTarget,.4f,1.8f),"blocked east search moved backwards or inside wall");
         Check(ai.searchCandidatesRejected>0 && ai.searchFailure==EnemyPathFailure::GoalOccupied,"invalid candidate rejection reason missing");
     }
@@ -80,7 +80,7 @@ int main() try {
         StageWorld world;
         world.colliders={Box({0,3,.7f},{3,3,.1f}),Box({.7f,3,-1},{.1f,3,5}),Box({-.7f,3,-1},{.1f,3,5})};
         bool planned=false;
-        for (int attempt=0;attempt<4 && !planned;++attempt) planned=ai.PickSearchGoal(p,&world,.4f,1.8f);
+        for (int attempt=0;attempt<4 && !planned;++attempt) planned=ai.PickSearchGoal(p,&world,.4f,1.8f,ai.settings.moveSpeed);
         Check(planned && ai.moveTarget.z<-.5f && ai.searchCandidatesRejected>0,"failed forward candidates starved the reachable rear fallback");
     }
     {

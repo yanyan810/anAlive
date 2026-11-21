@@ -142,7 +142,12 @@ public:
 		const std::string& directoryPath,
 		const std::string& filename, std::optional<ModelData> prepared = std::nullopt);
 	// CPU-only import/cache path; safe for the model preload worker.
-	static ModelData ReadSourceData(const std::string& directoryPath, const std::string& filename, bool useCache=true);
+	struct SourceMetadata {
+		std::vector<std::string> materialNames;
+		std::vector<uint32_t> pmxVertexIndices; // Before expansion into material meshes.
+	};
+	static ModelData ReadSourceData(const std::string& directoryPath, const std::string& filename,
+		bool useCache=true, SourceMetadata* metadata=nullptr);
 
 	void Draw(ID3D12GraphicsCommandList* cmd);
 	//パーティクル用
@@ -163,8 +168,8 @@ public:
 
 	static ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename);
 
-	static ModelData    LoadAssimpFile(const std::string& fullPath);
-	static ModelData    LoadPmxFile(const std::string& fullPath);
+	static ModelData    LoadAssimpFile(const std::string& fullPath, SourceMetadata* metadata=nullptr);
+	static ModelData    LoadPmxFile(const std::string& fullPath, SourceMetadata* metadata=nullptr);
 
 	Vector4 GetMaterialColor() const
 	{

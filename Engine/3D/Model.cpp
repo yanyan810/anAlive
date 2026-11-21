@@ -418,18 +418,20 @@ void Model::DebugValidateAnimationTracks_() const
 }
 
 
-Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const std::string& filename,bool useCache) {
+Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const std::string& filename,
+    bool useCache,SourceMetadata* metadata) {
     const std::string path=AssetLoading::Canonical(directoryPath+"/"+filename);
     const std::string sourceDirectory=StringUtility::ConvertString(AssetLoading::Path(path).parent_path().wstring());
     ModelData data;
-    if(useCache && ModelCache::Load(path,data)) return data;
+    if(metadata) *metadata={};
+    if(useCache && !metadata && ModelCache::Load(path,data)) return data;
     {
         AssetLoading::Timer timer("model.import",path);
         auto extension=AssetLoading::Path(filename).extension().wstring();
         std::transform(extension.begin(),extension.end(),extension.begin(),::towlower);
-        if(extension==L".pmx") data=LoadPmxFile(path);
+        if(extension==L".pmx") data=LoadPmxFile(path,metadata);
         else if(extension==L".fbx" || extension==L".gltf" || extension==L".glb" || extension==L".obj" || extension==L".pmd") {
-            data=LoadAssimpFile(path);
+            data=LoadAssimpFile(path,metadata);
             if(filename=="anbi.glb") {
                 const auto pmx=LoadPmxFile(sourceDirectory+"/安比.pmx");
                 constexpr size_t offset=5;
@@ -440,7 +442,7 @@ Model::ModelData Model::ReadSourceData(const std::string& directoryPath,const st
         } else data=LoadObjFile(sourceDirectory,filename);
     }
     if(!data.animations.empty()) data.defaultAnimationName=data.animations.begin()->first;
-    if(useCache) ModelCache::Save(path,data);
+    if(useCache && !metadata) ModelCache::Save(path,data);
     return data;
 }
 
@@ -1308,7 +1310,7 @@ struct PmxBoneRecord {
 };
 }
 
-Model::ModelData Model::LoadPmxFile(const std::string& fullPath)
+Model::ModelData Model::LoadPmxFile(const std::string& fullPath,SourceMetadata* metadata)
 {
 	ModelData out{};
 	PmxReader reader(fullPath);
@@ -1426,7 +1428,8 @@ Model::ModelData Model::LoadPmxFile(const std::string& fullPath)
 	for (int32_t i = 0; i < materialCount && reader.Good(); ++i) {
 		PmxMaterialRecord material{};
 		material.name = reader.ReadText(encoding);
-		reader.ReadText(encoding); // English name
+		auto englishName = reader.ReadText(encoding);
+		if (metadata && material.name.empty()) material.name = std::move(englishName);
 		material.diffuse = {
 			reader.Read<float>(), reader.Read<float>(),
 			reader.Read<float>(), reader.Read<float>()
@@ -1502,7 +1505,7 @@ Model::ModelData Model::LoadPmxFile(const std::string& fullPath)
 
 	out.materials.reserve(materials.size());
 	out.meshes.reserve(materials.size());
-	const std::vector<uint32_t> sourceIndices = std::move(out.indices);
+	std::vector<uint32_t> sourceIndices = std::move(out.indices);
 	out.indices.clear();
 	out.indices.reserve(sourceIndices.size());
 	uint32_t firstIndex = 0;
@@ -1625,6 +1628,11 @@ Model::ModelData Model::LoadPmxFile(const std::string& fullPath)
 			Matrix4x4::Translation({ -bone.position.x, -bone.position.y, -bone.position.z });
 	}
 	out.hasSkinning = true;
+	if (metadata) {
+		metadata->pmxVertexIndices = std::move(sourceIndices);
+		metadata->materialNames.reserve(materials.size());
+		for (auto& material : materials) metadata->materialNames.push_back(std::move(material.name));
+	}
 
 	OutputDebugStringA(
 		("[PMX] Loaded vertices=" + std::to_string(vertices.size()) +
@@ -1633,7 +1641,7 @@ Model::ModelData Model::LoadPmxFile(const std::string& fullPath)
 	return out;
 }
 
-Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
+Model::ModelData Model::LoadAssimpFile(const std::string& fullPath,SourceMetadata* metadata)
 {
 
 	PrintLoadedAssimpPath_();
@@ -1764,9 +1772,14 @@ Model::ModelData Model::LoadAssimpFile(const std::string& fullPath)
 	// --- materials ---
 	out.materials.clear();
 	out.materials.resize(scene->mNumMaterials);
+	if (metadata) metadata->materialNames.resize(scene->mNumMaterials);
 
 	for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
 		const aiMaterial* mtl = scene->mMaterials[i];
+		if (metadata) {
+			aiString name;
+			if (mtl->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) metadata->materialNames[i] = name.C_Str();
+		}
 		aiString texPath;
 		aiColor4D baseColor(1.0f, 1.0f, 1.0f, 1.0f);
 		if (aiGetMaterialColor(mtl, AI_MATKEY_BASE_COLOR, &baseColor) != AI_SUCCESS) {

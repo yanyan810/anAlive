@@ -3,6 +3,7 @@
 #include "GameApp.h"
 #include "scene/Main/GameScene.h"
 #include "EnemyModelSource.h"
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -466,20 +467,26 @@ inline void RunEnemyPoolTests(GameApp& app) {
     {
         auto model=std::make_shared<EnemyModelSurface>();
         model->bounds={{-1,0,0},{1,2,1}};
-        const auto addFace=[&](float x,float z) {
+        model->materials.resize(2);
+        const auto addFace=[&](float x,float z,EnemyModelFaceId id) {
             EnemyModelSurface::Face face{};
+            face.id=id;
             face.vertices[0].position={x-.1f,.1f,z};
             face.vertices[1].position={x+.1f,.1f,z};
             face.vertices[2].position={x,.4f,z};
             model->faces.push_back(face);
         };
-        addFace(0,.1f); addFace(0,.8f); addFace(-.65f,.3f); addFace(.65f,.3f);
+        addFace(0,.1f,{0,0,0,0}); addFace(0,.8f,{1,1,0,0});
+        addFace(-.65f,.3f,{1,1,0,1}); addFace(.65f,.3f,{2,2,1,0});
+        EnemyModelEditingData editing;
+        editing.topologyVertices={{0,1,2},{3,4,5},{4,5,6},{5,6,7}};
         EnemyEditor editor;
         editor.draft_.model=model;
         editor.draft_.parts.resize(2);
         const std::vector<size_t> initialOwners{0,kNoEnemyPart,kNoEnemyPart,1};
         editor.draft_.owners=initialOwners;
-        editor.facePicking_=EnemyEditor::FacePicking(model.get());
+        editor.saved_=editor.draft_;
+        editor.facePicking_=EnemyEditor::FacePicking(model.get(),editing);
         editor.selectionSlots_.assign(4,EnemyEditor::noSelection);
         editor.partFaceCounts_={1,1};
         editor.assignedFaceCount_=2;
@@ -503,14 +510,12 @@ inline void RunEnemyPoolTests(GameApp& app) {
         editor.selectionMode_=EnemyEditor::SelectionMode::Select;
         editor.activePart_=0;
         editor.SelectPartFaces();
-        check(editor.selectedFaces_.size()==1 && selected(0),"locked part could not be inspected");
-        editor.ApplySelection(1);
-        check(editor.draft_.owners==initialOwners && selected(0),"inspection alone changed locked assignments");
+        check(editor.selectedFaces_.empty(),"part selection bypassed the assigned-face lock");
         editor.ApplyPickedFace(2);
         editor.ApplySelection(1);
         check(editor.draft_.owners==std::vector<size_t>{0,kNoEnemyPart,1,1} &&
             editor.partFaceCounts_==std::vector<size_t>{1,2} && editor.selectedFaces_.empty(),
-            "locked assignment included an inspected face or left the selection");
+            "locked assignment included another face or left the selection");
         editor.SetAssignedFaceLock(false);
         editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
         check(editor.selectedFaces_.size()==4,"unlocked rectangle skipped assigned faces");
@@ -520,8 +525,12 @@ inline void RunEnemyPoolTests(GameApp& app) {
         editor.ApplyPickedFace(0);
         editor.SetFaceSelected(1,false);
         editor.ApplySelection(1);
-        check(editor.draft_.owners[0]==1 && editor.partFaceCounts_==std::vector<size_t>{0,3},
+        check(editor.draft_.owners[0]==1 && editor.partFaceCounts_==std::vector<size_t>{0,3} && editor.selectedFaces_.empty(),
             "unlocked reassignment failed");
+        editor.StepAssignmentHistory(false);
+        check(editor.draft_.owners[0]==0 && editor.partFaceCounts_==std::vector<size_t>{1,2},"undo did not restore the previous owner");
+        editor.StepAssignmentHistory(true);
+        editor.ApplyPickedFace(0);
         editor.ApplySelection(kNoEnemyPart);
         editor.SetAssignedFaceLock(true);
         check(selected(0) && editor.draft_.owners[0]==kNoEnemyPart && editor.selectedAssignedCount_==0,
@@ -529,6 +538,48 @@ inline void RunEnemyPoolTests(GameApp& app) {
         editor.ClearFaceSelection();
         editor.ApplyPickedFace(0);
         check(selected(0),"previously assigned face could not be picked again");
+
+        editor.ClearFaceSelection();
+        editor.SetAssignedFaceLock(false);
+        editor.faceScope_=EnemyEditor::FaceScope::Material;
+        editor.ApplyPickedFace(1);
+        check(editor.selectedFaces_.size()==3 && selected(0) && selected(1) && selected(2),
+            "material scope lost a separate mesh using the same material");
+        editor.ClearFaceSelection();
+        editor.faceScope_=EnemyEditor::FaceScope::Mesh;
+        editor.ApplyPickedRectangle(viewport,lo,hi,{44,0},{56,100});
+        check(editor.selectedFaces_.size()==3,"rectangle did not expand each seeded mesh once");
+        editor.ClearFaceSelection();
+        editor.ApplyPickedFace(1);
+        check(editor.selectedFaces_.size()==2 && selected(1) && selected(2),"mesh scope crossed into another mesh");
+        editor.ClearFaceSelection();
+        editor.faceScope_=EnemyEditor::FaceScope::ConnectedInMaterial;
+        editor.ApplyPickedFace(1);
+        check(editor.selectedFaces_.size()==2 && selected(1) && selected(2),"material component crossed a material or island boundary");
+        editor.ClearFaceSelection();
+        editor.faceScope_=EnemyEditor::FaceScope::Connected;
+        editor.ApplyPickedFace(1);
+        check(editor.selectedFaces_.size()==3 && selected(3),"connected scope did not cross a shared material edge");
+        editor.selectionMode_=EnemyEditor::SelectionMode::Deselect;
+        editor.ApplyPickedRectangle(viewport,lo,hi,{44,0},{56,100});
+        check(editor.selectedFaces_.empty(),"group rectangle did not deselect the entire component");
+        editor.selectionMode_=EnemyEditor::SelectionMode::Select;
+        editor.faceScope_=EnemyEditor::FaceScope::Triangle;
+        editor.facePicking_.materials[1].locked=true;
+        editor.SetAssignedFaceLock(true);
+        editor.ApplyPickedFace(1);
+        editor.SelectLinked();
+        check(editor.selectedFaces_.size()==1 && selected(1),"linked selection bypassed locks");
+        editor.SetAssignedFaceLock(false);
+        editor.SelectLinked();
+        check(editor.selectedFaces_.size()==2 && selected(2) && !selected(3),"linked selection bypassed the material lock");
+        editor.facePicking_.meshes[0].hidden=true;
+        const auto inner=editor.PickFace(editor.facePicking_.Fit({0,.2f,-1}),{0,0,1},10);
+        check(inner==1,"hidden mesh occluded the face behind it");
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        check(!selected(0),"rectangle selected a hidden face");
+        editor.ShowAllSurfaces();
+        check(editor.FaceVisible(0) && !editor.CanSelect(3),"Show All changed a selection lock");
     }
     const auto testEnemy=[&]() -> Enemy& {
         for (auto* enemy:showroom.enemies_) if (enemy->Definition().id=="normal_test") return *enemy;
@@ -578,6 +629,130 @@ inline void RunEnemyPoolTests(GameApp& app) {
             {"hpGroups",nlohmann::json::array({{{"id","Team"},{"maxHp",50}}})},
             {"parts",nlohmann::json::array({part})}};
     };
+    {
+        using Clock=std::chrono::steady_clock;
+        const auto elapsed=[](auto start) { return std::chrono::duration<double,std::milli>(Clock::now()-start).count(); };
+        EnemyEditor editor;
+        const std::filesystem::path emaPath="resources/ema/SakurabaEma_ByPOWER.pmx";
+        auto start=Clock::now();
+        editor.OpenDraft(app,{EnemyEditor::Action::Model,emaPath});
+        const double openMs=elapsed(start);
+        const auto& model=*editor.draft_.model;
+        check(model.faces.size()==130712,"EMA test did not load the expected PMX geometry");
+        const auto& names=editor.editingData_.materialNames;
+        const auto body=static_cast<size_t>(std::find(names.begin(),names.end(),"Mt_SakurabaEma_Body")-names.begin());
+        check(body<names.size() && editor.editingData_.meshNames[body]==names[body],"EMA mesh or material names missing");
+        const auto isClothing=[&](size_t material) { return names[material].starts_with("Mt_SakurabaEma_Clothes"); };
+        // This body triangle's projected centroid is covered by Clothes01 from negative Z.
+        const auto bodySample=editor.facePicking_.materials[body].faces.at(142);
+        auto eye=editor.facePicking_.centroids[bodySample];
+        eye.z=-4;
+        const Vector3 direction{0,0,1};
+        start=Clock::now();
+        const auto clothing=editor.PickFace(eye,direction,8);
+        check(clothing!=kNoEnemyPart && isClothing(model.faces[clothing].id.material),"EMA clothing did not occlude the body");
+        editor.ApplyPickedFace(static_cast<uint32_t>(clothing));
+        editor.SelectLinked();
+        const double linkedMs=elapsed(start);
+        check(editor.selectedFaces_.size()>1,"EMA clothing seed did not expand to linked faces");
+        const auto material=model.faces[clothing].id.material;
+        editor.ClearFaceSelection();
+        editor.faceScope_=EnemyEditor::FaceScope::Material;
+        editor.ApplyPickedFace(static_cast<uint32_t>(clothing));
+        const auto materialCount=editor.selectedFaces_.size();
+        editor.ClearFaceSelection();
+        editor.faceScope_=EnemyEditor::FaceScope::ConnectedInMaterial;
+        editor.ApplyPickedFace(static_cast<uint32_t>(clothing));
+        const auto componentCount=editor.selectedFaces_.size();
+        check(componentCount>1 && componentCount<materialCount && std::all_of(editor.selectedFaces_.begin(),editor.selectedFaces_.end(),
+            [&](auto face) { return model.faces[face].id.material==material; }),"EMA material component did not narrow the selection");
+
+        EnemyPart part;
+        part.name="EMA clothing";
+        part.role=EnemyPartRole::Body;
+        part.usesLocalHp=part.breakable=true;
+        part.hp=part.maxHp=5;
+        editor.draft_.parts.push_back(part);
+        editor.partFaceCounts_.push_back(0);
+        editor.activePart_=0;
+        editor.saved_=editor.draft_;
+        editor.ApplySelection(0);
+        check(editor.selectedFaces_.empty() && editor.partFaceCounts_[0]==componentCount,"EMA assignment left selection or lost faces");
+        editor.StepAssignmentHistory(false);
+        check(!editor.dirty_ && editor.partFaceCounts_[0]==0,"EMA undo did not return to the saved draft");
+        editor.StepAssignmentHistory(true);
+        check(editor.dirty_ && editor.partFaceCounts_[0]==componentCount,"EMA redo lost face assignments");
+        start=Clock::now();
+        editor.Update(app);
+        const double rebuildMs=elapsed(start);
+        check(!editor.previewDirty_ && editor.message_.empty(),"EMA assigned preview did not rebuild");
+        const auto before=editor.draft_.Document();
+        const auto* previewModel=editor.preview_.front().model.get();
+        start=Clock::now();
+        for (size_t i=0;i<names.size();++i) editor.facePicking_.materials[i].hidden=isClothing(i);
+        editor.UpdatePreviewVisibility();
+        editor.PruneSelection();
+        const double hideMs=elapsed(start);
+        check(editor.preview_.front().model.get()==previewModel && !editor.preview_.front().object->GetHiddenMeshes().empty(),
+            "EMA visibility did not mask the existing preview meshes");
+        const auto inner=editor.PickFace(eye,direction,8);
+        check(inner!=kNoEnemyPart && model.faces[inner].id.material==body,"EMA body could not be picked after hiding clothes");
+        editor.faceScope_=EnemyEditor::FaceScope::Triangle;
+        editor.ApplyPickedFace(static_cast<uint32_t>(inner));
+        check(editor.selectedFaces_==std::vector<uint32_t>{static_cast<uint32_t>(inner)},"EMA body face was not selectable");
+        editor.ClearFaceSelection();
+        const auto viewport=Matrix4x4::Scale({.25f,.25f,.25f})*Matrix4x4::Translation({0,0,.5f});
+        const ImVec2 lo{0,0},hi{1280,720};
+        editor.faceScope_=EnemyEditor::FaceScope::Material;
+        start=Clock::now();
+        editor.ApplyPickedRectangle(viewport,lo,hi,lo,hi);
+        const double boxMs=elapsed(start);
+        check(!editor.selectedFaces_.empty() && std::none_of(editor.selectedFaces_.begin(),editor.selectedFaces_.end(),
+            [&](auto face) { return isClothing(model.faces[face].id.material); }),"EMA rectangle picked hidden clothing");
+        editor.IsolateSurfaceGroup(editor.facePicking_.materials,body);
+        check(editor.selectedFaces_.size()==editor.facePicking_.materials[body].faces.size(),"EMA isolate did not retain only body selection");
+        editor.ClearFaceSelection();
+        editor.facePicking_.materials[body].locked=true;
+        editor.ShowAllSurfaces();
+        check(editor.PickFace(eye,direction,8)==clothing && !editor.CanSelect(static_cast<uint32_t>(inner)) &&
+            editor.draft_.Document()==before,"EMA Show All lost a lock or modified the asset");
+
+        editor.facePicking_.materials[body].locked=false;
+        editor.faceScope_=EnemyEditor::FaceScope::Triangle;
+        check(!editor.editingData_.skinWeights.empty(),"EMA bone weights missing");
+        editor.activeBone_=editor.editingData_.skinWeights.begin()->first;
+        editor.boneThreshold_=.01f;
+        editor.SelectBoneCandidates();
+        check(!editor.selectedFaces_.empty(),"EMA bone weight selection returned no eligible candidates");
+        const auto candidate=editor.selectedFaces_.back();
+        editor.selectionMode_=EnemyEditor::SelectionMode::Deselect;
+        editor.ApplyPickedFace(candidate);
+        check(editor.selectionSlots_[candidate]==EnemyEditor::noSelection,"EMA bone candidate could not be deselected manually");
+
+        editor.IsolateSurfaceGroup(editor.facePicking_.materials,body);
+        const std::filesystem::path path="generated/enemy-pool-tests/ema.enemy.json";
+        editor.Save(path);
+        check(read("generated/enemy-pool-tests/ema.enemy.json")==before,"EMA saved JSON included temporary visibility changes");
+        const auto emaAsset=EnemyAsset::Parse(editor.draft_.Document(),path,editor.draft_.model);
+        showroom.ReplaceShowroomTest(app,emaAsset,"normal");
+        auto& enemy=testEnemy();
+        const auto pose=enemy.CaptureDebug();
+        const auto worldMat=Matrix4x4::MakeAffineMatrix(enemy.Definition().VisualScale(pose.scale),pose.rotation,pose.position);
+        const auto origin=EnemyPartTransformPoint(eye,worldMat);
+        const auto shot=Matrix4x4::Normalize(EnemyPartTransformPoint(eye+direction,worldMat)-origin);
+        EnemyPartHit hit;
+        check(enemy.Raycast(origin,shot,20,hit) && hit.partIndex==0,"EMA hidden editor clothing lost the Showroom collider");
+        enemy.ApplyDamage(hit.partIndex,10,shot);
+        const auto broken=enemy.CaptureDebug();
+        check(broken.parts.front().Destroyed() && !broken.detached.empty(),"EMA clothing did not break in Showroom");
+        editor.OpenDraft(app,{EnemyEditor::Action::Load,path});
+        check(editor.draft_.Document()==before && editor.partFaceCounts_[0]==componentCount &&
+            editor.FaceVisible(static_cast<uint32_t>(clothing)) && editor.preview_.front().object->GetHiddenMeshes().empty(),
+            "EMA reload changed assignments or restored a temporary visibility mask");
+        std::ofstream("generated/enemy-pool-tests/ema-selection.txt")<<"faces="<<model.faces.size()<<" linked="<<componentCount
+            <<" material="<<materialCount<<" open_ms="<<openMs<<" linked_pick_ms="<<linkedMs<<" preview_rebuild_ms="<<rebuildMs
+            <<" hide_ms="<<hideMs<<" rectangle_ms="<<boxMs<<'\n';
+    }
     const auto pmxPath=EnemyPathText(std::filesystem::path(u8"resources/MyGtYUhe6t/安比.pmx"));
     const auto pmx=ReadEnemyModel(pmxPath);
     check(pmx->materials.size()>1 && pmx->faces.size()>1000,"PMX multi-material import");
@@ -670,5 +845,5 @@ inline void RunEnemyPoolTests(GameApp& app) {
     }
 #endif
     showroom.OnExit(app);
-    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Enemy Editor selection modes and assignment lock, Showroom reset and PMX / glTF switching, runtime hit and break, shared HP, descriptor lifetime, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
+    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Enemy Editor selection scopes, visibility, locks, bone candidates, undo/redo and EMA JSON round trip, Showroom reset and PMX / glTF switching, runtime hit and break, shared HP, descriptor lifetime, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
 }

@@ -122,6 +122,10 @@ void ImGuiManagaer::Begin()
     if (!weaponWorkspace_) { sceneImageHovered_ = false; gHasSceneImageRect = false; }
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // Win32 reports input and layout in client pixels while the swap chain keeps its original size.
+    auto& io=ImGui::GetIO();
+    if (io.DisplaySize.x>0 && io.DisplaySize.y>0)
+        io.DisplayFramebufferScale={WinApp::kClientWidth/io.DisplaySize.x,WinApp::kClientHeight/io.DisplaySize.y};
     ImGui::NewFrame();
 #ifdef PLACEMENT_EDITOR_RELEASE
     if (!weaponWorkspace_) {

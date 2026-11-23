@@ -527,9 +527,9 @@ inline void RunEnemyPoolTests(GameApp& app) {
         editor.ApplySelection(1);
         check(editor.draft_.owners[0]==1 && editor.partFaceCounts_==std::vector<size_t>{0,3} && editor.selectedFaces_.empty(),
             "unlocked reassignment failed");
-        editor.StepAssignmentHistory(false);
+        editor.StepHistory(false);
         check(editor.draft_.owners[0]==0 && editor.partFaceCounts_==std::vector<size_t>{1,2},"undo did not restore the previous owner");
-        editor.StepAssignmentHistory(true);
+        editor.StepHistory(true);
         editor.ApplyPickedFace(0);
         editor.ApplySelection(kNoEnemyPart);
         editor.SetAssignedFaceLock(true);
@@ -630,6 +630,87 @@ inline void RunEnemyPoolTests(GameApp& app) {
             {"parts",nlohmann::json::array({part})}};
     };
     {
+        auto surface=std::make_shared<EnemyModelSurface>();
+        surface->bounds={{-.8f,0,0},{3.8f,1.6f,2}};
+        surface->signature="layered-bullet-collision";
+        surface->materials.push_back({{}, {1,1,1,1}});
+        const auto addLayer=[&](float x,float z) {
+            EnemyModelSurface::Face face{{0,0,0,static_cast<uint32_t>(surface->faces.size())},{}};
+            face.vertices[0].position={x-.8f,0,z};
+            face.vertices[1].position={x+.8f,0,z};
+            face.vertices[2].position={x,1.6f,z};
+            surface->faces.push_back(face);
+        };
+        addLayer(0,0); // Hair in front of an unassigned layer and the body.
+        addLayer(0,1);
+        addLayer(0,2);
+        addLayer(3,0); // Hair with nothing behind it.
+
+        auto document=documentFor("resources/fixture.obj",*surface);
+        auto& parts=document["parts"];
+        parts[0]["faces"]=nlohmann::json::array({{0,0,0,2}});
+        parts.insert(parts.begin(),nlohmann::json{{"name","Hair"},{"localHp",40},
+            {"faces",nlohmann::json::array({{0,0,0,0},{0,0,0,3}})}});
+        const auto replace=[&]() -> Enemy& {
+            showroom.ReplaceShowroomTest(app,EnemyAsset::Parse(document,{},surface),"normal");
+            return testEnemy();
+        };
+        const auto shotView=[&](const Enemy& enemy,float x) {
+            const auto pose=enemy.CaptureDebug();
+            const auto local=surface->Fit({x,.5f,-3});
+            const auto transform=Matrix4x4::MakeAffineMatrix(enemy.Definition().VisualScale(pose.scale),pose.rotation,pose.position);
+            const auto origin=EnemyPartTransformPoint(local,transform);
+            return Matrix4x4::MakeAffineMatrix({1,1,1},pose.rotation,origin);
+        };
+        const auto fire=[&](Enemy& enemy,float x) -> std::optional<BulletEnemyImpact> {
+            auto testWeapon=weapon;
+            testWeapon.pelletCount=1;
+            testWeapon.hipSpreadDegrees=testWeapon.adsSpreadDegrees=0;
+            const std::vector<Enemy*> targets{&enemy};
+            showroom.bullets_.Clear();
+            showroom.bullets_.Spawn(testWeapon,shotView(enemy,x),0,random,world,targets);
+            std::optional<BulletEnemyImpact> impact;
+            showroom.bullets_.Update(.25f,world,targets,[&](const BulletEnemyImpact& hit) { impact=hit; });
+            return impact;
+        };
+
+        auto& defaultOn=replace();
+        const auto first=fire(defaultOn,0);
+        check(first && first->partName=="Hair" && first->result.damage==10 && defaultOn.CaptureDebug().parts[0].hp==30,
+            "omitted bullet collision did not preserve the front hit");
+
+        parts[0]["bulletCollision"]=false;
+        auto& blockingUnassigned=replace();
+        const auto block=fire(blockingUnassigned,0);
+        const auto blocked=blockingUnassigned.CaptureDebug();
+        check(block && block->partName=="__Unassigned" && block->result.damage==0 && blocked.parts[1].hp==5 &&
+            !blocked.parts[2].Destroyed() && blocked.detached.empty(),"unassigned faces did not block without damage");
+        check(blocked.parts[0].hp==40 && blocked.parts[0].flashRemaining==0,"disabled hair got damage or hit feedback");
+
+        document["unassignedFacesBlockBullets"]=false;
+        auto& passThrough=replace();
+        const auto isolated=shotView(passThrough,3);
+        const Vector3 origin{isolated.m[3][0],isolated.m[3][1],isolated.m[3][2]};
+        const Vector3 direction{isolated.m[2][0],isolated.m[2][1],isolated.m[2][2]};
+        EnemyPartHit hit;
+        check(passThrough.Raycast(origin,direction,10,hit) && hit.partIndex==0 &&
+            !passThrough.RaycastBullet(origin,direction,10,hit) && !fire(passThrough,3),
+            "bullet hit disabled-only geometry or the general-purpose raycast lost it");
+        check(passThrough.ApplyBulletDamage(size_t{0},10,direction).damage==0,"direct bullet damage bypassed the filter");
+        const auto rear=fire(passThrough,0);
+        const auto broken=passThrough.CaptureDebug();
+        check(rear && rear->partName=="Model Body" && broken.parts[1].Destroyed() && !broken.visible[1] &&
+            broken.parts.hpGroups[0].hp==45,"bullet did not pass through to damage and break the enabled body");
+        check(broken.visible[0] && broken.visible[2] && broken.models[0] && broken.models[2] &&
+            broken.parts[0].hp==40 && broken.parts[0].flashRemaining==0 && broken.parts[2].flashRemaining==0 && !passThrough.IsDead(),
+            "disabled surfaces lost their renderers or generated hit feedback");
+
+        passThrough.Die(direction);
+        const auto dead=passThrough.CaptureDebug();
+        check(passThrough.IsDead() && dead.ai.state==EnemyState::Dead && !dead.visible[0] && !dead.visible[2] &&
+            dead.detached.size()==broken.detached.size()+2,"bullet collision changed death and debris handling");
+    }
+    {
         using Clock=std::chrono::steady_clock;
         const auto elapsed=[](auto start) { return std::chrono::duration<double,std::milli>(Clock::now()-start).count(); };
         EnemyEditor editor;
@@ -678,16 +759,35 @@ inline void RunEnemyPoolTests(GameApp& app) {
         editor.saved_=editor.draft_;
         editor.ApplySelection(0);
         check(editor.selectedFaces_.empty() && editor.partFaceCounts_[0]==componentCount,"EMA assignment left selection or lost faces");
-        editor.StepAssignmentHistory(false);
+        editor.StepHistory(false);
         check(!editor.dirty_ && editor.partFaceCounts_[0]==0,"EMA undo did not return to the saved draft");
-        editor.StepAssignmentHistory(true);
+        editor.StepHistory(true);
         check(editor.dirty_ && editor.partFaceCounts_[0]==componentCount,"EMA redo lost face assignments");
         start=Clock::now();
         editor.Update(app);
         const double rebuildMs=elapsed(start);
         check(!editor.previewDirty_ && editor.message_.empty(),"EMA assigned preview did not rebuild");
-        const auto before=editor.draft_.Document();
         const auto* previewModel=editor.preview_.front().model.get();
+        const auto ordinaryColor=editor.preview_.front().object->GetMaterialColor();
+        editor.SetBulletCollision(0,false);
+        editor.SetBulletCollision(kNoEnemyPart,false);
+        editor.StepHistory(false);
+        check(!editor.draft_.BulletCollisionEnabled(0) && editor.draft_.unassignedFacesBlockBullets,"undo unassigned bullet collision");
+        editor.StepHistory(false);
+        check(editor.draft_.BulletCollisionEnabled(0) && editor.partFaceCounts_[0]==componentCount,"undo part bullet collision");
+        editor.StepHistory(true);
+        editor.StepHistory(true);
+        check(!editor.draft_.BulletCollisionEnabled(0) && !editor.draft_.unassignedFacesBlockBullets,"redo bullet collision");
+        editor.showBulletCollision_=true;
+        editor.Update(app);
+        const auto overlay=editor.preview_.front().object->GetMaterialColor();
+        check(editor.preview_.front().model.get()==previewModel && overlay.x==1 && overlay.y<.3f && overlay.z>.7f && overlay.w==1,
+            "disabled collision was not color-coded without replacing or hiding the geometry");
+        editor.showBulletCollision_=false;
+        editor.Update(app);
+        const auto restored=editor.preview_.front().object->GetMaterialColor();
+        check(restored.x==ordinaryColor.x && restored.y==ordinaryColor.y && restored.z==ordinaryColor.z,"collision overlay did not turn off");
+        const auto before=editor.draft_.Document();
         start=Clock::now();
         for (size_t i=0;i<names.size();++i) editor.facePicking_.materials[i].hidden=isClothing(i);
         editor.UpdatePreviewVisibility();
@@ -742,11 +842,14 @@ inline void RunEnemyPoolTests(GameApp& app) {
         const auto shot=Matrix4x4::Normalize(EnemyPartTransformPoint(eye+direction,worldMat)-origin);
         EnemyPartHit hit;
         check(enemy.Raycast(origin,shot,20,hit) && hit.partIndex==0,"EMA hidden editor clothing lost the Showroom collider");
+        EnemyPartHit bulletHit;
+        check(!enemy.RaycastBullet(origin,shot,20,bulletHit),"EMA draft bullet collision did not reach Showroom");
         enemy.ApplyDamage(hit.partIndex,10,shot);
         const auto broken=enemy.CaptureDebug();
         check(broken.parts.front().Destroyed() && !broken.detached.empty(),"EMA clothing did not break in Showroom");
         editor.OpenDraft(app,{EnemyEditor::Action::Load,path});
-        check(editor.draft_.Document()==before && editor.partFaceCounts_[0]==componentCount &&
+        check(editor.draft_.Document()==before && !editor.draft_.BulletCollisionEnabled(0) &&
+            !editor.draft_.unassignedFacesBlockBullets && editor.partFaceCounts_[0]==componentCount &&
             editor.FaceVisible(static_cast<uint32_t>(clothing)) && editor.preview_.front().object->GetHiddenMeshes().empty(),
             "EMA reload changed assignments or restored a temporary visibility mask");
         std::ofstream("generated/enemy-pool-tests/ema-selection.txt")<<"faces="<<model.faces.size()<<" linked="<<componentCount
@@ -845,5 +948,5 @@ inline void RunEnemyPoolTests(GameApp& app) {
     }
 #endif
     showroom.OnExit(app);
-    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, no Object3d Initialize on acquire/reset, all HP modes, full-body death, chunks, types, overflow, bullet/explosion, spawn IDs, same-update SpawnGroup activation/poses/definitions, group AI/HP/parts/death/recycle/reuse/overflow/rewind/restart, Enemy Editor selection scopes, visibility, locks, bone candidates, undo/redo and EMA JSON round trip, Showroom reset and PMX / glTF switching, runtime hit and break, shared HP, descriptor lifetime, procedural animation modes/render transforms, unchanged AI, animated mesh surface raycasts, old upright hitbox removed, animation reset/rewind.\n";
+    std::ofstream("generated/enemy-pool-tests/result.txt")<<"PASS: real D3D pool reuse, all HP modes, full-body death, chunks, types, bullet/explosion, per-part and unassigned bullet filtering, group spawning/AI/rewind, Enemy Editor selection scopes, visibility, locks, bone candidates, bullet collision overlay, undo/redo and EMA JSON round trip, Showroom reset and PMX / glTF switching, runtime hit and break, shared HP, descriptor lifetime, animation and animated mesh surface raycasts.\n";
 }

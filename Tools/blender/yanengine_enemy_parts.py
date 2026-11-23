@@ -130,6 +130,8 @@ def part_settings(mesh):
             localHp=part.local_hp if local else None,
             sharedHpGroup=part.shared_group if shared else '', sharedDamageRate=part.shared_rate,
             breakable=part.breakable, deathOnZero=part.death_on_zero and local, faces=[])
+        if not part.bullet_collision:
+            parts[part.part_id]['bulletCollision'] = False
     return groups, parts
 
 
@@ -190,6 +192,8 @@ def _export_asset(obj, filepath, objects):
     for source in objects:
         snapshot_mesh(source, parts, next_face)
         next_face += len(source.data.polygons)
+    if 0 in parts and not obj.data.yan_enemy_unassigned_blocks_bullets:
+        parts[0]['bulletCollision'] = False
     if not parts or any(not part['triangles'] for part in parts.values()):
         raise ValueError("Each Part needs faces; assign faces or remove empty Parts")
     data = dict(version=1, coordinateSystem='yanengine', texture=obj.data.yan_enemy_texture,
@@ -220,8 +224,11 @@ def read_settings(mesh, document):
         group.name = item['id']
         group.max_hp = item['maxHp']
         group.death_on_zero = item.get('deathOnZero', True)
+    mesh.yan_enemy_unassigned_blocks_bullets = document.get('unassignedFacesBlockBullets', True)
     for item in document['parts']:
         if item['name'] == '__Unassigned':
+            if document['version'] == 1:
+                mesh.yan_enemy_unassigned_blocks_bullets = item.get('bulletCollision', True)
             continue
         part = add_part(mesh, item['name'], item.get('role', 'Generic'))
         hp, shared = item.get('localHp'), item.get('sharedHpGroup', '')
@@ -231,6 +238,7 @@ def read_settings(mesh, document):
         part.shared_group = shared
         part.shared_rate = item.get('sharedDamageRate', 1.0)
         part.breakable = item.get('breakable', True)
+        part.bullet_collision = item.get('bulletCollision', True)
         part.death_on_zero = item.get('deathOnZero', False)
     mesh.yan_enemy_part_index = 0
     mesh.yan_enemy_group_index = 0
@@ -367,8 +375,10 @@ def export_reference(obj, collection, filepath):
             parts[part_id]['faces'].append(list(key))
     if any(not part['faces'] for part in parts.values()):
         raise ValueError("Each Part needs faces; assign faces or remove empty Parts")
-    return write_asset(filepath, dict(version=2, coordinateSystem='yanengine',
-                                      model=reference, hpGroups=groups, parts=list(parts.values())))
+    data = dict(version=2, coordinateSystem='yanengine', model=reference, hpGroups=groups, parts=list(parts.values()))
+    if not obj.data.yan_enemy_unassigned_blocks_bullets:
+        data['unassignedFacesBlockBullets'] = False
+    return write_asset(filepath, data)
 
 
 def import_asset(context, filepath):
@@ -442,6 +452,7 @@ class YAN_EnemyPart(bpy.types.PropertyGroup):
     shared_group: StringProperty(name='Shared HP Group')
     shared_rate: FloatProperty(name='Shared Damage Rate', default=1, min=0, max=1e8)
     breakable: BoolProperty(name='Breakable', default=True)
+    bullet_collision: BoolProperty(name='Bullet Collision', default=True)
     death_on_zero: BoolProperty(name='Death on Local HP Zero', default=False)
 
 
@@ -544,6 +555,7 @@ class YAN_PT_enemy_parts(bpy.types.Panel):
         if not obj or obj.type != 'MESH':
             return
         mesh = controller(obj).data
+        layout.prop(mesh, 'yan_enemy_unassigned_blocks_bullets')
         layout.template_list('UI_UL_list', 'enemy_parts', mesh, 'yan_enemy_parts', mesh, 'yan_enemy_part_index')
         row = layout.row()
         row.operator('yan.enemy_part', text='Add Part').action = 'ADD'
@@ -552,6 +564,7 @@ class YAN_PT_enemy_parts(bpy.types.Panel):
             part = mesh.yan_enemy_parts[mesh.yan_enemy_part_index]
             layout.prop(part, 'name', text='Part Name')
             layout.prop(part, 'role', text='Role')
+            layout.prop(part, 'bullet_collision')
             layout.operator('yan.enemy_part', text='Assign Selected Faces').action = 'ASSIGN'
             layout.operator('yan.enemy_part', text='Select Part Faces').action = 'SELECT'
             layout.prop(part, 'hp_mode', text='HP Mode')
@@ -591,10 +604,12 @@ def register():
     bpy.types.Mesh.yan_enemy_group_index = IntProperty(default=0, min=0)
     bpy.types.Mesh.yan_enemy_next_id = IntProperty(default=0, min=0)
     bpy.types.Mesh.yan_enemy_texture = StringProperty(default='resources/white1x1.png')
+    bpy.types.Mesh.yan_enemy_unassigned_blocks_bullets = BoolProperty(name='Unassigned Faces Block Bullets', default=True)
 
 
 def unregister():
-    for name in ['yan_enemy_parts', 'yan_enemy_groups', 'yan_enemy_part_index', 'yan_enemy_group_index', 'yan_enemy_next_id', 'yan_enemy_texture']:
+    for name in ['yan_enemy_parts', 'yan_enemy_groups', 'yan_enemy_part_index', 'yan_enemy_group_index',
+                 'yan_enemy_next_id', 'yan_enemy_texture', 'yan_enemy_unassigned_blocks_bullets']:
         delattr(bpy.types.Mesh, name)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

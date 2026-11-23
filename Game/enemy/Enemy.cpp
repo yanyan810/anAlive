@@ -400,8 +400,15 @@ const Matrix4x4* Enemy::HittablePartWorld(size_t index) const {
     return &PartWorldMatrix(index);
 }
 bool Enemy::Raycast(const Vector3& origin, const Vector3& direction, float maxDistance, RaycastHit& hit) const {
+    return RaycastParts(origin,direction,maxDistance,hit,false);
+}
+bool Enemy::RaycastBullet(const Vector3& origin,const Vector3& direction,float maxDistance,RaycastHit& hit) const {
+    return RaycastParts(origin,direction,maxDistance,hit,true);
+}
+bool Enemy::RaycastParts(const Vector3& origin,const Vector3& direction,float maxDistance,RaycastHit& hit,bool bullet) const {
     hit = {};
-    return hasHitBox_ && !IsDead() && RaycastEnemyPartsTransformed(parts_,[this](size_t index) -> const Matrix4x4* {
+    return hasHitBox_ && !IsDead() && RaycastEnemyPartsTransformed(parts_,[this,bullet](size_t index) -> const Matrix4x4* {
+        if (bullet && !parts_[index].bulletCollision) return nullptr;
         return HittablePartWorld(index);
     },origin,direction,maxDistance,hit);
 }
@@ -423,7 +430,7 @@ EnemyBulletHitResult Enemy::ApplyBulletDamage(EnemyPartType part,float damage,co
     return ApplyBulletDamage(FindLegacyPart(part),damage,direction);
 }
 EnemyBulletHitResult Enemy::ApplyBulletDamage(size_t part, float damage, const Vector3& direction) {
-    if (IsDead() || part>=parts_.size() || parts_[part].Destroyed()) return {};
+    if (IsDead() || part>=parts_.size() || !parts_[part].bulletCollision || parts_[part].Destroyed()) return {};
     // Check before applying damage so even a lethal body shot triggers the explosion.
     // 致死ダメージで死亡状態になった後では起爆条件を満たせないため、被弾前の状態で判定する。
     const bool detonate = IsBomberDetonationHit(definition_.type, LegacyRoleType(parts_[part].role), damage, IsDead()) &&

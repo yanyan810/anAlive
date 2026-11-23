@@ -61,6 +61,7 @@ public:
     bool CanReturnToPool() const { return IsDead() && detachedParts_.empty() && faceShards_.empty() && explosionTime_<=0; }
     using RaycastHit = EnemyPartHit;
     bool Raycast(const Vector3& origin, const Vector3& direction, float maxDistance, RaycastHit& hit) const;
+    bool RaycastBullet(const Vector3& origin,const Vector3& direction,float maxDistance,RaycastHit& hit) const;
     void ShowHitFeedback(EnemyPartType part);
     void ShowHitFeedback(size_t part);
     const std::string& PartName(size_t index) const { static const std::string none="None"; return index<parts_.size()?parts_[index].name:none; }
@@ -177,6 +178,7 @@ public:
 private:
     void ApplyPartHits(const std::vector<PartDamage>& hits,const Vector3& direction,bool blast);
     const Matrix4x4* HittablePartWorld(size_t index) const;
+    bool RaycastParts(const Vector3& origin,const Vector3& direction,float maxDistance,RaycastHit& hit,bool bullet) const;
     void ApplyDefinition(const EnemyDefinition& definition,const std::shared_ptr<const EnemyRenderAsset>& renderAsset={});
     void SetSpawnIdentity(uint64_t id, const std::string& trigger) {
         spawnId_ = id;

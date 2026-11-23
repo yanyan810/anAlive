@@ -107,6 +107,7 @@ struct EnemyPart {
     std::string name=EnemyPartName(type);
     EnemyPartRole role=LegacyPartRole(type);
     bool usesLocalHp=true,breakable=true;
+    bool bulletCollision=true;
     bool deathOnZero=(role==EnemyPartRole::Head || role==EnemyPartRole::Body);
     size_t sharedGroup=kNoEnemyPart;
     float sharedDamageRate=1;

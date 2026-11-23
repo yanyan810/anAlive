@@ -11,6 +11,7 @@
 namespace {
 using Json=nlohmann::json;
 constexpr auto kMissingHpGroup=kNoEnemyPart-1;
+const ImVec4 kNonBlockingColor{1.f,.23f,.75f,1.f};
 
 Json FaceKey(const EnemyModelFaceId& id) { return {id.instance,id.mesh,id.material,id.triangle}; }
 
@@ -153,6 +154,10 @@ EnemyEditor::FacePicking::FacePicking(const EnemyModelSurface* model,const Enemy
     }
 }
 
+bool EnemyEditor::Draft::BulletCollisionEnabled(size_t owner) const {
+    return owner<parts.size() ? parts[owner].bulletCollision : unassignedFacesBlockBullets;
+}
+
 nlohmann::json EnemyEditor::Draft::Document() const {
     Json groups=Json::array(),items=Json::array();
     for (const auto& group:parts.hpGroups)
@@ -161,6 +166,7 @@ nlohmann::json EnemyEditor::Draft::Document() const {
         if (part.sharedGroup!=kNoEnemyPart && part.sharedGroup>=parts.hpGroups.size())
             throw std::runtime_error("Choose a shared HP group for "+part.name);
         items.push_back({{"name",part.name},{"role",EnemyPartRoleName(part.role)},
+            {"bulletCollision",part.bulletCollision},
             {"localHp",part.usesLocalHp ? Json(part.maxHp) : Json(nullptr)},{"breakable",part.breakable},
             {"deathOnZero",part.usesLocalHp && part.deathOnZero},{"sharedDamageRate",part.sharedDamageRate},
             {"sharedHpGroup",part.sharedGroup<parts.hpGroups.size() ? parts.hpGroups[part.sharedGroup].id : ""},
@@ -170,6 +176,7 @@ nlohmann::json EnemyEditor::Draft::Document() const {
         if (owners[i]!=kNoEnemyPart) items[owners[i]]["faces"].push_back(FaceKey(model->faces[i].id));
     return {{"version",2},{"coordinateSystem","yanengine"},
         {"model",{{"path",modelPath},{"geometrySignature",model->signature},{"faceCount",owners.size()},{"scale",scale}}},
+        {"unassignedFacesBlockBullets",unassignedFacesBlockBullets},
         {"hpGroups",std::move(groups)},{"parts",std::move(items)}};
 }
 
@@ -224,6 +231,7 @@ void EnemyEditor::OpenDraft(GameApp& app,const Request& request) {
         const auto asset=EnemyAsset::Parse(document,request.path,next.model);
         next.path=request.path;
         next.scale=asset->modelScale;
+        next.unassignedFacesBlockBullets=asset->unassignedFacesBlockBullets;
         next.parts.hpGroups=asset->defaults.hpGroups;
         next.owners.resize(next.model->faces.size(),kNoEnemyPart);
         for (const auto& item:document.at("parts")) {
@@ -270,8 +278,8 @@ void EnemyEditor::OpenDraft(GameApp& app,const Request& request) {
     dragStart_.reset();
     activePart_=draft_.parts.empty() ? kNoEnemyPart : 0;
     activeGroup_=draft_.parts.hpGroups.empty() ? kNoEnemyPart : 0;
-    assignmentHistory_.clear();
-    assignmentCursor_=0;
+    history_.clear();
+    historyCursor_=0;
     dirty_=otherDirty_=previewDirty_=false;
     UpdatePreviewVisibility();
     fileName_=std::move(name);
@@ -342,7 +350,10 @@ void EnemyEditor::Update(GameApp& app) {
     for (auto& entry:preview_) {
         const bool tint=(partColors_ && !draft_.parts.empty()) ||
             (activePart_!=kNoEnemyPart && entry.owner==activePart_);
-        const auto color=tint ? PartColor(entry.owner) : ImVec4(1,1,1,1);
+        ImVec4 color{1,1,1,1};
+        if (showBulletCollision_) {
+            if (!draft_.BulletCollisionEnabled(entry.owner)) color=kNonBlockingColor;
+        } else if (tint) color=PartColor(entry.owner);
         const bool dim=dimOthers_ && activePart_!=kNoEnemyPart && entry.owner!=activePart_;
         entry.object->SetMaterialColor({color.x,color.y,color.z,dim ? .17f : 1.f});
         entry.object->SetScale({renderScale_,renderScale_,renderScale_});
@@ -659,6 +670,36 @@ void EnemyEditor::AssignmentEdit::Undo(EnemyEditor& editor) const {
     }
 }
 
+void EnemyEditor::BulletCollisionEdit::Execute(EnemyEditor& editor) const {
+    auto& draft=editor.draft_;
+    if (owner==kNoEnemyPart) draft.unassignedFacesBlockBullets=enabled;
+    else draft.parts[owner].bulletCollision=enabled;
+}
+
+void EnemyEditor::BulletCollisionEdit::Undo(EnemyEditor& editor) const {
+    BulletCollisionEdit{owner,!enabled}.Execute(editor);
+}
+
+void EnemyEditor::SetBulletCollision(size_t owner,bool enabled) {
+    if (enabled!=draft_.BulletCollisionEnabled(owner)) RecordEdit(BulletCollisionEdit{owner,enabled});
+}
+
+void EnemyEditor::UpdateDirtyState() {
+    dirty_=otherDirty_ || draft_.owners!=saved_.owners ||
+        draft_.unassignedFacesBlockBullets!=saved_.unassignedFacesBlockBullets ||
+        !std::equal(draft_.parts.begin(),draft_.parts.end(),saved_.parts.begin(),saved_.parts.end(),
+            [](const auto& a,const auto& b) { return a.bulletCollision==b.bulletCollision; });
+}
+
+void EnemyEditor::RecordEdit(Edit edit) {
+    history_.erase(history_.begin()+historyCursor_,history_.end());
+    history_.push_back(std::move(edit));
+    if (history_.size()>32) history_.pop_front();
+    historyCursor_=history_.size();
+    std::visit([this](const auto& command) { command.Execute(*this); },history_.back());
+    UpdateDirtyState();
+}
+
 void EnemyEditor::ApplySelection(size_t owner) {
     AssignmentEdit edit{{},owner};
     for (uint32_t index:selectedFaces_) {
@@ -667,26 +708,25 @@ void EnemyEditor::ApplySelection(size_t owner) {
             edit.faces.push_back({index,current==kNoEnemyPart ? UINT32_MAX : static_cast<uint32_t>(current)});
     }
     if (!edit.faces.empty()) {
-        assignmentHistory_.erase(assignmentHistory_.begin()+assignmentCursor_,assignmentHistory_.end());
-        assignmentHistory_.push_back(std::move(edit));
-        if (assignmentHistory_.size()>32) assignmentHistory_.pop_front();
-        assignmentCursor_=assignmentHistory_.size();
-        assignmentHistory_.back().Execute(*this);
-        dirty_=otherDirty_ || draft_.owners!=saved_.owners;
+        RecordEdit(std::move(edit));
         previewDirty_=outlineDirty_=true;
     }
     if (owner!=kNoEnemyPart) ClearFaceSelection();
     else PruneSelection();
 }
 
-void EnemyEditor::StepAssignmentHistory(bool redo) {
-    if ((redo && assignmentCursor_==assignmentHistory_.size()) || (!redo && !assignmentCursor_)) return;
-    const auto& edit=assignmentHistory_[redo ? assignmentCursor_++ : --assignmentCursor_];
-    ClearFaceSelection();
-    if (redo) edit.Execute(*this);
-    else edit.Undo(*this);
-    dirty_=otherDirty_ || draft_.owners!=saved_.owners;
-    previewDirty_=true;
+void EnemyEditor::StepHistory(bool redo) {
+    if ((redo && historyCursor_==history_.size()) || (!redo && !historyCursor_)) return;
+    const auto& edit=history_[redo ? historyCursor_++ : --historyCursor_];
+    if (std::holds_alternative<AssignmentEdit>(edit)) {
+        ClearFaceSelection();
+        previewDirty_=true;
+    }
+    std::visit([this,redo](const auto& command) {
+        if (redo) command.Execute(*this);
+        else command.Undo(*this);
+    },edit);
+    UpdateDirtyState();
 }
 
 void EnemyEditor::DrawParts() {
@@ -719,8 +759,8 @@ void EnemyEditor::DrawParts() {
             else if (owner!=kNoEnemyPart && owner>activePart_) --owner;
         }
         activePart_=draft_.parts.empty() ? kNoEnemyPart : std::min(activePart_,draft_.parts.size()-1);
-        assignmentHistory_.clear();
-        assignmentCursor_=0;
+        history_.clear();
+        historyCursor_=0;
         dirty_=otherDirty_=previewDirty_=true;
         PruneSelection();
     }
@@ -741,6 +781,8 @@ void EnemyEditor::DrawParts() {
     }
     const size_t editable=selectedFaces_.size()-(lockAssignedFaces_ ? selectedAssignedCount_ : 0);
     ImGui::Text("%zu unassigned / %zu faces",draft_.owners.size()-assignedFaceCount_,draft_.owners.size());
+    bool unassignedCollision=draft_.unassignedFacesBlockBullets;
+    if (ImGui::Checkbox("Unassigned Faces Block Bullets",&unassignedCollision)) SetBulletCollision(kNoEnemyPart,unassignedCollision);
     ImGui::BeginDisabled(activePart_>=draft_.parts.size() || editable==0);
     if (ImGui::Button("Assign selection")) ApplySelection(activePart_);
     ImGui::EndDisabled();
@@ -752,15 +794,15 @@ void EnemyEditor::DrawParts() {
     if (ImGui::Button("Clear selection")) ClearFaceSelection();
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::BeginDisabled(assignmentCursor_==0);
-    if (ImGui::Button("Undo")) StepAssignmentHistory(false);
+    ImGui::BeginDisabled(historyCursor_==0);
+    if (ImGui::Button("Undo")) StepHistory(false);
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Undo face assignment");
+    ImGui::SetItemTooltip("Undo a face assignment or bullet collision change");
     ImGui::SameLine();
-    ImGui::BeginDisabled(assignmentCursor_==assignmentHistory_.size());
-    if (ImGui::Button("Redo")) StepAssignmentHistory(true);
+    ImGui::BeginDisabled(historyCursor_==history_.size());
+    if (ImGui::Button("Redo")) StepHistory(true);
     ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Redo face assignment");
+    ImGui::SetItemTooltip("Redo a face assignment or bullet collision change");
     if (activePart_>=draft_.parts.size()) return;
     auto& part=draft_.parts[activePart_];
     ImGui::BeginDisabled(lockAssignedFaces_);
@@ -769,6 +811,8 @@ void EnemyEditor::DrawParts() {
     if (lockAssignedFaces_ && partFaceCounts_[activePart_])
         ImGui::TextWrapped("Turn off Lock assigned faces to edit assigned faces.");
     if (InputText("Part name",part.name)) dirty_=otherDirty_=true;
+    bool bulletCollision=part.bulletCollision;
+    if (ImGui::Checkbox("Bullet Collision",&bulletCollision)) SetBulletCollision(activePart_,bulletCollision);
     if (ImGui::BeginCombo("Role",EnemyPartRoleName(part.role))) {
         for (auto role:kEnemyPartRoles) if (ImGui::Selectable(EnemyPartRoleName(role),part.role==role)) {
             part.role=role;
@@ -1012,6 +1056,13 @@ void EnemyEditor::DrawViewport(GameApp& app) {
     if (ImGui::GetContentRegionAvail().x<ImGui::CalcTextSize("Dim other Parts").x+ImGui::GetFrameHeight()+ImGui::GetStyle().ItemInnerSpacing.x)
         ImGui::NewLine();
     ImGui::Checkbox("Dim other Parts",&dimOthers_);
+    ImGui::Checkbox("Show Bullet Collision Overlay",&showBulletCollision_);
+    if (showBulletCollision_) {
+        const float legendWidth=ImGui::CalcTextSize("Magenta: bullets pass through").x;
+        if (ImGui::GetItemRectMax().x+ImGui::GetStyle().ItemSpacing.x+legendWidth<=ImGui::GetCursorScreenPos().x+ImGui::GetContentRegionAvail().x)
+            ImGui::SameLine();
+        ImGui::TextColored(kNonBlockingColor,"Magenta: bullets pass through");
+    }
     ImGui::TextWrapped("LMB face / drag box | RMB orbit | MMB pan | Wheel zoom");
     app.ImGui()->DrawScenePreview();
     RECT rect{};
@@ -1096,9 +1147,9 @@ void EnemyEditor::DrawUI(GameApp& app,bool& visible) {
     ImGui::Begin("Enemy Editor",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|
         ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoDocking);
     if (draft_.model && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput) {
-        if (ImGui::Shortcut(ImGuiMod_Ctrl|ImGuiKey_Z,ImGuiInputFlags_RouteGlobal)) StepAssignmentHistory(false);
+        if (ImGui::Shortcut(ImGuiMod_Ctrl|ImGuiKey_Z,ImGuiInputFlags_RouteGlobal)) StepHistory(false);
         if (ImGui::Shortcut(ImGuiMod_Ctrl|ImGuiKey_Y,ImGuiInputFlags_RouteGlobal) ||
-            ImGui::Shortcut(ImGuiMod_Ctrl|ImGuiMod_Shift|ImGuiKey_Z,ImGuiInputFlags_RouteGlobal)) StepAssignmentHistory(true);
+            ImGui::Shortcut(ImGuiMod_Ctrl|ImGuiMod_Shift|ImGuiKey_Z,ImGuiInputFlags_RouteGlobal)) StepHistory(true);
     }
     ImGui::TextUnformatted("Enemy Editor");
     ImGui::SameLine();

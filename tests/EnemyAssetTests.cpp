@@ -70,6 +70,7 @@ int main() {
     auto normal=EnemyAsset::Load("../../resources/enemy/boss/normal.enemy.json");
     const auto normalSource=Read("../../resources/enemy/boss/normal.enemy.json");
     assert(normal->defaults.size()==6);
+    for (const auto& part:normal->defaults) assert(part.bulletCollision);
     size_t faces=0;
     const auto legacy=Read("../../resources/enemy/boss/faces/faces.json");
     const char* legacyKeys[]={"head","body","left_arm","right_arm","left_leg","right_leg"};

@@ -6,7 +6,7 @@ namespace {
         return [&world, &enemies, &raycastTarget](const Vector3& origin, const Vector3& direction, float distance) {
             return TraceBulletPath(origin, direction, distance, world, enemies.size(),
                 [&enemies](size_t i, const Vector3& start, const Vector3& unit, float range, EnemyPartHit& hit) {
-                    return enemies[i]->Raycast(start, unit, range, hit);
+                    return enemies[i]->RaycastBullet(start, unit, range, hit);
                 }, raycastTarget);
         };
     }

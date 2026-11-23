@@ -141,8 +141,8 @@ bpy.ops.object.mode_set(mode='OBJECT')
 # Engine exchange mesh: independent mesh instances, source IDs and fit scale.
 reference = dict(path='resources/cube/cube.obj', geometrySignature='fixture', faceCount=2, scale=2)
 face_keys = [[0,0,0,0], [1,0,0,0]]
-referenced = dict(version=2, coordinateSystem='yanengine', model=reference, hpGroups=[],
-                  parts=[dict(name='Core', role='Core', localHp=50, breakable=True,
+referenced = dict(version=2, coordinateSystem='yanengine', model=reference, hpGroups=[], unassignedFacesBlockBullets=False,
+                  parts=[dict(name='Core', role='Core', localHp=50, breakable=True, bulletCollision=False,
                               sharedHpGroup='', sharedDamageRate=1, deathOnZero=True, faces=[face_keys[0]])])
 ref_path = OUTPUT / 'reference.enemy.json'
 addon.write_asset(ref_path, referenced)

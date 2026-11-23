@@ -6,6 +6,7 @@
 #include "Object3d.h"
 #include <deque>
 #include <optional>
+#include <variant>
 
 class GameApp;
 struct ImVec2;
@@ -27,8 +28,10 @@ private:
         std::string modelPath;
         std::filesystem::path path;
         float scale=1;
+        bool unassignedFacesBlockBullets=true;
         EnemyParts parts;
         std::vector<size_t> owners;
+        bool BulletCollisionEnabled(size_t owner) const;
         nlohmann::json Document() const;
     };
     struct PreviewPart {
@@ -73,6 +76,14 @@ private:
         void Execute(EnemyEditor& editor) const;
         void Undo(EnemyEditor& editor) const;
     };
+    struct BulletCollisionEdit {
+        size_t owner;
+        bool enabled;
+
+        void Execute(EnemyEditor& editor) const;
+        void Undo(EnemyEditor& editor) const;
+    };
+    using Edit=std::variant<AssignmentEdit,BulletCollisionEdit>;
 
     void RequestChange(Action action,const std::filesystem::path& path={});
     void OpenDraft(GameApp& app,const Request& request);
@@ -106,7 +117,10 @@ private:
     void ApplyPickedRectangle(const Matrix4x4& vp,const ImVec2& min,const ImVec2& max,const ImVec2& lo,const ImVec2& hi);
     void ApplySelection(size_t owner);
     void ChangeOwner(uint32_t index,size_t owner);
-    void StepAssignmentHistory(bool redo);
+    void SetBulletCollision(size_t owner,bool enabled);
+    void RecordEdit(Edit edit);
+    void StepHistory(bool redo);
+    void UpdateDirtyState();
     size_t PickFace(const Vector3& origin,const Vector3& direction,float range) const;
     bool Visible(size_t owner) const;
     void Save(const std::filesystem::path& path);
@@ -125,8 +139,8 @@ private:
     size_t assignedFaceCount_=0,selectedAssignedCount_=0;
     SelectionMode selectionMode_=SelectionMode::Select;
     FaceScope faceScope_=FaceScope::Triangle;
-    std::deque<AssignmentEdit> assignmentHistory_;
-    size_t assignmentCursor_=0;
+    std::deque<Edit> history_;
+    size_t historyCursor_=0;
     bool lockAssignedFaces_=true,outlineDirty_=true;
     std::optional<Request> pending_,confirmation_;
     std::shared_ptr<const EnemyAsset> testRequest_;
@@ -136,6 +150,7 @@ private:
     std::string activeBone_;
     float boneThreshold_=.5f;
     bool dirty_=false,otherDirty_=false,previewDirty_=false,showUnassigned_=true,partColors_=true,isolate_=false,dimOthers_=false;
+    bool showBulletCollision_=false;
     Camera camera_;
     float yaw_=0,pitch_=.16f,distance_=4.8f,renderScale_=1;
     Vector3 pan_{};

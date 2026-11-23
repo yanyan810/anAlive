@@ -6,7 +6,7 @@
 2. 左の **Model & Parts → Model** から `resources` 以下のモデルを選びます。**Filter models** はファイル名、相対パス、拡張子で絞り込めます。追加したファイルは **Rescan resources** で表示します。PMX・glTF・GLB・OBJ・FBX・PMDが対象です。
 3. 右ドラッグで回転、中ドラッグでパン、ホイールでズームします。モデルは自動的にフレームに収まります。**Model scale** は保存される表示・命中判定の倍率です。倍率を変えた後に **Frame model** で再度フレームに収められます。
 4. **Parts → Add Part** で部位を作り、名前とRoleを設定します。**Select** は面を選択に追加し、**Deselect** は選択から外します。左クリックは手前の三角形、左ドラッグは画面上の矩形に重心が入る三角形が対象です。矩形は奥の面も含みます。全解除は **Clear selection** を使います。
-5. 初期状態では **Lock assigned faces** が有効で、選択対象は未割り当て面です。ロックを外すと **Select Part faces**、再割り当て、**Unassign selection** が使えます。**Assign selection** 後は選択が解除されます。面の割り当てと解除は **Undo**（Ctrl+Z）と **Redo**（Ctrl+Y／Ctrl+Shift+Z）で戻せます。別のモデルやJSONを開いたとき、編集を破棄したとき、Partを削除したときは履歴をクリアします。**Part colors**、**Show unassigned**、**Isolate Part**、**Dim other Parts** で部位を確認できます。
+5. 初期状態では **Lock assigned faces** が有効で、選択対象は未割り当て面です。ロックを外すと **Select Part faces**、再割り当て、**Unassign selection** が使えます。**Assign selection** 後は選択が解除されます。面の割り当て、解除、射撃判定の変更は **Undo**（Ctrl+Z）と **Redo**（Ctrl+Y／Ctrl+Shift+Z）で戻せます。別のモデルやJSONを開いたとき、編集を破棄したとき、Partを削除したときは履歴をクリアします。**Part colors**、**Show unassigned**、**Isolate Part**、**Dim other Parts** で部位を確認できます。
 6. **HP mode** でLocal／Shared／LocalAndShared／Invincibleを選びます。Sharedを使うときは **HP Groups** タブでグループを追加し、部位から選びます。Local HPが0になると、Breakableの部位が外れます。部位または共有グループのDeath on Zeroが有効なら、該当HPが0になった時点で敵が死亡します。Shared Damage Rateは共有HPへのダメージ倍率です。割り当てのない面には個別HPがなく、被弾してもその面だけは破壊されません。
 7. `resources/enemy/custom/名前.enemy.json` などを指定して **Save** します。**Save As** では同じモデルから別設定を作成できます。**Load JSON** は入力欄のファイルを開き、**Reload** は作業中のファイルをディスクから読み直し、**Discard edits** は最後に開いたか保存した設定に戻します。保存・試射する前に、作成した各Partに面を割り当ててください。
 
@@ -31,6 +31,9 @@
 
 ## Showroomで試射する
 
+- **Parts** タブの **Bullet Collision** で、選択中のPartが弾に当たるかを設定します。オフのPartは表示されたまま弾を通します。**Unassigned Faces Block Bullets** がオンの未割り当て面は弾を止め、HPダメージや部位破壊は発生しません。オフにすると奥の部位を撃てます。
+- **Show Bullet Collision Overlay** をオンにすると、弾を通す面がマゼンタで表示されます。オーバーレイの表示は編集画面内の設定です。
+
 - **Test this draft in Showroom** は編集内容をメモリ上で検証し、Normal Testに適用します。未装備の場合はWeapon Editorで選択している武器が優先されます。最初のPartに照準を合わせた位置で始まります。ビューをクリックして照準を操作し、左クリックで射撃します。**Esc** で同じ編集内容に戻り、**F5** で最後に選んだ保存済みのAssetを復元します。
 - 保存済みAssetはShowroomの **Normal Test (.enemy.json)** から選べます。試射中は **Tab** で同じパネルを表示します。外部ツールで上書きした場合は **Reload JSON** を押します。
 - 起動時の指定は `resources/Data/showroom_enemy_test.json` の `enemyAsset` で行います。**Reload Test Config** で入場中にも読み直せます。`enemyDefinition` は行動・移動用の敵定義IDです。既定値は `normal` です。
@@ -39,6 +42,7 @@
 ## ファイル形式と制限
 
 - version 2の `model` には `resources` から始まるパス、形状署名、面数、倍率があります。各面は `[instance, mesh, material, triangle]` で識別します。形状署名はエンジンのインポーターが確定した頂点・インデックス構成とノード変換から作ります。元モデルや外部バッファを更新して署名が変わった場合は、モデルを選び直して割り当ててください。
+- version 2ではPartの `bulletCollision` とJSON直下の `unassignedFacesBlockBullets` に射撃判定を保存します。省略時はどちらもオンです。
 - モデルの最長軸を基準に大きさを揃え、床面に置きます。PMXとスキニング付きglTFはインポート時の静止形状で扱います。部位を外すときも元のマテリアルを使います。ボーンアニメーション中の追従・切断や、PMX固有の特殊シェーダーは対象外です。入力に有効な三角形がない場合などはモデル選択時にエラーを表示します。上限は100万三角形・4096部位です。
 - version 1の三角形埋め込み形式はShowroomと従来の敵で読み込めます。version 1の編集にはBlenderアドオンを使います。
 - ShowroomとEnemy EditorはDebug／Development用です。Release x64には従来の製品版シーン構成が適用されます。

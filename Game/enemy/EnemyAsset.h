@@ -28,6 +28,7 @@ struct EnemyAsset {
     std::string modelPath;
     std::shared_ptr<const EnemyModelSurface> model;
     float modelScale=1;
+    bool unassignedFacesBlockBullets=true;
     EnemyParts defaults;
     EnemyParts Instantiate(float multiplier=1) const {
         auto result=defaults;
@@ -64,6 +65,7 @@ struct EnemyAsset {
         std::vector<bool> modelAssigned;
         if (version2) {
             const auto& reference=data.at("model");
+            asset->unassignedFacesBlockBullets=data.value("unassignedFacesBlockBullets",true);
             if (!model || reference.at("geometrySignature")!=model->signature || reference.at("faceCount")!=model->faces.size())
                 throw std::runtime_error("Model geometry changed. Reopen the source model and assign its faces again.");
             asset->modelPath=reference.at("path").get<std::string>();
@@ -109,6 +111,7 @@ struct EnemyAsset {
             part.usesLocalHp=item.contains("localHp") && !item.at("localHp").is_null();
             part.hp=part.maxHp=part.usesLocalHp ? number(item.at("localHp"),true) : 0;
             part.breakable=item.value("breakable",true);
+            part.bulletCollision=item.value("bulletCollision",true);
             part.deathOnZero=item.value("deathOnZero",false);
             if (part.deathOnZero && !part.usesLocalHp) throw std::runtime_error("deathOnZero requires localHp");
             part.sharedDamageRate=number(item.value("sharedDamageRate",nlohmann::json(1)),false);
@@ -169,6 +172,7 @@ struct EnemyAsset {
             other.usesLocalHp=false;
             other.hp=other.maxHp=0;
             other.breakable=false;
+            other.bulletCollision=asset->unassignedFacesBlockBullets;
             auto geometry=std::make_shared<EnemyPartGeometry>();
             for (size_t i=0;i<modelAssigned.size();++i)
                 if (!modelAssigned[i]) AppendModelFace(*geometry,other.bounds,*asset->model,i,asset->modelScale);

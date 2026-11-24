@@ -323,9 +323,10 @@ private:
 
     struct MuzzleLightSettings {
         Vector3 color{ 1.0f, 0.94f, 0.78f };
-        float intensity = 2.8f;
-        float duration = 0.036f;
-        float range = 1.4f;
+        float intensity = 2.0f;
+        float duration = 0.04f;
+        float range = 4.0f;
+        float decay = 1.5f;
     };
     struct MuzzleWeaponScales {
         float light = 1.0f;

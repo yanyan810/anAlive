@@ -1200,12 +1200,14 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
     for (const auto* drawGroup : drawGroups_) {
         const auto& group = *drawGroup;
         const bool proceduralSmoke = IsProceduralSmoke(group);
+        const bool muzzleGlow = group.fromFile == "muzzle_flash.json" &&
+            group.modelType == 1 && group.modelName == kSoftDiscModelName;
         // --- Graphics 縺ｫ繧医ｋ謠冗判 ---
         // 笘・繝悶Ξ繝ｳ繝牙・譖ｿ・・SO蛻・崛・・
         if (particleCommon_) {
             particleCommon_->SetBlendMode(group.blendMode);
             particleCommon_->SetDepthTestEnabled(group.depthTestEnabled);
-            particleCommon_->SetGraphicsPipelineState(cmd, proceduralSmoke);
+            particleCommon_->SetGraphicsPipelineState(cmd, proceduralSmoke, muzzleGlow);
         }
 
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

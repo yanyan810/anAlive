@@ -6,8 +6,9 @@
             0.78
         ],
         "intensity": 0.0,
-        "duration": 0.036,
-        "range": 1.4
+        "duration": 0.04,
+        "range": 4.0,
+        "decay": 1.5
     },
     "weapons": {
         "pistol": {

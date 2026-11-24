@@ -11,15 +11,16 @@ struct BulletEnemyImpact {
 
 class BulletManager {
 public:
+    enum class VisualStyle { Standard, FirstPerson };
     void Initialize(Object3dCommon* common, DirectXCommon* dx, Camera* camera);
     void Spawn(const WeaponDefinition& weapon, const Matrix4x4& cameraWorld, float adsBlend,
         std::mt19937& random, const StageWorld& world, const std::vector<Enemy*>& enemies,
-        const BulletTrace& raycastTarget = {});
+        const BulletTrace& raycastTarget = {}, BulletShotPose* shotPose = nullptr);
     void Update(float dt, const StageWorld& world, const std::vector<Enemy*>& enemies,
         const std::function<void(const BulletEnemyImpact&)>& onImpact,
         const BulletTrace& raycastTarget = {}, const BulletImpact& onTargetImpact = {},
         const BulletImpact& onWallImpact = {});
-    void Draw();
+    void Draw(VisualStyle style = VisualStyle::Standard);
     void Clear() { simulation_.Clear(); }
     size_t Count() const { return simulation_.Bullets().size(); }
     const BulletSimulation& Capture() const { return simulation_; }

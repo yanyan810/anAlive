@@ -6,6 +6,7 @@
 #include "GeometryGenerator.h"
 #include <filesystem>
 #include <algorithm>
+#include <cmath>
 #include <imgui.h>
 #include <fstream>
 #include <cstdio>
@@ -31,6 +32,28 @@ void ParticleManager::UpdateGroupModel(const std::string& modelName, int modelTy
 
 namespace {
     constexpr int kRetiredParticleGroupKeepFrames = 8;
+    constexpr size_t kEmitterStride = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+    constexpr int kFlamePrimitive = 11;
+    constexpr int kFlameVolumePrimitive = 12;
+    constexpr int kFlameGlowPrimitive = 13;
+    constexpr int kSparkStreakPrimitive = 14;
+    constexpr int kSoftDiscPrimitive = 15;
+    const std::string kFlameVolumeModelName = std::to_string(kFlameVolumePrimitive);
+    const std::string kFlameGlowModelName = std::to_string(kFlameGlowPrimitive);
+    const std::string kSparkStreakModelName = std::to_string(kSparkStreakPrimitive);
+    const std::string kSoftDiscModelName = std::to_string(kSoftDiscPrimitive);
+    enum ParticleDrawFlags : uint32_t {
+        UseTexture = 1u, FlameFacets = 2u, EmissiveBlend = 4u, FlameGlow = 8u, SparkStreak = 16u, SoftDisc = 32u
+    };
+    static_assert(sizeof(EmitterData) <= kEmitterStride);
+
+    Vector3 TransformDirection(const Vector3& v, const Matrix4x4& matrix) {
+        return {
+            v.x * matrix.m[0][0] + v.y * matrix.m[1][0] + v.z * matrix.m[2][0],
+            v.x * matrix.m[0][1] + v.y * matrix.m[1][1] + v.z * matrix.m[2][1],
+            v.x * matrix.m[0][2] + v.y * matrix.m[1][2] + v.z * matrix.m[2][2]
+        };
+    }
 
     std::string ToResourceRelativePath(const std::filesystem::path& sourcePath) {
         std::filesystem::path normalized = sourcePath.lexically_normal();
@@ -92,6 +115,69 @@ namespace {
         return md;
     }
 
+    std::vector<Model::VertexData> MakeFlameVertices() {
+        // One continuous silhouette, with its base at the emitter and its tip along +Y.
+        constexpr Vector2 outline[] = {
+            {-0.25f, 0.00f}, {-0.67f, 0.16f}, {-0.78f, 0.35f},
+            {-0.39f, 0.57f}, {-0.33f, 0.73f}, {0.09f, 1.22f},
+            {0.28f, 0.76f}, {0.53f, 0.56f}, {0.73f, 0.30f},
+            {0.53f, 0.13f}, {0.24f, 0.00f}
+        };
+        const auto vertex = [](Vector2 p) {
+            Model::VertexData result{};
+            result.position = {p.x, p.y, 0.0f, 1.0f};
+            result.texcoord = {0.5f + p.x * 0.5f, 1.0f - p.y / 1.22f};
+            result.normal = {0.0f, 0.0f, -1.0f};
+            return result;
+        };
+        std::vector<Model::VertexData> vertices;
+        vertices.reserve(std::size(outline) * 3);
+        for (size_t i = 0; i < std::size(outline); ++i) {
+            vertices.push_back(vertex({0.0f, 0.31f}));
+            vertices.push_back(vertex(outline[i]));
+            vertices.push_back(vertex(outline[(i + 1) % std::size(outline)]));
+        }
+        return vertices;
+    }
+
+    std::vector<Model::VertexData> MakeFlameVolumeVertices() {
+        // Asymmetric rings give each face a slope and keep the muzzle end narrow.
+        const Vector3 base[] = {
+            { .25f, 0, 0}, { .10f, 0, .22f}, {-.15f, 0, .20f},
+            {-.24f, 0,-.02f}, {-.10f, 0,-.21f}, { .14f, 0,-.19f}
+        };
+        const Vector3 ridge[] = {
+            { .85f,.25f, .02f}, { .43f,.34f, .75f}, {-.53f,.26f, .78f},
+            {-.91f,.39f,-.05f}, {-.35f,.25f,-.77f}, { .53f,.37f,-.61f}
+        };
+        const Vector3 taper[] = {
+            { .38f,.62f,-.02f}, { .25f,.61f, .32f}, {-.27f,.71f, .34f},
+            {-.38f,.58f,-.02f}, {-.13f,.68f,-.35f}, { .22f,.61f,-.39f}
+        };
+        const Vector3 tip{.10f, 1.24f, -.10f};
+        std::vector<Model::VertexData> vertices;
+        vertices.reserve(std::size(base) * 6 * 3);
+        const auto triangle = [&vertices](const Vector3& a, const Vector3& b, const Vector3& c) {
+            const auto normal = Matrix4x4::Normalize(Matrix4x4::Cross(b - a, c - a));
+            for (const auto& p : {a, b, c}) {
+                Model::VertexData vertex{};
+                vertex.position = {p.x, p.y, p.z, 1.0f};
+                vertex.normal = normal;
+                vertices.push_back(vertex);
+            }
+        };
+        for (size_t i = 0; i < std::size(base); ++i) {
+            const size_t next = (i + 1) % std::size(base);
+            triangle({}, base[i], base[next]);
+            triangle(base[i], ridge[i], base[next]);
+            triangle(base[next], ridge[i], ridge[next]);
+            triangle(ridge[i], taper[i], ridge[next]);
+            triangle(ridge[next], taper[i], taper[next]);
+            triangle(taper[i], tip, taper[next]);
+        }
+        return vertices;
+    }
+
     Model* GetOrMakeParticlePrimitiveModel(int typeIndex) {
         std::string key = "ParticlePrimitive_" + std::to_string(typeIndex);
         Model* m = ModelManager::GetInstance()->FindModel(key);
@@ -110,6 +196,22 @@ namespace {
         case 8: vertices = GeometryGenerator::GenerateCapsuleTriList(32, 8, 0.65f, 1.4f); break;
         case 9: vertices = GeometryGenerator::GenerateStarTriListXY(1.1f, 0.48f, 5); break;
         case 10: vertices = GeometryGenerator::GenerateDiamondTriListXY(1.6f, 2.2f); break;
+        case kFlamePrimitive: vertices = MakeFlameVertices(); break;
+        case kFlameVolumePrimitive: vertices = MakeFlameVolumeVertices(); break;
+        case kFlameGlowPrimitive:
+            // Bounds for the local flame profile in Particle.PS.hlsl.
+            vertices = GeometryGenerator::GenerateBoxTriList(2.2f, 1.6f, 2.2f);
+            for (auto& vertex : vertices) {
+                vertex.position.y += 0.7f;
+            }
+            for (size_t i = 0; i < vertices.size(); i += 3) {
+                std::swap(vertices[i + 1], vertices[i + 2]);
+            }
+            break;
+        case kSparkStreakPrimitive:
+        case kSoftDiscPrimitive:
+            vertices = GeometryGenerator::GeneratePlaneTriListXY(2.0f, 2.0f);
+            break;
         default: return nullptr;
         }
 
@@ -122,6 +224,15 @@ void ParticleManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager
     dxCommon_ = dxCommon;
     srvManager_ = srvManager;
     particleCommon_ = particleCommon;
+    // The texture slot stays valid for untextured groups without allocating or sampling a texture.
+    nullTextureSrvIndex_ = srvManager_->Allocate();
+    D3D12_SHADER_RESOURCE_VIEW_DESC nullTexture{};
+    nullTexture.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    nullTexture.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    nullTexture.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    nullTexture.Texture2D.MipLevels = 1;
+    dxCommon_->GetDevice()->CreateShaderResourceView(nullptr, &nullTexture,
+        srvManager_->GetCPUDescriptionHandle(nullTextureSrvIndex_));
     // 繝ｩ繝ｳ繝繝蛻晄悄蛹・
     std::random_device rd;
     randomEngine_ = std::mt19937(rd());
@@ -175,6 +286,8 @@ void ParticleManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager
     // 蛻晄悄蛟､
     mappedPerView_->viewProjection = Matrix4x4::MakeIdentity4x4();
     mappedPerView_->billboardMatrix = Matrix4x4::MakeIdentity4x4();
+    mappedPerView_->projection = Matrix4x4::MakeIdentity4x4();
+    mappedPerView_->cameraPosition = {};
 
     // PerFrame 繝ｪ繧ｽ繝ｼ繧ｹ菴懈・
     perFrameResource_ = dxCommon_->CreateBufferResource(sizeof(PerFrame));
@@ -207,6 +320,13 @@ void ParticleManager::Finalize() {
     RetireAllGroups_();
     retiredParticleGroups_.clear();
     vertexBuffer_.Reset();
+    if (nullTextureSrvIndex_ != 0) {
+        srvManager_->Retire(nullTextureSrvIndex_);
+        nullTextureSrvIndex_ = 0;
+    }
+    emissionUpload_.Reset();
+    mappedEmissionUpload_ = nullptr;
+    emissionCapacity_ = 0;
 }
 
 void ParticleManager::ClearGroups()
@@ -283,6 +403,9 @@ void ParticleManager::Update(float dt, const Camera& camera)
     if (mappedPerView_) {
         mappedPerView_->viewProjection = vp;
         mappedPerView_->billboardMatrix = billboardMatrix;
+        mappedPerView_->projection = camera.GetProjectionMatrix();
+        const auto& eye = camera.GetTranslate();
+        mappedPerView_->cameraPosition = {eye.x, eye.y, eye.z, 0.0f};
     }
 
     // PerFrame 縺ｮ譖ｴ譁ｰ
@@ -294,7 +417,6 @@ void ParticleManager::Update(float dt, const Camera& camera)
 
     // Emitter縺ｮ譖ｴ譁ｰ
     for (auto& [name, group] : particleGroups_) {
-        group.activeTimeRemaining = std::max(0.0f, group.activeTimeRemaining - dt);
         if (group.mappedEmitter) {
             if (group.isAutoEmit) {
                 group.mappedEmitter->frequencyTime += dt; // ﾎｴ繧ｿ繧､繝繧貞刈邂・
@@ -379,6 +501,32 @@ void ParticleManager::EmitConfigured(const std::string& groupName, const Vector3
     Emit(groupName, pos, count, timeScale, initialAge);
 }
 
+void ParticleManager::EmitDirectedFromFile(const std::string& filename, const Vector3& position,
+    const Vector3& direction, const Camera& camera, float countScale) {
+    if (!std::isfinite(countScale) || countScale <= 0.0f) return;
+    const auto& view = camera.GetViewMatrix();
+    const Vector3 cameraPosition = TransformDirection(position - camera.GetTranslate(), view);
+    const Vector3 cameraDirection = TransformDirection(direction, view);
+    // Matching seeds keep the core and shell aligned for each shot.
+    const uint32_t emissionSeed = randomEngine_() | 1u;
+    for (auto& [name, group] : particleGroups_) {
+        if (group.fromFile != filename || !group.mappedEmitter || group.mappedEmitter->count == 0) {
+            continue;
+        }
+        EmitterData emission = *group.mappedEmitter;
+        emission.emit = 1;
+        emission.count = static_cast<uint32_t>(std::min(
+            std::round(emission.count * countScale), static_cast<float>(kMaxInstance)));
+        if (emission.count == 0) continue;
+        emission.translate = group.cameraSpace ? cameraPosition : position;
+        emission.velocityBase = group.cameraSpace ? cameraDirection : direction;
+        emission.shapeType = 1; // Cone
+        emission.initialAge = 0.0f;
+        emission.randomSeed = emissionSeed;
+        group.pendingEmissions.push_back(emission);
+    }
+}
+
 void ParticleManager::CreateParticleGroup(
     const std::string& name,
     const std::string& texturePath)
@@ -393,8 +541,10 @@ void ParticleManager::CreateParticleGroup(
     group.modelName = "";
 
     // --- texture ---
-    TextureManager::GetInstance()->LoadTexture(texturePath);
-    group.textureSrvIndex = TextureManager::GetInstance()->GetSrvIndex(texturePath);
+    if (!texturePath.empty()) {
+        TextureManager::GetInstance()->LoadTexture(texturePath);
+        group.textureSrvIndex = TextureManager::GetInstance()->GetSrvIndex(texturePath);
+    }
 
     // --- instancing buffer (DEFAULT heap + UAV) ---
     D3D12_HEAP_PROPERTIES heapProps{};
@@ -518,6 +668,7 @@ void ParticleManager::CreateParticleGroup(
     // --- Emitter Buffer ---
     group.emitterResource = dxCommon_->CreateBufferResource(sizeof(EmitterData));
     group.emitterResource->Map(0, nullptr, reinterpret_cast<void**>(&group.mappedEmitter));
+    *group.mappedEmitter = {};
     group.mappedEmitter->count = 10;
     group.mappedEmitter->frequency = 0.5f;
     group.mappedEmitter->frequencyTime = 0.0f;
@@ -703,6 +854,7 @@ void ParticleManager::CreateParticleGroup(
     // HLSL縺ｮ讒矩菴薙↓蜷医ｏ縺帙※繧ｵ繧､繧ｺ繧堤｢ｺ菫・
     group.emitterResource = dxCommon_->CreateBufferResource(sizeof(EmitterData));
     group.emitterResource->Map(0, nullptr, reinterpret_cast<void**>(&group.mappedEmitter));
+    *group.mappedEmitter = {};
     group.mappedEmitter->count = 10;
     group.mappedEmitter->frequency = 0.5f;
     group.mappedEmitter->frequencyTime = 0.0f;
@@ -766,7 +918,7 @@ std::vector<std::string> ParticleManager::GetGroupNames() const {
 
 bool ParticleManager::HasPostEffectTargets() const {
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active && (group.bloomPostEffect || group.outlineBloomPostEffect)) {
             return true;
         }
@@ -788,7 +940,7 @@ Vector4 ParticleManager::GetPrimaryPostEffectBloomColor() const {
 
     // 2. アクティブなグループから検索
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active && group.bloomPostEffect) {
             return group.bloomColor;
         }
@@ -818,7 +970,7 @@ Vector4 ParticleManager::GetPrimaryPostEffectOutlineBloomColor() const {
 
     // 2. アクティブなグループから検索
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active && group.outlineBloomPostEffect) {
             return group.outlineBloomColor;
         }
@@ -847,7 +999,7 @@ PostEffectMode ParticleManager::GetPrimaryPostEffectMode() const {
 
     // 2. アクティブなグループから検索
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active) {
             if (group.outlineBloomPostEffect) return PostEffectMode::OutlineBloom;
             if (group.bloomPostEffect) return PostEffectMode::BoxFilter;
@@ -945,61 +1097,71 @@ void ParticleManager::ConfigureTrailPreset(const std::string& groupName) {
 
 
 void ParticleManager::UpdateCompute(ID3D12GraphicsCommandList* computeCmd) {
-    for (auto& [name, group] : particleGroups_) {
+    size_t emissionCount = 0;
+    for (const auto& [name, group] : particleGroups_) {
+        emissionCount += group.pendingEmissions.size();
+    }
 
-        // --- Compute Shader 縺ｫ繧医ｋ Emit ---
-        if (!group.isAutoEmit && !group.isEmitRequested && group.activeTimeRemaining <= 0.0f) {
+    // PostDraw waits for the GPU before this upload buffer is reused next frame.
+    if (emissionCount > emissionCapacity_) {
+        emissionCapacity_ = std::max(emissionCount, emissionCapacity_ * 2);
+        emissionUpload_ = dxCommon_->CreateBufferResource(emissionCapacity_ * kEmitterStride);
+        emissionUpload_->Map(0, nullptr, reinterpret_cast<void**>(&mappedEmissionUpload_));
+    }
+    size_t uploadOffset = 0;
+    D3D12_RESOURCE_BARRIER uavBarrier{};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+
+    for (auto& [name, group] : particleGroups_) {
+        if (!group.IsActive()) {
             continue;
         }
-        if (particleCommon_) {
-            particleCommon_->SetEmitComputePipelineState(computeCmd);
-        }
 
-        // 繝舌Μ繧｢: SRV -> UAV
-        D3D12_RESOURCE_BARRIER barrier{};
-        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource = group.instancingResource.Get();
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        computeCmd->ResourceBarrier(1, &barrier);
-
-        // SRV繝偵・繝励ｒ繧ｻ繝・ヨ
-        srvManager_->PreDrawCompute(computeCmd);
-
-        // b0 縺ｫ Emitter (CBV)
-        computeCmd->SetComputeRootConstantBufferView(3, group.emitterResource->GetGPUVirtualAddress());
-        // b1 縺ｫ PerFrame (CBV) 笘・ｿｽ蜉
-        computeCmd->SetComputeRootConstantBufferView(4, perFrameResource_->GetGPUVirtualAddress());
-        // u0 縺ｫ Particles (UAV)
-        computeCmd->SetComputeRootDescriptorTable(0, srvManager_->GetGPUDescriptionHandle(group.instancingUavIndex));
-        // u1 縺ｫ FreeListIndex (UAV)
-        computeCmd->SetComputeRootDescriptorTable(1, srvManager_->GetGPUDescriptionHandle(group.freeListIndexUavIndex));
-        // u2 縺ｫ FreeList (UAV)
-        computeCmd->SetComputeRootDescriptorTable(2, srvManager_->GetGPUDescriptionHandle(group.freeListUavIndex));
-
-        // 螳溯｡・(Emit)
-        computeCmd->Dispatch(1, 1, 1);
-
-        // --- UAV Barrier ---
-        D3D12_RESOURCE_BARRIER uavBarrier{};
-        uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-        uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        uavBarrier.UAV.pResource = group.instancingResource.Get();
+        D3D12_RESOURCE_BARRIER transition{};
+        transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        transition.Transition.pResource = group.instancingResource.Get();
+        transition.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        transition.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        transition.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        computeCmd->ResourceBarrier(1, &transition);
+        // Synchronize the free list and its counter as well as the particle buffer.
         computeCmd->ResourceBarrier(1, &uavBarrier);
 
-        // --- Compute Shader 縺ｫ繧医ｋ Update ---
-        if (particleCommon_) {
-            particleCommon_->SetUpdateComputePipelineState(computeCmd);
+        particleCommon_->SetEmitComputePipelineState(computeCmd);
+        srvManager_->PreDrawCompute(computeCmd);
+        computeCmd->SetComputeRootConstantBufferView(3, group.emitterResource->GetGPUVirtualAddress());
+        computeCmd->SetComputeRootConstantBufferView(4, perFrameResource_->GetGPUVirtualAddress());
+        computeCmd->SetComputeRootDescriptorTable(0, srvManager_->GetGPUDescriptionHandle(group.instancingUavIndex));
+        computeCmd->SetComputeRootDescriptorTable(1, srvManager_->GetGPUDescriptionHandle(group.freeListIndexUavIndex));
+        computeCmd->SetComputeRootDescriptorTable(2, srvManager_->GetGPUDescriptionHandle(group.freeListUavIndex));
+
+        if (group.mappedEmitter->emit != 0) {
+            computeCmd->Dispatch(1, 1, 1);
+            computeCmd->ResourceBarrier(1, &uavBarrier);
         }
 
-        // 螳溯｡・(Update)
-        computeCmd->Dispatch(kMaxInstance / 1024 > 0 ? kMaxInstance / 1024 : 1, 1, 1);
+        particleCommon_->SetUpdateComputePipelineState(computeCmd);
+        computeCmd->Dispatch(1, 1, 1);
+        group.activeTimeRemaining = std::max(0.0f, group.activeTimeRemaining - mappedPerFrame_->deltaTime);
 
-        // 繝舌Μ繧｢: UAV -> SRV
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        computeCmd->ResourceBarrier(1, &barrier);
+        if (!group.pendingEmissions.empty()) {
+            // Give every accepted shot its own constants and a full first frame.
+            particleCommon_->SetEmitComputePipelineState(computeCmd);
+            for (const EmitterData& emission : group.pendingEmissions) {
+                computeCmd->ResourceBarrier(1, &uavBarrier);
+                std::memcpy(mappedEmissionUpload_ + uploadOffset, &emission, sizeof(emission));
+                computeCmd->SetComputeRootConstantBufferView(3, emissionUpload_->GetGPUVirtualAddress() + uploadOffset);
+                computeCmd->Dispatch(1, 1, 1);
+                uploadOffset += kEmitterStride;
+                const float life = std::max({0.001f, emission.lifeTimeMin, emission.lifeTimeMax});
+                const float duration = life / std::max(0.001f, emission.timeScale) + 0.001f;
+                group.activeTimeRemaining = std::max(group.activeTimeRemaining, duration);
+            }
+            group.pendingEmissions.clear();
+        }
+
+        std::swap(transition.Transition.StateBefore, transition.Transition.StateAfter);
+        computeCmd->ResourceBarrier(1, &transition);
     }
 }
 
@@ -1009,8 +1171,9 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd) {
 
 void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTargets) {
     const bool hasPostEffectTargets = HasPostEffectTargets();
-    for (auto& [name, group] : particleGroups_) {
-        if (!group.isAutoEmit && !group.isEmitRequested && group.activeTimeRemaining <= 0.0f) {
+    drawGroups_.clear();
+    for (const auto& [name, group] : particleGroups_) {
+        if (!group.IsActive()) {
             continue;
         }
         const bool isPostEffectTarget = group.bloomPostEffect || group.outlineBloomPostEffect;
@@ -1020,13 +1183,20 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
         if (!drawPostEffectTargets && isPostEffectTarget && hasPostEffectTargets) {
             continue;
         }
+        drawGroups_.push_back(&group);
+    }
+    std::stable_sort(drawGroups_.begin(), drawGroups_.end(), [](const ParticleGroup* a, const ParticleGroup* b) {
+        return a->drawOrder < b->drawOrder;
+    });
 
+    for (const auto* drawGroup : drawGroups_) {
+        const auto& group = *drawGroup;
         // --- Graphics 縺ｫ繧医ｋ謠冗判 ---
         // 笘・繝悶Ξ繝ｳ繝牙・譖ｿ・・SO蛻・崛・・
         if (particleCommon_) {
             particleCommon_->SetBlendMode(group.blendMode);
             particleCommon_->SetDepthTestEnabled(group.depthTestEnabled);
-            particleCommon_->SetGraphicsPipelineState();
+            particleCommon_->SetGraphicsPipelineState(cmd);
         }
 
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1038,9 +1208,19 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
         // PerView(CBV) 繧・RootParameter 4 縺ｫ繧ｻ繝・ヨ (b0)
         cmd->SetGraphicsRootConstantBufferView(4, perViewResource_->GetGPUVirtualAddress());
         // BillboardMode (RootConstants 32bit) 繧・RootParameter 5 縺ｫ繧ｻ繝・ヨ (b1)
-        cmd->SetGraphicsRoot32BitConstants(5, 1, &group.billboardMode, 0);
+        const bool textured = !group.texturePath.empty();
+        const bool emissive = group.blendMode == ParticleCommon::BlendMode::kBlendModeEmissive;
+        uint32_t drawFlags = (textured ? UseTexture : 0u) | (emissive ? EmissiveBlend : 0u);
+        if (group.modelType == 1) {
+            if (group.modelName == kFlameVolumeModelName) drawFlags |= FlameFacets;
+            else if (group.modelName == kFlameGlowModelName) drawFlags |= FlameGlow;
+            else if (group.modelName == kSparkStreakModelName) drawFlags |= SparkStreak;
+            else if (group.modelName == kSoftDiscModelName) drawFlags |= SoftDisc;
+        }
+        const uint32_t drawSettings[] = {group.billboardMode, group.cameraSpace ? 1u : 0u, drawFlags};
+        cmd->SetGraphicsRoot32BitConstants(5, 3, drawSettings, 0);
 
-        srvManager_->SetGraphicsDescriptorTable(2, group.textureSrvIndex);
+        srvManager_->SetGraphicsDescriptorTable(2, textured ? group.textureSrvIndex : nullTextureSrvIndex_);
         srvManager_->SetGraphicsDescriptorTable(1, group.instancingSrvIndex);
 
         if (group.model) {
@@ -1157,66 +1337,77 @@ void ParticleManager::DrawImGui() {
 #endif
 }
 
-void ParticleManager::DrawImGuiContents() {
+void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
 #ifdef USE_IMGUI
     if (!isResourcesScanned_) {
         ScanResources();
     }
 
-    ImGui::InputText("JSON Name", saveFileName_, sizeof(saveFileName_));
-    if (ImGui::BeginCombo("Open Existing JSON", saveFileName_)) {
-        if (particleJsonFiles_.empty()) {
-            ImGui::TextDisabled("No json files in Resources/Particles.");
-        }
-        for (const std::string& fileName : particleJsonFiles_) {
-            const bool selected = fileName == saveFileName_;
-            if (ImGui::Selectable(fileName.c_str(), selected)) {
-                std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
-                Load(fileName);
+    if (settingsFile.empty()) {
+        ImGui::InputText("JSON Name", saveFileName_, sizeof(saveFileName_));
+        if (ImGui::BeginCombo("Open Existing JSON", saveFileName_)) {
+            if (particleJsonFiles_.empty()) {
+                ImGui::TextDisabled("No json files in Resources/Particles.");
             }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
+            for (const std::string& fileName : particleJsonFiles_) {
+                const bool selected = fileName == saveFileName_;
+                if (ImGui::Selectable(fileName.c_str(), selected)) {
+                    std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
+                    Load(fileName);
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
             }
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
-    }
-    if (ImGui::Button("Save Particles")) {
-        std::string fileName = NormalizeParticleJsonFileName(saveFileName_);
-        std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
-        Save(fileName);
-        ScanResources();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Load Particles")) {
-        std::string fileName = NormalizeParticleJsonFileName(saveFileName_);
-        std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
-        Load(fileName);
-    }
+        if (ImGui::Button("Save Particles")) {
+            std::string fileName = NormalizeParticleJsonFileName(saveFileName_);
+            std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
+            Save(fileName);
+            ScanResources();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load Particles")) {
+            std::string fileName = NormalizeParticleJsonFileName(saveFileName_);
+            std::snprintf(saveFileName_, sizeof(saveFileName_), "%s", fileName.c_str());
+            Load(fileName);
+        }
 
-    ImGui::Separator();
-
-    if (ImGui::Button("Scan Resources")) {
-        ScanResources();
-    }
-
-    if (!editorSelectedGroupName_.empty() && !HasGroup(editorSelectedGroupName_)) {
-        editorSelectedGroupName_.clear();
-    }
-
-    if (editorSelectedGroupName_.empty()) {
         ImGui::Separator();
-        ImGui::TextDisabled("Select a particle group in Hierarchy.");
-        return;
+
+        if (ImGui::Button("Scan Resources")) {
+            ScanResources();
+        }
+
+        if (!editorSelectedGroupName_.empty() && !HasGroup(editorSelectedGroupName_)) {
+            editorSelectedGroupName_.clear();
+        }
+
+        if (editorSelectedGroupName_.empty()) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Select a particle group in Hierarchy.");
+            return;
+        }
+    } else {
+        if (ImGui::Button("Save Particles")) {
+            SaveInternal_(settingsFile, true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reload Particles")) {
+            ClearParticlesFromFile(settingsFile);
+            LoadAdditional(settingsFile, "");
+        }
     }
 
     for (auto& [name, group] : particleGroups_) {
-        if (name != editorSelectedGroupName_) {
+        if (settingsFile.empty() ? name != editorSelectedGroupName_ : group.fromFile != settingsFile) {
             continue;
         }
-        if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::TreeNodeEx(name.c_str(), settingsFile.empty() ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
             
             // 繝悶Ξ繝ｳ繝峨Δ繝ｼ繝・
-            const char* blendModes[] = { "None", "Normal", "Add", "Subtract", "Multiply", "Screen" };
+            const char* blendModes[] = { "None", "Normal", "Add", "Subtract", "Multiply", "Screen", "Emissive" };
             int currentBlend = static_cast<int>(group.blendMode);
             if (ImGui::Combo("Blend Mode", &currentBlend, blendModes, IM_ARRAYSIZE(blendModes))) {
                 group.blendMode = static_cast<ParticleCommon::BlendMode>(currentBlend);
@@ -1251,7 +1442,10 @@ void ParticleManager::DrawImGuiContents() {
             ImGui::Checkbox("Depth Test", &group.depthTestEnabled);
 
             // 繝薙Ν繝懊・繝峨Δ繝ｼ繝・
-            const char* billboardModes[] = { "Billboard (Camera Face)", "Velocity Aligned (Arrow)", "None (Fixed)" };
+            const char* billboardModes[] = {
+                "Billboard (Camera Face)", "Velocity Aligned (Arrow)", "None (Fixed)", "Velocity Aligned (Camera Face)",
+                "Emission Axis"
+            };
             int currentBMode = static_cast<int>(group.billboardMode);
             if (ImGui::Combo("Billboard Mode", &currentBMode, billboardModes, IM_ARRAYSIZE(billboardModes))) {
                 group.billboardMode = static_cast<uint32_t>(currentBMode);
@@ -1270,7 +1464,10 @@ void ParticleManager::DrawImGuiContents() {
 
                 ImGui::Separator();
                 ImGui::Text("Primitives");
-                const char* primNames[] = { "Ring", "Sphere", "Box", "Plane", "Torus", "Cylinder", "Cone", "Triangle", "Capsule", "Star", "Diamond" };
+                const char* primNames[] = {
+                    "Ring", "Sphere", "Box", "Plane", "Torus", "Cylinder", "Cone", "Triangle", "Capsule", "Star",
+                    "Diamond", "Flame (Flat)", "Flame Volume", "Flame Glow", "Spark Streak", "Soft Disc"
+                };
                 for (int i = 0; i < IM_ARRAYSIZE(primNames); ++i) {
                     if (ImGui::Selectable(primNames[i], false)) {
                         group.model = GetOrMakeParticlePrimitiveModel(i);
@@ -1304,8 +1501,12 @@ void ParticleManager::DrawImGuiContents() {
             }
 
             // 繝・け繧ｹ繝√Ε驕ｸ謚・
-            std::string currentTexName = group.texturePath.empty() ? "Select Texture..." : group.texturePath;
+            std::string currentTexName = group.texturePath.empty() ? "None" : group.texturePath;
             if (ImGui::BeginCombo("Texture", currentTexName.c_str())) {
+                if (ImGui::Selectable("None", group.texturePath.empty())) {
+                    group.texturePath.clear();
+                    group.textureSrvIndex = 0;
+                }
                 for (size_t i = 0; i < textureFiles_.size(); ++i) {
                     bool isSelected = (group.texturePath == textureFiles_[i]);
                     if (ImGui::Selectable(textureFiles_[i].c_str(), isSelected)) {
@@ -1330,15 +1531,18 @@ void ParticleManager::DrawImGuiContents() {
             if (group.mappedEmitter) {
                 ImGui::Separator();
                 ImGui::Text("Emission Settings");
-                ImGui::Checkbox("Auto Emit", &group.isAutoEmit);
+                if (settingsFile.empty()) {
+                    ImGui::Checkbox("Auto Emit", &group.isAutoEmit);
                 
-                if (ImGui::Button("Emit Now!")) {
-                    group.isEmitRequested = true;
-                    group.activeTimeRemaining = std::max(group.activeTimeRemaining, group.mappedEmitter->lifeTimeMax + 0.5f);
+                    if (ImGui::Button("Emit Now!")) {
+                        group.isEmitRequested = true;
+                        group.activeTimeRemaining = std::max(group.activeTimeRemaining, group.mappedEmitter->lifeTimeMax + 0.5f);
+                    }
                 }
 
                 int count = static_cast<int>(group.mappedEmitter->count);
-                if (ImGui::DragInt("Count", &count, 1, 1, 1024)) {
+                const int minCount = settingsFile.empty() ? 1 : 0;
+                if (ImGui::DragInt("Count", &count, 1, minCount, kMaxInstance, "%d", ImGuiSliderFlags_AlwaysClamp)) {
                     group.mappedEmitter->count = static_cast<uint32_t>(count);
                 }
 
@@ -1349,12 +1553,14 @@ void ParticleManager::DrawImGuiContents() {
                 ImGui::Separator();
                 ImGui::Text("Shape Settings");
                 const char* shapeTypes[] = { "Sphere", "Cone", "Box" };
-                int currentShape = static_cast<int>(group.mappedEmitter->shapeType);
-                if (ImGui::Combo("Shape Type", &currentShape, shapeTypes, IM_ARRAYSIZE(shapeTypes))) {
-                    group.mappedEmitter->shapeType = static_cast<uint32_t>(currentShape);
+                int currentShape = 1; // Directed shots use a cone.
+                if (settingsFile.empty()) {
+                    currentShape = static_cast<int>(group.mappedEmitter->shapeType);
+                    if (ImGui::Combo("Shape Type", &currentShape, shapeTypes, IM_ARRAYSIZE(shapeTypes))) {
+                        group.mappedEmitter->shapeType = static_cast<uint32_t>(currentShape);
+                    }
+                    ImGui::DragFloat3("Translate", &group.mappedEmitter->translate.x, 0.1f);
                 }
-
-                ImGui::DragFloat3("Translate", &group.mappedEmitter->translate.x, 0.1f);
                 
                 if (currentShape == 0 || currentShape == 1) { // Sphere or Cone
                     ImGui::DragFloat("Radius", &group.mappedEmitter->radius, 0.1f);
@@ -1369,20 +1575,25 @@ void ParticleManager::DrawImGuiContents() {
                 ImGui::Separator();
                 ImGui::Text("Particle Settings");
                 float lifetime[2] = { group.mappedEmitter->lifeTimeMin, group.mappedEmitter->lifeTimeMax };
-                if (ImGui::DragFloat2("LifeTime (Min/Max)", lifetime, 0.1f, 0.1f, 10.0f)) {
-                    group.mappedEmitter->lifeTimeMin = lifetime[0];
-                    group.mappedEmitter->lifeTimeMax = lifetime[1];
+                const float minLife = settingsFile.empty() ? 0.1f : 0.001f;
+                if (ImGui::DragFloat2("LifeTime (Min/Max)", lifetime, minLife, minLife, 10.0f, "%.3f",
+                    ImGuiSliderFlags_AlwaysClamp)) {
+                    group.mappedEmitter->lifeTimeMin = std::min(lifetime[0], lifetime[1]);
+                    group.mappedEmitter->lifeTimeMax = std::max(lifetime[0], lifetime[1]);
                 }
 
                 ImGui::DragFloat3("Scale Start", &group.mappedEmitter->scaleStart.x, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat3("Scale End", &group.mappedEmitter->scaleEnd.x, 0.01f, 0.0f, 20.0f);
 
-                ImGui::DragFloat3("Velocity Base", &group.mappedEmitter->velocityBase.x, 0.01f);
-                ImGui::DragFloat("Velocity Variance", &group.mappedEmitter->velocityVariance, 0.01f, 0.0f, 5.0f);
-                ImGui::DragFloat("Speed Min", &group.mappedEmitter->speedMin, 0.01f, 0.0f, 10.0f);
-                ImGui::DragFloat("Speed Max", &group.mappedEmitter->speedMax, 0.01f, 0.0f, 10.0f);
-                ImGui::DragFloat("Angle Random Deg", &group.mappedEmitter->angleRandomDeg, 1.0f, 0.0f, 360.0f);
-                ImGui::DragFloat("Jitter Deg", &group.mappedEmitter->jitterDeg, 1.0f, 0.0f, 180.0f);
+                if (settingsFile.empty()) {
+                    ImGui::DragFloat3("Velocity Base", &group.mappedEmitter->velocityBase.x, 0.01f);
+                    ImGui::DragFloat("Velocity Variance", &group.mappedEmitter->velocityVariance, 0.01f, 0.0f, 5.0f);
+                    ImGui::DragFloat("Angle Random Deg", &group.mappedEmitter->angleRandomDeg, 1.0f, 0.0f, 360.0f);
+                    ImGui::DragFloat("Jitter Deg", &group.mappedEmitter->jitterDeg, 1.0f, 0.0f, 180.0f);
+                }
+                const float speedStep = settingsFile.empty() ? 0.01f : 0.001f;
+                ImGui::DragFloat("Speed Min", &group.mappedEmitter->speedMin, speedStep, 0.0f, 10.0f);
+                ImGui::DragFloat("Speed Max", &group.mappedEmitter->speedMax, speedStep, 0.0f, 10.0f);
                 ImGui::DragFloat("Rotation Start Deg", &group.mappedEmitter->rotationStartDeg, 1.0f, -360.0f, 360.0f);
                 ImGui::DragFloat("Rotation Random Deg", &group.mappedEmitter->rotationRandomDeg, 1.0f, 0.0f, 360.0f);
                 float angularVelocity[2] = { group.mappedEmitter->angularVelocityMinDeg, group.mappedEmitter->angularVelocityMaxDeg };
@@ -1404,9 +1615,16 @@ void ParticleManager::DrawImGuiContents() {
 }
 
 void ParticleManager::Save(const std::string& filename) {
+    SaveInternal_(filename, false);
+}
+
+void ParticleManager::SaveInternal_(const std::string& filename, bool onlyGroupsFromFile) {
     json root = json::array();
 
     for (const auto& [name, group] : particleGroups_) {
+        if (onlyGroupsFromFile && group.fromFile != filename) {
+            continue;
+        }
         json g;
         g["name"] = name;
         g["texturePath"] = group.texturePath;
@@ -1416,6 +1634,12 @@ void ParticleManager::Save(const std::string& filename) {
         g["postEffectMode"] = static_cast<int>(group.postEffectMode);
         g["depthTestEnabled"] = group.depthTestEnabled;
         g["billboardMode"] = group.billboardMode;
+        if (group.cameraSpace) {
+            g["cameraSpace"] = true;
+        }
+        if (group.drawOrder != 0) {
+            g["drawOrder"] = group.drawOrder;
+        }
         g["isAutoEmit"] = group.isAutoEmit;
         g["bloomPostEffect"] = group.bloomPostEffect;
         g["outlineBloomPostEffect"] = group.outlineBloomPostEffect;
@@ -1503,19 +1727,21 @@ void ParticleManager::LoadInternal_(const std::string& filename, bool clearExist
         int modelType = g["modelType"];
         std::string modelName = g["modelName"];
 
+        Model* model = nullptr;
         if (modelType == 0) {
             CreateParticleGroup(name, texturePath);
         } else if (modelType == 1) {
             int primIndex = std::stoi(modelName);
-            Model* model = GetOrMakeParticlePrimitiveModel(primIndex);
+            model = GetOrMakeParticlePrimitiveModel(primIndex);
             CreateParticleGroup(name, model);
         } else if (modelType == 2) {
             ModelManager::GetInstance()->LoadModel(modelName);
-            Model* model = ModelManager::GetInstance()->FindModel(modelName);
+            model = ModelManager::GetInstance()->FindModel(modelName);
             CreateParticleGroup(name, model);
         }
 
         auto& group = particleGroups_[name];
+        group.model = model;
         group.texturePath = texturePath;
         if (texturePath != "") {
             TextureManager::GetInstance()->LoadTexture(texturePath);
@@ -1530,6 +1756,8 @@ void ParticleManager::LoadInternal_(const std::string& filename, bool clearExist
         group.postEffectMode = static_cast<PostEffectMode>(g.value("postEffectMode", static_cast<int>(PostEffectMode::FullScreen)));
         group.depthTestEnabled = g.value("depthTestEnabled", true);
         group.billboardMode = g["billboardMode"];
+        group.cameraSpace = g.value("cameraSpace", false);
+        group.drawOrder = g.value("drawOrder", 0);
         group.isAutoEmit = forceAutoEmitOff ? false : g["isAutoEmit"].get<bool>();
         group.bloomPostEffect = g.value("bloomPostEffect", false);
         group.outlineBloomPostEffect = g.value("outlineBloomPostEffect", false);
@@ -1601,7 +1829,7 @@ bool ParticleManager::HasBloomPostEffectTargets() const {
         }
     }
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active && group.bloomPostEffect) {
             return true;
         }
@@ -1617,7 +1845,7 @@ bool ParticleManager::HasOutlineBloomPostEffectTargets() const {
         }
     }
     for (const auto& [name, group] : particleGroups_) {
-        const bool active = group.isAutoEmit || group.isEmitRequested || group.activeTimeRemaining > 0.0f;
+        const bool active = group.IsActive();
         if (active && group.outlineBloomPostEffect) {
             return true;
         }
@@ -1640,6 +1868,9 @@ void ParticleManager::ClearGPUBuffers_(ParticleGroup& group) {
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmd->ResourceBarrier(1, &barrier);
+    D3D12_RESOURCE_BARRIER uavBarrier{};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    cmd->ResourceBarrier(1, &uavBarrier);
 
     particleCommon_->SetComputePipelineState(cmd);
     srvManager_->PreDrawCompute(cmd);
@@ -1656,15 +1887,28 @@ void ParticleManager::ClearGPUBuffers_(ParticleGroup& group) {
 
 void ParticleManager::ClearAllParticles() {
     for (auto& [name, group] : particleGroups_) {
-        group.particles.clear();
-        ClearGPUBuffers_(group);
-        if (group.mappedEmitter) {
-            group.mappedEmitter->emit = 0;
-            group.mappedEmitter->frequencyTime = 0.0f;
-        }
-        group.activeTimeRemaining = 0.0f;
-        group.isEmitRequested = false;
+        ClearParticles_(group);
     }
+}
+
+void ParticleManager::ClearParticlesFromFile(const std::string& filename) {
+    for (auto& [name, group] : particleGroups_) {
+        if (group.fromFile == filename && group.IsActive()) {
+            ClearParticles_(group);
+        }
+    }
+}
+
+void ParticleManager::ClearParticles_(ParticleGroup& group) {
+    group.particles.clear();
+    group.pendingEmissions.clear();
+    ClearGPUBuffers_(group);
+    if (group.mappedEmitter) {
+        group.mappedEmitter->emit = 0;
+        group.mappedEmitter->frequencyTime = 0.0f;
+    }
+    group.activeTimeRemaining = 0.0f;
+    group.isEmitRequested = false;
 }
 
 std::vector<std::string> ParticleManager::GetGroupNamesInFile(const std::string& filename) {

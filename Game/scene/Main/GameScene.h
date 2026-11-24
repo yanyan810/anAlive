@@ -22,6 +22,7 @@
 #include "GameOverVisionOverlay.h"
 #include <array>
 #include <chrono>
+#include <map>
 #include <vector>
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
 #include "DebugTimeline.h"
@@ -144,6 +145,12 @@ private:
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
+    void LoadMuzzleLightSettings();
+    void ApplyMuzzleLight(float dt);
+    Vector3 ViewMuzzlePosition() const;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    void DrawMuzzleEffectSettings();
+#endif
     void UpdatePlayerBullets(float dt);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
     void ShareEnemyAlerts();
@@ -305,6 +312,30 @@ private:
     // SceneをクリックしてFPS操作へ戻した時、
     // そのクリック長押しでFullAutoが始まるのを防止
     bool suppressFireUntilRelease_ = false;
+    float particleDeltaTime_ = 0.0f;
+    inline static const std::string kMuzzleFlashFile = "muzzle_flash.json";
+
+    struct MuzzleLightSettings {
+        Vector3 color{1.0f, 0.94f, 0.78f};
+        float intensity = 7.0f;
+        float duration = 0.036f;
+        float range = 3.7f;
+    };
+    struct MuzzleWeaponScales {
+        float light = 1.0f;
+        float smoke = 1.0f;
+    };
+    struct MuzzleLightPulse {
+        MuzzleLightSettings settings;
+        float age = 0.0f;
+        bool firstFrame = true;
+    };
+    MuzzleLightSettings muzzleLightSettings_;
+    std::map<std::string, MuzzleWeaponScales> muzzleWeaponScales_;
+    std::optional<MuzzleLightPulse> muzzleLightPulse_;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    DebugJsonEditor muzzleLightEditor_;
+#endif
 
 };
 

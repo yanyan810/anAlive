@@ -54,10 +54,11 @@ bool BulletSimulation::Spawn(const Bullet& source) {
 }
 
 size_t BulletSimulation::SpawnShot(const WeaponDefinition& weapon, const Matrix4x4& cameraWorld,
-    float adsBlend, std::mt19937& random, const BulletTrace& trace) {
+    float adsBlend, std::mt19937& random, const BulletTrace& trace, BulletShotPose* shotPose) {
     // 上限付近で散弾の一部だけが生成されないよう、1発分の空きを先に確認する。
-    if (weapon.pelletCount <= 0 || weapon.pelletCount > 64 ||
-        bullets_.size()+static_cast<size_t>(weapon.pelletCount) > kMaxBullets) return 0;
+    const bool canSpawn = weapon.pelletCount > 0 && weapon.pelletCount <= 64 &&
+        bullets_.size()+static_cast<size_t>(weapon.pelletCount) <= kMaxBullets;
+    if (!canSpawn && !shotPose) return 0;
     const Vector3 eye{cameraWorld.m[3][0], cameraWorld.m[3][1], cameraWorld.m[3][2]};
     const Vector3 forward{cameraWorld.m[2][0], cameraWorld.m[2][1], cameraWorld.m[2][2]};
     const Vector3 right{cameraWorld.m[0][0], cameraWorld.m[0][1], cameraWorld.m[0][2]};
@@ -75,6 +76,8 @@ size_t BulletSimulation::SpawnShot(const WeaponDefinition& weapon, const Matrix4
     const auto aimedHit = trace(eye, forward, weapon.range);
     const auto aim = eye+forward*(aimedHit ? aimedHit->distance : weapon.range);
     const auto aimForward = Unit(aim-muzzle, forward);
+    if (shotPose) *shotPose = {muzzle, aimForward};
+    if (!canSpawn) return 0;
     const auto aimRight = Unit(Cross(up, aimForward), right);
     const auto aimUp = Unit(Cross(aimForward, aimRight), up);
     const float spread = weapon.hipSpreadDegrees+

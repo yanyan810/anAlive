@@ -69,7 +69,7 @@ void ParticleCommon::CreateRootSignature()
     // (5) Vertex: BillboardMode (RootConstants 32bit)
     params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-    params[5].Constants.Num32BitValues = 1;
+    params[5].Constants.Num32BitValues = 3;
     params[5].Constants.ShaderRegister = 1; // b1
     params[5].Constants.RegisterSpace = 0;
 
@@ -276,6 +276,16 @@ void ParticleCommon::CreateGraphicsPipelineState(BlendMode mode, bool depthTestE
         blend.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
         blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
         blend.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+        blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+        blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+        break;
+
+    case BlendMode::kBlendModeEmissive:
+        blend.RenderTarget[0].BlendEnable = TRUE;
+        blend.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+        blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+        blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
         blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
         blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
         blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;

@@ -6,7 +6,7 @@ struct Particle {
     float currentTime;
     float rotation;
     float angularVelocity;
-    float2 padding0;
+    float3 emissionDirection;
     float4 color;
 };
 
@@ -28,7 +28,7 @@ struct EmitterData {
     float shapeAngle; // 角度
 
     float3 shapeSize; // Boxのサイズ
-    float padding1;
+    uint randomSeed;
 
     float3 acceleration; // 加速度
     float padding2;
@@ -103,8 +103,15 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     if (gEmitter.emit != 0) { // 射出許可が出たので射出
         
         RandomGenerator generator;
-        // スレッドIDと時間をSeedにする
-        generator.seed = gEmitter.translate + float3(1.0f, 2.0f, 3.0f);
+        float3 seedOffset = float3(gEmitter.randomSeed & 0xffffu, gEmitter.randomSeed >> 16u, 0.0f);
+        generator.seed = gEmitter.translate + float3(1.0f, 2.0f, 3.0f) + seedOffset * 0.03125f;
+        bool spreadAroundAxis = gEmitter.randomSeed != 0 && gEmitter.count > 1;
+        float phase = 0.0f;
+        if (spreadAroundAxis) {
+            phase = generator.Generate1d();
+        }
+        float axisLength = length(gEmitter.velocityBase);
+        float3 emissionDirection = axisLength > 0.001f ? gEmitter.velocityBase / axisLength : float3(0.0f, 1.0f, 0.0f);
 
         for (uint countIndex = 0; countIndex < gEmitter.count; ++countIndex) {
             int freeListIndex;
@@ -115,6 +122,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
                 
                 // カウント分Particleを創出する
                 gParticles[particleIndex].scale = gEmitter.scaleStart;
+                gParticles[particleIndex].emissionDirection = emissionDirection;
                 
                 float3 randomDir = (generator.Generate3d() - 0.5f) * 2.0f; // -1~1のキューブ内
                 float3 randomDirNorm = normalize(randomDir);
@@ -133,9 +141,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
                     gParticles[particleIndex].translate = gEmitter.translate + (randomDirNorm * gEmitter.radius * generator.Generate1d());
                     
                     // 方向の計算
-                    float3 baseDir = normalize(gEmitter.velocityBase);
-                    float speed = length(gEmitter.velocityBase);
-                    if (speed < 0.001f) { baseDir = float3(0.0f, 1.0f, 0.0f); speed = 1.0f; }
+                    float3 baseDir = emissionDirection;
 
                     float3 up = abs(baseDir.y) < 0.999f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
                     float3 right = normalize(cross(up, baseDir));
@@ -143,6 +149,9 @@ void main(uint3 DTid : SV_DispatchThreadID) {
 
                     float r1 = generator.Generate1d();
                     float r2 = generator.Generate1d();
+                    if (spreadAroundAxis) {
+                        r2 = frac(phase + (countIndex + r2 * 0.65f) / gEmitter.count);
+                    }
 
                     float cosTheta = lerp(cos(gEmitter.shapeAngle), 1.0f, r1);
                     float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
@@ -168,7 +177,11 @@ void main(uint3 DTid : SV_DispatchThreadID) {
 
                 // カラー設定
                 gParticles[particleIndex].color = gEmitter.startColor;
-                gParticles[particleIndex].rotation = radians(gEmitter.rotationStartDeg + generator.Generate1d() * gEmitter.rotationRandomDeg);
+                float rotation = generator.Generate1d();
+                if (spreadAroundAxis) {
+                    rotation = frac(phase + (countIndex + rotation * 0.65f) / gEmitter.count);
+                }
+                gParticles[particleIndex].rotation = radians(gEmitter.rotationStartDeg + rotation * gEmitter.rotationRandomDeg);
                 float angularVelocityRange = gEmitter.angularVelocityMaxDeg - gEmitter.angularVelocityMinDeg;
                 gParticles[particleIndex].angularVelocity = radians(gEmitter.angularVelocityMinDeg + generator.Generate1d() * angularVelocityRange);
                 
@@ -176,7 +189,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
                 
                 // 寿命: Min ~ Max の間
                 float lifeTimeRange = gEmitter.lifeTimeMax - gEmitter.lifeTimeMin;
-                gParticles[particleIndex].lifeTime = gEmitter.lifeTimeMin + generator.Generate1d() * lifeTimeRange;
+                gParticles[particleIndex].lifeTime = max(0.001f, gEmitter.lifeTimeMin + generator.Generate1d() * lifeTimeRange);
                 gParticles[particleIndex].currentTime = min(initialAge, gParticles[particleIndex].lifeTime);
 
                 const float authoredFrameRate = 60.0f;
@@ -189,9 +202,6 @@ void main(uint3 DTid : SV_DispatchThreadID) {
                 float lifeRate = saturate(gParticles[particleIndex].currentTime / max(gParticles[particleIndex].lifeTime, 0.001f));
                 gParticles[particleIndex].color = lerp(gEmitter.startColor, gEmitter.endColor, lifeRate);
                 gParticles[particleIndex].scale = lerp(gEmitter.scaleStart, gEmitter.scaleEnd, lifeRate);
-                if (initialAge >= gParticles[particleIndex].lifeTime) {
-                    gParticles[particleIndex].color.a = max(gParticles[particleIndex].color.a, 0.0001f);
-                }
             } else {
                 InterlockedAdd(gFreeListIndex[0], 1);
                 break;

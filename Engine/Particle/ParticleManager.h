@@ -25,13 +25,16 @@ struct Particles {
     float currentTime;
     float rotation;
     float angularVelocity;
-    float padding0[2];
+    Vector3 emissionDirection;
     Vector4 color;
 };
+static_assert(sizeof(Particles) == 80);
 
 struct PerView {
     Matrix4x4 viewProjection;
     Matrix4x4 billboardMatrix;
+    Matrix4x4 projection;
+    Vector4 cameraPosition;
 };
 
 // GPU Particle用 PerFrame
@@ -59,7 +62,7 @@ struct EmitterData {
     float shapeAngle; // Coneの広がり角 (4 bytes) -> 合計 16 bytes
 
     Vector3 shapeSize; // BoxのXYZサイズ (12 bytes)
-    float padding1; // 16バイトアライメント用パディング (4 bytes) -> 合計 16 bytes
+    uint32_t randomSeed;
 
     Vector3 acceleration; // 加速度(重力等) (12 bytes)
     float padding2; // 16バイトアライメント用パディング (4 bytes) -> 合計 16 bytes
@@ -130,12 +133,20 @@ struct ParticleGroup {
     bool isAutoEmit = true;
     bool isEmitRequested = false;
     float activeTimeRemaining = 0.0f;
+    std::vector<EmitterData> pendingEmissions;
+    bool IsActive() const {
+        return isAutoEmit || isEmitRequested || activeTimeRemaining > 0.0f || !pendingEmissions.empty();
+    }
 
     // ビルボードモード
     // 0: Billboard (カメラ追従)
     // 1: Velocity Aligned (進行方向を向く)
     // 2: None (回転なし/固定)
+    // 3: Velocity Aligned (camera-facing)
+    // 4: Emission Axis (roll around the launch direction)
     uint32_t billboardMode = 0;
+    bool cameraSpace = false;
+    int drawOrder = 0;
 
     // JSON保存復元用
     std::string texturePath = "";
@@ -175,8 +186,9 @@ public:
     void ClearGroups();
     void RemoveGroup(const std::string& groupName);
     void ClearAllParticles();
+    void ClearParticlesFromFile(const std::string& filename);
     void DrawImGui(); // ★追加
-    void DrawImGuiContents();
+    void DrawImGuiContents(const std::string& settingsFile = {});
 
     void Save(const std::string& filename);
     void Load(const std::string& filename);
@@ -202,9 +214,13 @@ public:
         float timeScale = 1.0f,
         float initialAge = 0.0f);
     void EmitConfigured(const std::string& groupName, const Vector3& pos, float timeScale = 1.0f, float initialAge = 0.0f);
+    void EmitDirectedFromFile(const std::string& filename, const Vector3& position,
+        const Vector3& direction, const Camera& camera, float countScale = 1.0f);
 
 private:
     void ClearGPUBuffers_(ParticleGroup& group);
+    void ClearParticles_(ParticleGroup& group);
+    void SaveInternal_(const std::string& filename, bool onlyGroupsFromFile);
     ParticleManager() = default;
     ~ParticleManager() = default;
     ParticleManager(const ParticleManager&) = delete;
@@ -232,6 +248,7 @@ private:
     std::vector<ParticleVertex> vertices_;
 
     std::unordered_map<std::string, ParticleGroup> particleGroups_;
+    std::vector<const ParticleGroup*> drawGroups_;
     std::string editorSelectedGroupName_;
 
     struct RetiredParticleGroups {
@@ -244,6 +261,7 @@ private:
     // === GPU リソース ===
     Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer_;
     D3D12_VERTEX_BUFFER_VIEW vbView_{};
+    uint32_t nullTextureSrvIndex_ = 0;
 
     uint32_t maxParticleCount_ = 1000;
 
@@ -257,6 +275,9 @@ private:
     float time_ = 0.0f;
     Microsoft::WRL::ComPtr<ID3D12Resource> perFrameResource_;
     PerFrame* mappedPerFrame_ = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> emissionUpload_;
+    uint8_t* mappedEmissionUpload_ = nullptr;
+    size_t emissionCapacity_ = 0;
 
     // === ダミーマテリアル＆ライト ===
     Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;

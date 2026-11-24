@@ -127,9 +127,12 @@ int main() {
     auto pistol=*weapons.Find("pistol"); pistol.hipSpreadDegrees=pistol.adsSpreadDegrees=0;
     pistol.bulletSpeed=10;
     const int beforeShot=hitCount;
-    assert(simulation.SpawnShot(pistol,camera,0,random,trace)==1);
+    BulletShotPose shotPose;
+    assert(simulation.SpawnShot(pistol,camera,0,random,trace,&shotPose)==1);
     assert(hitCount==beforeShot && targets[0].parts[1].hp==75); // Camera aiming never deals damage.
     const auto spawned=simulation.Bullets()[0];
+    assert(StageLength(shotPose.muzzle-spawned.position)<.001f);
+    assert(StageLength(shotPose.direction-spawned.direction)<.001f);
     assert(Near(spawned.position.x,.2f) && Near(spawned.position.y,1.35f) && Near(spawned.position.z,.5f));
     const auto aim=trace({0,1.5f,0},{0,0,1},pistol.range)->position;
     assert(StageLength(spawned.position+spawned.direction*StageLength(aim-spawned.position)-aim)<.001f);
@@ -138,6 +141,13 @@ int main() {
     targets[0].world=Matrix4x4::Translation({10,0,10});
     simulation.Update(3,trace,impact); assert(hitCount==beforeShot && simulation.Bullets().empty());
     targets[0].world=Matrix4x4::Translation({0,0,10});
+
+    const auto movedCamera=Matrix4x4::MakeAffineMatrix({1,1,1},{.15f,.7f,0},{3,2,-5});
+    const BulletTrace unobstructed=[](const Vector3&,const Vector3&,float) -> std::optional<BulletHit> { return {}; };
+    assert(simulation.SpawnShot(pistol,movedCamera,0,random,unobstructed,&shotPose)==1);
+    assert(StageLength(shotPose.muzzle-StagePoint({.2f,-.15f,.5f},movedCamera))<.001f);
+    assert(StageLength(shotPose.direction-simulation.Bullets()[0].direction)<.001f);
+    simulation.Clear();
 
     WeaponRuntime shotgun; shotgun.Equip(*weapons.Find("shotgun"));
     const int ammo=shotgun.Magazine();

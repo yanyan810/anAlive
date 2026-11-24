@@ -1,4 +1,4 @@
-﻿#include "GameScene.h"
+#include "GameScene.h"
 #include "GameOverMenuInput.h"
 #include "GameApp.h"
 #include "Object3dCommon.h"
@@ -7,8 +7,10 @@
 #include "EnemySpawnDebug.h"
 #include "GeometryGenerator.h"
 #include "EnemyModelSource.h"
+#include "ParticleManager.h"
 #include <string>
 #include <numbers>
+#include <utility>
 #ifdef USE_IMGUI
 #include "imgui.h"
 namespace { constexpr int kCapturedMouseFlags = ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange; }
@@ -262,6 +264,13 @@ void GameScene::OnEnter(GameApp& app) {
         kNormalFovDegrees * kDegreesToRadians);
 
     camera_.Update();
+    auto* particles = ParticleManager::GetInstance();
+    if (particles->GetGroupNamesLoadedFromFile(kMuzzleFlashFile).empty()) {
+        particles->LoadAdditional(kMuzzleFlashFile, "");
+    }
+    LoadMuzzleLightSettings();
+    muzzleLightPulse_.reset();
+    particleDeltaTime_ = 0.0f;
     app.ObjCom()->SetDefaultCamera(&camera_);
     player_.Initialize(app.ObjCom(), app.Dx(), &camera_);
     adsBlend_ = 0.0f;
@@ -420,6 +429,7 @@ void GameScene::OnEnter(GameApp& app) {
 void GameScene::OnExit(GameApp& app) {
     // Large reinforcement pools must finish GPU work before their instance buffers are released.
     app.Dx()->WaitForGPU();
+    ParticleManager::GetInstance()->ClearParticlesFromFile(kMuzzleFlashFile);
     app.Render()->ResetDeathPostEffect();
     app.Render()->ResetViewPostPreview();
     gameOver_.Reset(); gameOverMenuTime_=0;
@@ -455,6 +465,7 @@ void GameScene::OnExit(GameApp& app) {
 void GameScene::Update(GameApp& app, float dt) {
     // SceneManager consumes this request after Update, safely outside ImGui drawing.
     if (!NextScene().empty()) return;
+    if (std::isfinite(dt) && dt > 0.0f) particleDeltaTime_ += dt;
     Input& input = *app.GetInput();
     if (EscapePlaying()) { UpdateHotelEscape(app,dt); return; }
     if (gameOver_.Active()) { UpdateGameOver(app,dt); return; }
@@ -1051,11 +1062,23 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     ShareEnemyAlerts();
     // Only bullets already in flight advance this frame. New shots start at the muzzle
     // and cannot damage anything until a subsequent movement sweep reaches it.
-    // 既存の弾を先に更新し、新しい弾は銃口から描画することで、生成と同時の移動・命中を避ける。
+    // 既存の弾を先に進め、新しい弾の命中判定は次の移動から行う。
     UpdatePlayerBullets(dt);
-    for (int shot=0; shot<weaponShots; ++shot) {
-        ++shotCount_;
-        bullets_.Spawn(weapon.Definition(),camera_.GetWorldMatrix(),adsBlend_,pelletRandom_,level_.collision,enemies_);
+    if (weaponShots > 0) {
+        const auto entry = muzzleWeaponScales_.find(weapon.Definition().id);
+        const auto scales = entry != muzzleWeaponScales_.end() ? entry->second : MuzzleWeaponScales{};
+        muzzleLightPulse_ = MuzzleLightPulse{muzzleLightSettings_};
+        muzzleLightPulse_->settings.intensity *= scales.light;
+        auto* particles = ParticleManager::GetInstance();
+        const auto& cameraWorld = camera_.GetWorldMatrix();
+        const auto muzzle = ViewMuzzlePosition();
+        for (int shot=0; shot<weaponShots; ++shot) {
+            ++shotCount_;
+            BulletShotPose shotPose;
+            bullets_.Spawn(weapon.Definition(),cameraWorld,adsBlend_,pelletRandom_,level_.collision,enemies_,{}, &shotPose);
+            particles->EmitDirectedFromFile(kMuzzleFlashFile, muzzle, shotPose.direction + Vector3{0, 0.20f, 0},
+                camera_, scales.smoke);
+        }
     }
     for(size_t i=0;i<enemies_.size();++i) {
         if (enemies_[i]->IsDead() || (showroom_ && freezeEnemies_)) continue;
@@ -1108,6 +1131,10 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
         if (i!=impact.enemyIndex) enemies_[i]->ApplyExplosionDamage(blast);
 }
 void GameScene::DrawRender(GameApp& app) {
+    auto* particles = ParticleManager::GetInstance();
+    const auto dt = std::exchange(particleDeltaTime_, 0.0f);
+    particles->Update(dt, camera_);
+    ApplyMuzzleLight(dt);
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     if (!gameOver_.Active()) app.Render()->ApplyViewPostPreview();
     if (escapeMode_==EscapeMode::Results) return;
@@ -1141,13 +1168,15 @@ void GameScene::DrawRender(GameApp& app) {
     if (gameOver_.EnemiesVisible())
         for(auto& enemy : enemies_) enemy->Draw(!showroom_ || showEnemyMarkers_,gameOver_.Active() ? .16f : 0);
     for(auto& visual : projectileVisuals_) visual->Draw();
-    bullets_.Draw();
+    // Draw projectiles once they are in flight.
+    bullets_.Draw(BulletManager::VisualStyle::FirstPerson);
     // 半透明の爆発球は不透明な敵・弾の後に描き、Releaseでも範囲を見せる。
     if (gameOver_.EnemiesVisible())
         for (auto& enemy : enemies_) enemy->DrawExplosion();
     if (!gameOver_.Active()) {
         SyncThrowableVisuals(app);
         for (size_t i=0;i<throwableDrawList_.size();++i) throwableVisuals_[i]->Draw();
+        particles->Draw(app.Dx()->GetCommandList());
     }
 }
 
@@ -1332,6 +1361,9 @@ void GameScene::DrawImGui(GameApp& app) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
+    if (ImGui::CollapsingHeader("Muzzle Flash")) {
+        DrawMuzzleEffectSettings();
+    }
     const auto& weapon = player_.CurrentWeapon();
     ImGui::BeginDisabled(captured || !stage_.IsPlaying() || weapons_.Definitions().empty());
     const auto& equipped = weapon.Definition();
@@ -1841,6 +1873,8 @@ bool GameScene::ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path&
 
 void GameScene::ResetShowroomEnemies(GameApp& app) {
     (void)app;
+    ParticleManager::GetInstance()->ClearParticlesFromFile(kMuzzleFlashFile);
+    muzzleLightPulse_.reset();
     enemyPool_.ReleaseAll();
     enemies_.clear(); enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
     nextEnemyId_=0; selectedEnemy_=0; lastHitEnemy_=-1; lastHitPart_=EnemyPartType::None; lastHitPartName_="None";

@@ -6,7 +6,7 @@ struct Particle {
     float currentTime;
     float rotation;
     float angularVelocity;
-    float2 padding0;
+    float3 emissionDirection;
     float4 color;
 };
 
@@ -28,7 +28,7 @@ struct EmitterData {
     float shapeAngle;
 
     float3 shapeSize;
-    float padding1;
+    uint randomSeed;
 
     float3 acceleration; // 加速度
     float padding2;
@@ -69,8 +69,8 @@ ConstantBuffer<PerFrame> gPerFrame : register(b1);
 void main(uint3 DTid : SV_DispatchThreadID) {
     uint particleIndex = DTid.x;
     if (particleIndex < kMaxParticles) {
-        // alphaが0のparticleは死んでいるとみなして更新しない
-        if (gParticles[particleIndex].color.a != 0.0f) {
+        // Keep transparent particles alive until their slot can be returned to the free list.
+        if (gParticles[particleIndex].lifeTime > 0.0f) {
             float dt = gPerFrame.deltaTime * gEmitter.timeScale;
             // 加速度を速度に適用
             gParticles[particleIndex].velocity += gEmitter.acceleration * dt;
@@ -84,6 +84,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
             gParticles[particleIndex].scale = lerp(gEmitter.scaleStart, gEmitter.scaleEnd, lifeRate);
 
             if (gParticles[particleIndex].currentTime >= gParticles[particleIndex].lifeTime) {
+                gParticles[particleIndex].lifeTime = 0.0f;
                 gParticles[particleIndex].color.a = 0.0f;
                 gParticles[particleIndex].scale = float3(0.0f, 0.0f, 0.0f);
                 int freeListIndex;

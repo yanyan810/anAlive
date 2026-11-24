@@ -6,7 +6,7 @@ struct Particle {
     float currentTime;
     float rotation;
     float angularVelocity;
-    float2 padding0;
+    float3 emissionDirection;
     float4 color;
 };
 

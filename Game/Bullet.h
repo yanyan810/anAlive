@@ -25,6 +25,11 @@ using BulletTrace = std::function<std::optional<BulletHit>(const Vector3&, const
 using BulletImpact = std::function<void(const Bullet&, const BulletHit&)>;
 using BulletEnemyRaycast = std::function<bool(size_t, const Vector3&, const Vector3&, float, EnemyPartHit&)>;
 
+struct BulletShotPose {
+    Vector3 muzzle;
+    Vector3 direction;
+};
+
 // Shared by aiming and movement sweeps. Walls win equal-distance ties.
 std::optional<BulletHit> TraceBulletPath(const Vector3& origin, const Vector3& direction,
     float distance, const StageWorld& world, size_t enemyCount, const BulletEnemyRaycast& raycastEnemy,
@@ -37,7 +42,7 @@ public:
     static constexpr size_t kMaxBullets = 1024;
     bool Spawn(const Bullet& bullet);
     size_t SpawnShot(const WeaponDefinition& weapon, const Matrix4x4& cameraWorld,
-        float adsBlend, std::mt19937& random, const BulletTrace& trace);
+        float adsBlend, std::mt19937& random, const BulletTrace& trace, BulletShotPose* shotPose = nullptr);
     void Update(float dt, const BulletTrace& trace, const BulletImpact& impact);
     void Clear() { bullets_.clear(); }
     const std::vector<Bullet>& Bullets() const { return bullets_; }

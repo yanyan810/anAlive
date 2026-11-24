@@ -18,6 +18,7 @@ public:
         kBlendModeMultily,
         //!<スクリーン。Src*(1-Dest)+Dest*1
         kBlendModeScreen,
+        kBlendModeEmissive,
         //!<利用してはいけない（要素数）
         kCountOfBlendMode,
     };

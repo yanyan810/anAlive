@@ -20,8 +20,8 @@ void BulletManager::Initialize(Object3dCommon* common, DirectXCommon* dx, Camera
 
 void BulletManager::Spawn(const WeaponDefinition& weapon, const Matrix4x4& cameraWorld,
     float adsBlend, std::mt19937& random, const StageWorld& world,
-    const std::vector<Enemy*>& enemies, const BulletTrace& raycastTarget) {
-    simulation_.SpawnShot(weapon, cameraWorld, adsBlend, random, MakeTrace(world, enemies, raycastTarget));
+    const std::vector<Enemy*>& enemies, const BulletTrace& raycastTarget, BulletShotPose* shotPose) {
+    simulation_.SpawnShot(weapon, cameraWorld, adsBlend, random, MakeTrace(world, enemies, raycastTarget), shotPose);
 }
 
 void BulletManager::Update(float dt, const StageWorld& world,
@@ -58,16 +58,22 @@ void BulletManager::EnsureVisuals(size_t count) {
     }
 }
 
-void BulletManager::Draw() {
+void BulletManager::Draw(VisualStyle style) {
     const auto& bullets = simulation_.Bullets();
+    const bool firstPerson = style == VisualStyle::FirstPerson;
     EnsureVisuals(bullets.size());
     for (size_t i=0; i<bullets.size(); ++i) {
         const auto& bullet = bullets[i];
+        if (firstPerson) {
+            const auto displacement = bullet.position - bullet.previousPosition;
+            if (StageDot(displacement, displacement) == 0.0f) continue;
+        }
         auto& visual = *visuals_[i];
         visual.SetTranslate(bullet.position);
         visual.SetRotate({-std::asin(std::clamp(bullet.direction.y,-1.0f,1.0f)),
             std::atan2(bullet.direction.x,bullet.direction.z),0});
-        visual.SetScale({.035f,.035f,.12f});
+        visual.SetScale(firstPerson ? Vector3{.0022f,.0022f,.085f} : Vector3{.035f,.035f,.12f});
+        visual.SetMaterialColor(firstPerson ? Vector4{1,.83f,.36f,1} : Vector4{1,1,0,1});
         visual.Update(0);
         visual.Draw();
     }

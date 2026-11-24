@@ -1,16 +1,37 @@
 {
     "light": {
-        "color": [1.0, 0.94, 0.78],
-        "intensity": 7.0,
+        "color": [
+            1.0,
+            0.94,
+            0.78
+        ],
+        "intensity": 0.0,
         "duration": 0.036,
-        "range": 3.7
+        "range": 1.4
     },
     "weapons": {
-        "pistol": { "verticalSmokeScale": 1.0 },
-        "smg": { "lightScale": 0.68, "smokeScale": 0.5 },
-        "shotgun": { "lightScale": 1.35, "smokeScale": 1.25 },
-        "pump_shotgun": { "lightScale": 1.35, "smokeScale": 1.25 },
-        "auto_shotgun": { "lightScale": 1.12, "smokeScale": 1.0 },
-        "double_shotgun": { "lightScale": 1.5, "smokeScale": 1.25 }
+        "pistol": {
+            "verticalSmokeScale": 1.0
+        },
+        "smg": {
+            "lightScale": 0.68,
+            "smokeScale": 0.5
+        },
+        "shotgun": {
+            "lightScale": 1.35,
+            "smokeScale": 1.25
+        },
+        "pump_shotgun": {
+            "lightScale": 1.35,
+            "smokeScale": 1.25
+        },
+        "auto_shotgun": {
+            "lightScale": 1.12,
+            "smokeScale": 1.0
+        },
+        "double_shotgun": {
+            "lightScale": 1.5,
+            "smokeScale": 1.25
+        }
     }
 }

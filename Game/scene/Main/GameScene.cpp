@@ -1,4 +1,4 @@
-#include "GameScene.h"
+﻿#include "GameScene.h"
 #include "GameOverMenuInput.h"
 #include "GameApp.h"
 #include "Object3dCommon.h"
@@ -1079,7 +1079,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         muzzleLightPulse_ = MuzzleLightPulse{muzzleLightSettings_};
         muzzleLightPulse_->settings.intensity *= scales.light;
         const auto& cameraWorld = camera_.GetWorldMatrix();
-        const auto muzzle = ViewMuzzlePosition();
+        const auto muzzle = ResolveMuzzleAnchor().position;
         for (int shot=0; shot<weaponShots; ++shot) {
             ++shotCount_;
             BulletShotPose shotPose;

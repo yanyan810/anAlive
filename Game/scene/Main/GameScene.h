@@ -142,9 +142,16 @@ private:
     friend void RunTitleSceneTests(GameApp& app);
 #endif
     void UpdateCombat(GameApp& app, float dt, bool wasCaptured);
+
+    struct MuzzleAnchor {
+        Vector3 position{};
+        bool obstructed = false;
+    };
+
     void LoadMuzzleLightSettings();
     void ApplyMuzzleLight(float dt);
-    Vector3 ViewMuzzlePosition() const;
+    MuzzleAnchor ResolveMuzzleAnchor() const;
+
     void EmitMuzzleSmoke(const Vector3& position, const Vector3& direction, float smokeScale, float verticalSmokeScale);
     void AdvanceMuzzleSmoke(float dt);
     void ClearMuzzleSmoke();
@@ -315,10 +322,10 @@ private:
     inline static const std::string kMuzzleVerticalSmokeFile = "muzzle_vertical_smoke.json";
 
     struct MuzzleLightSettings {
-        Vector3 color{1.0f, 0.94f, 0.78f};
-        float intensity = 7.0f;
+        Vector3 color{ 1.0f, 0.94f, 0.78f };
+        float intensity = 2.8f;
         float duration = 0.036f;
-        float range = 3.7f;
+        float range = 1.4f;
     };
     struct MuzzleWeaponScales {
         float light = 1.0f;

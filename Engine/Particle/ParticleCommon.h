@@ -26,7 +26,7 @@ public:
 public:
     void Initialize(DirectXCommon* dxCommon);
 
-    void SetGraphicsPipelineState(ID3D12GraphicsCommandList* cmd = nullptr, bool muzzleSmoke = false);
+    void SetGraphicsPipelineState(ID3D12GraphicsCommandList* cmd = nullptr, bool muzzleSmoke = false, bool muzzleGlow = false);
     void SetComputePipelineState(ID3D12GraphicsCommandList* cmd = nullptr);
     void SetEmitComputePipelineState(ID3D12GraphicsCommandList* cmd = nullptr); 
     void SetUpdateComputePipelineState(ID3D12GraphicsCommandList* cmd = nullptr); 
@@ -42,7 +42,7 @@ public:
 
 private:
     void CreateRootSignature();
-    void CreateGraphicsPipelineState(BlendMode mode, bool depthTestEnabled, bool muzzleSmoke = false);
+    void CreateGraphicsPipelineState(BlendMode mode, bool depthTestEnabled, bool muzzleSmoke = false, bool muzzleGlow = false);
 
     void CreateComputeRootSignature();
 	void CreateComputePipelineState();
@@ -58,6 +58,7 @@ private:
     std::array<std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>,
         static_cast<size_t>(BlendMode::kCountOfBlendMode)>, kDepthModeCount> pso_{};
     std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, kDepthModeCount> muzzleSmokePso_{};
+    std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, kDepthModeCount> muzzleGlowPso_{};
 
     Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> emitComputePipelineState_; // ★追加

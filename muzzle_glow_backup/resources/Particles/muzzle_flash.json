@@ -1,0 +1,139 @@
+[
+    {
+        "name": "Muzzle Flash - Soft Glow",
+        "texturePath": "",
+        "modelType": 1,
+        "modelName": "15",
+        "blendMode": 2,
+        "billboardMode": 0,
+        "depthTestEnabled": true,
+        "drawOrder": 9,
+        "isAutoEmit": false,
+        "emitter": {
+            "count": 0,
+            "frequency": 0.0,
+            "translate": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "radius": 0.0,
+            "lifeTimeMin": 0.05,
+            "lifeTimeMax": 0.05,
+            "velocityBase": [
+                0.0,
+                0.0,
+                1.0
+            ],
+            "velocityVariance": 0.0,
+            "startColor": [
+                1.0,
+                0.94,
+                0.7,
+                0.65
+            ],
+            "endColor": [
+                1.0,
+                0.88,
+                0.58,
+                0.0
+            ],
+            "scaleStart": [
+                0.018,
+                0.018,
+                1.0
+            ],
+            "scaleEnd": [
+                0.022,
+                0.022,
+                1.0
+            ],
+            "speedMin": 0.0,
+            "speedMax": 0.0,
+            "rotationRandomDeg": 0.0,
+            "angularVelocityMinDeg": 0.0,
+            "angularVelocityMaxDeg": 0.0,
+            "shapeType": 1,
+            "shapeAngle": 0.0,
+            "shapeSize": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "acceleration": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        }
+    },
+    {
+        "name": "Muzzle Flash - Smoke",
+        "texturePath": "",
+        "modelType": 1,
+        "modelName": "16",
+        "smokeShape": "normal",
+        "blendMode": 1,
+        "billboardMode": 0,
+        "depthTestEnabled": true,
+        "drawOrder": 10,
+        "isAutoEmit": false,
+        "emitter": {
+            "count": 1,
+            "frequency": 0.0,
+            "translate": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "radius": 0.012,
+            "lifeTimeMin": 0.24,
+            "lifeTimeMax": 0.42,
+            "velocityBase": [
+                0.0,
+                0.2,
+                1.0
+            ],
+            "velocityVariance": 0.0,
+            "startColor": [
+                0.5,
+                0.52,
+                0.54,
+                0.065
+            ],
+            "endColor": [
+                0.5,
+                0.52,
+                0.54,
+                0.0
+            ],
+            "scaleStart": [
+                0.014,
+                0.019,
+                1.0
+            ],
+            "scaleEnd": [
+                0.044,
+                0.054,
+                1.0
+            ],
+            "speedMin": 0.005,
+            "speedMax": 0.009,
+            "rotationRandomDeg": 360.0,
+            "angularVelocityMinDeg": -10.0,
+            "angularVelocityMaxDeg": 10.0,
+            "shapeType": 1,
+            "shapeAngle": 0.22,
+            "shapeSize": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "acceleration": [
+                0.0,
+                0.025,
+                0.0
+            ]
+        }
+    }
+]

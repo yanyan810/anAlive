@@ -97,6 +97,7 @@ void GameScene::LoadMuzzleLightSettings() {
         next.intensity = bounded(light.value("intensity", next.intensity), 0, 24);
         next.duration = bounded(light.value("duration", next.duration), 0.005f, 0.15f);
         next.range = bounded(light.value("range", next.range), 0.2f, 12);
+        next.decay = bounded(light.value("decay", next.decay), 0.5f, 6.0f);
         const auto weaponSettings = document.value("weapons", nlohmann::json::object());
         if (!weaponSettings.is_object()) throw std::runtime_error("Muzzle weapon settings must be an object");
         std::map<std::string, MuzzleWeaponScales> scales;
@@ -123,57 +124,27 @@ void GameScene::ApplyMuzzleLight(float dt) {
         if (!std::exchange(pulse.firstFrame, false)) pulse.age += dt;
         if (pulse.age >= pulse.settings.duration) muzzleLightPulse_.reset();
     }
-
     float intensity = 0.0f;
     Vector3 position{};
-    Vector3 forward{0.0f, 0.0f, 1.0f};
     if (muzzleLightPulse_) {
         const auto& pulse = *muzzleLightPulse_;
-        const float remaining = 1.0f - pulse.age / pulse.settings.duration;
+        const float remaining = std::clamp(1.0f - pulse.age / pulse.settings.duration, 0.0f, 1.0f);
         const auto anchor = ResolveMuzzleAnchor();
         position = anchor.position;
-
-        // Point lights illuminate every direction, often making a nearby wall
-        // look like the flash itself. Aim a small spotlight down the barrel.
-        const auto& cameraWorld = camera_.GetWorldMatrix();
-        const Vector3 cameraOrigin = StagePoint({}, cameraWorld);
-        forward = StagePoint({0.0f, 0.0f, 1.0f}, cameraWorld) - cameraOrigin;
-        const float forwardLength = StageLength(forward);
-        if (forwardLength > 1e-5f) forward = forward * (1.0f / forwardLength);
-        else forward = {0.0f, 0.0f, 1.0f};
-
-        intensity = anchor.obstructed
-            ? 0.0f
-            : pulse.settings.intensity * remaining * remaining;
-
-        // A real muzzle flash can illuminate a wall, but when the wall is
-        // extremely close, reduce its intensity instead of painting it bright.
-        if (intensity > 0.0f) {
-            StageHit wallHit{};
-            if (level_.collision.Raycast(position, forward, pulse.settings.range, wallHit)) {
-                constexpr float kFadeStartDistance = 0.12f;
-                constexpr float kFullIntensityDistance = 0.67f;
-                const float wallFactor = std::clamp(
-                    (wallHit.distance - kFadeStartDistance) /
-                        (kFullIntensityDistance - kFadeStartDistance), 0.0f, 1.0f);
-                intensity *= wallFactor;
-            }
-        }
+        // Broad, brief illumination rather than a narrow projected spot.
+        // Keep a softer pulse when the virtual muzzle is blocked.
+        intensity = pulse.settings.intensity * remaining * remaining *
+            (anchor.obstructed ? 0.35f : 1.0f);
     }
     const auto apply = [&](Object3d& surface) {
-        // The affected objects have no persistent spotlight; keep both light
-        // types explicit so no point-light pulse is left over from earlier frames.
-        surface.SetPointLightIntensity(0.0f);
-        surface.SetSpotLightIntensity(intensity);
+        surface.SetSpotLightIntensity(0.0f);
+        surface.SetPointLightIntensity(intensity);
         if (intensity <= 0.0f) return;
         const auto& settings = muzzleLightPulse_->settings;
-        surface.SetSpotLightPos(position);
-        surface.SetSpotLightDirection(forward);
-        surface.SetSpotLightColor({settings.color.x, settings.color.y, settings.color.z, 1.0f});
-        surface.SetSpotLightDistance(settings.range);
-        surface.SetSpotLightDecay(2.5f);
-        surface.SetSpotLightCosAngle(0.8660254f);         // 30-degree outer half-angle
-        surface.SetSpotLightCosFalloffStart(0.9659258f); // 15-degree inner half-angle
+        surface.SetPointLightPos(position);
+        surface.SetPointLightColor({settings.color.x, settings.color.y, settings.color.z, 1.0f});
+        surface.SetPointLightRadius(settings.range);
+        surface.SetPointLightDecay(settings.decay);
     };
     apply(ground_);
     for (auto& shutter : shutterVisuals_) apply(*shutter.model);
@@ -183,11 +154,12 @@ void GameScene::ApplyMuzzleLight(float dt) {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
 void GameScene::DrawMuzzleEffectSettings(const WeaponDefinition& weapon) {
     constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
-    ImGui::SeparatorText("Shared Muzzle Spotlight Settings");
+    ImGui::SeparatorText("Shared Muzzle Point Light Settings");
     ImGui::ColorEdit3("Light Color", &muzzleLightSettings_.color.x);
     ImGui::DragFloat("Light Intensity", &muzzleLightSettings_.intensity, 0.1f, 0.0f, 24.0f, "%.2f", clamp);
     ImGui::DragFloat("Light Duration (s)", &muzzleLightSettings_.duration, 0.001f, 0.005f, 0.15f, "%.3f", clamp);
-    ImGui::DragFloat("Spot Distance", &muzzleLightSettings_.range, 0.05f, 0.2f, 12.0f, "%.2f", clamp);
+    ImGui::DragFloat("Light Range", &muzzleLightSettings_.range, 0.05f, 0.2f, 12.0f, "%.2f", clamp);
+    ImGui::DragFloat("Light Decay", &muzzleLightSettings_.decay, 0.05f, 0.5f, 6.0f, "%.2f", clamp);
 
     if (!weapon.id.empty()) {
         ImGui::SeparatorText("Weapon Scales");
@@ -211,7 +183,7 @@ void GameScene::DrawMuzzleEffectSettings(const WeaponDefinition& weapon) {
         const auto& light = muzzleLightSettings_;
         auto& document = muzzleLightEditor_.document;
         document["light"] = {{"color", {light.color.x, light.color.y, light.color.z}},
-            {"intensity", light.intensity}, {"duration", light.duration}, {"range", light.range}};
+            {"intensity", light.intensity}, {"duration", light.duration}, {"range", light.range}, {"decay", light.decay}};
         auto weapons = nlohmann::json::object();
         for (const auto& [id, scales] : muzzleWeaponScales_) {
             weapons[id] = {{"lightScale", scales.light}, {"smokeScale", scales.smoke}};

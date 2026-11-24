@@ -18,8 +18,8 @@
                 0.0
             ],
             "radius": 0.0,
-            "lifeTimeMin": 0.05,
-            "lifeTimeMax": 0.05,
+            "lifeTimeMin": 0.04,
+            "lifeTimeMax": 0.04,
             "velocityBase": [
                 0.0,
                 0.0,
@@ -28,14 +28,14 @@
             "velocityVariance": 0.0,
             "startColor": [
                 1.0,
-                0.94,
-                0.7,
-                0.65
+                0.95,
+                0.78,
+                0.85
             ],
             "endColor": [
                 1.0,
-                0.88,
-                0.58,
+                0.95,
+                0.78,
                 0.0
             ],
             "scaleStart": [
@@ -44,8 +44,8 @@
                 1.0
             ],
             "scaleEnd": [
-                0.022,
-                0.022,
+                0.018,
+                0.018,
                 1.0
             ],
             "speedMin": 0.0,

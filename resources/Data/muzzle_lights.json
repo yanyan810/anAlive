@@ -6,10 +6,11 @@
         "range": 3.7
     },
     "weapons": {
+        "pistol": { "verticalSmokeScale": 1.0 },
         "smg": { "lightScale": 0.68, "smokeScale": 0.5 },
-        "shotgun": { "lightScale": 1.35, "smokeScale": 1.5 },
-        "pump_shotgun": { "lightScale": 1.35, "smokeScale": 1.5 },
+        "shotgun": { "lightScale": 1.35, "smokeScale": 1.25 },
+        "pump_shotgun": { "lightScale": 1.35, "smokeScale": 1.25 },
         "auto_shotgun": { "lightScale": 1.12, "smokeScale": 1.0 },
-        "double_shotgun": { "lightScale": 1.5, "smokeScale": 1.5 }
+        "double_shotgun": { "lightScale": 1.5, "smokeScale": 1.25 }
     }
 }

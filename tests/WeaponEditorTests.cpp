@@ -1,5 +1,6 @@
 #include "WeaponEditor.h"
 #include "WeaponEditorUI.h"
+#include "imgui_internal.h"
 #include <cassert>
 #include <iostream>
 #include <limits>
@@ -112,13 +113,31 @@ int main() {
         ImGui::NewFrame(); assert(!ui.Draw(live,level,true)); ImGui::Render();
         if (i>0) assert(ImGui::GetDrawData()->TotalVtxCount>0);
     }
-    int previews=0;
-    for (int i=0;i<3;++i) {
+    int previews=0, muzzlePanels=0;
+    const auto drawShowroomEditor=[&] {
         ImGui::NewFrame();
-        assert(!ui.Draw(live,level,true,[&] { ++previews; ImGui::TextUnformatted("3D scene texture"); }));
+        assert(!ui.Draw(live,level,true,[&] { ++previews; ImGui::TextUnformatted("3D scene texture"); },{}, {},
+            [&](const WeaponDefinition& selected) {
+                assert(&selected==ui.Selected() && selected.id=="pistol");
+                ++muzzlePanels;
+                ImGui::TextUnformatted("Muzzle effect controls");
+            }));
         ImGui::Render();
+    };
+    drawShowroomEditor(); drawShowroomEditor();
+    assert(muzzlePanels==0);
+    auto& tabBars=ImGui::GetCurrentContext()->TabBars;
+    for (int i=0;i<tabBars.GetMapSize();++i) {
+        auto* tabBar=tabBars.TryGetMapData(i);
+        if (!tabBar) continue;
+        for (auto& tab:tabBar->Tabs) {
+            if (std::string_view(ImGui::TabBarGetTabName(tabBar,&tab))=="Muzzle Flash") {
+                tabBar->NextSelectedTabId=tab.ID;
+            }
+        }
     }
-    assert(previews==3 && ui.Selected());
+    drawShowroomEditor();
+    assert(previews==3 && muzzlePanels==1);
     ui.mode=WeaponEditorMode::Test;
     ImGui::NewFrame();
     assert(!ui.Draw(live,level,true,[&] { ++previews; }));

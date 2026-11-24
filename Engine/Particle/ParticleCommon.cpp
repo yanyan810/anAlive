@@ -19,6 +19,8 @@ void ParticleCommon::Initialize(DirectXCommon* dxCommon)
         CreateGraphicsPipelineState(static_cast<BlendMode>(i), true);
         CreateGraphicsPipelineState(static_cast<BlendMode>(i), false);
     }
+    CreateGraphicsPipelineState(BlendMode::kBlendModeNormal, true, true);
+    CreateGraphicsPipelineState(BlendMode::kBlendModeNormal, false, true);
 }
 
 void ParticleCommon::CreateRootSignature()
@@ -69,7 +71,7 @@ void ParticleCommon::CreateRootSignature()
     // (5) Vertex: BillboardMode (RootConstants 32bit)
     params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-    params[5].Constants.Num32BitValues = 3;
+    params[5].Constants.Num32BitValues = 5;
     params[5].Constants.ShaderRegister = 1; // b1
     params[5].Constants.RegisterSpace = 0;
 
@@ -213,14 +215,14 @@ void ParticleCommon::CreateUpdateComputePipelineState()
     assert(SUCCEEDED(hr));
 }
 
-void ParticleCommon::CreateGraphicsPipelineState(BlendMode mode, bool depthTestEnabled)
+void ParticleCommon::CreateGraphicsPipelineState(BlendMode mode, bool depthTestEnabled, bool muzzleSmoke)
 {
     // === Shaders ===
     // ※ ここは “初期化時に一回だけ” 呼ばれるので、都度コンパイルでもOK
     Microsoft::WRL::ComPtr<IDxcBlob> vs =
-        dx_->CompilesSharder(L"resources/shaders/Particle.VS.hlsl", L"vs_6_0");
+        dx_->CompilesSharder(muzzleSmoke ? L"resources/shaders/MuzzleSmoke.VS.hlsl" : L"resources/shaders/Particle.VS.hlsl", L"vs_6_0");
     Microsoft::WRL::ComPtr<IDxcBlob> ps =
-        dx_->CompilesSharder(L"resources/shaders/Particle.PS.hlsl", L"ps_6_0");
+        dx_->CompilesSharder(muzzleSmoke ? L"resources/shaders/MuzzleSmoke.PS.hlsl" : L"resources/shaders/Particle.PS.hlsl", L"ps_6_0");
 
     // === Blend ===
     D3D12_BLEND_DESC blend{};
@@ -238,7 +240,8 @@ void ParticleCommon::CreateGraphicsPipelineState(BlendMode mode, bool depthTestE
         blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
         blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
         blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-        blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+        // The ImGui scene viewport samples this alpha when presenting the composed frame.
+        blend.RenderTarget[0].DestBlendAlpha = muzzleSmoke ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO;
         break;
 
     case BlendMode::kBlendModeAdd:
@@ -332,12 +335,13 @@ void ParticleCommon::CreateGraphicsPipelineState(BlendMode mode, bool depthTestE
 
     const size_t depthIndex = depthTestEnabled ? 1 : 0;
     const int idx = static_cast<int>(mode);
+    auto& pipeline = muzzleSmoke ? muzzleSmokePso_[depthIndex] : pso_[depthIndex][idx];
     HRESULT hr = dx_->GetDevice()->CreateGraphicsPipelineState(
-        &psoDesc, IID_PPV_ARGS(&pso_[depthIndex][idx]));
+        &psoDesc, IID_PPV_ARGS(&pipeline));
     assert(SUCCEEDED(hr));
 }
 
-void ParticleCommon::SetGraphicsPipelineState(ID3D12GraphicsCommandList* cmd)
+void ParticleCommon::SetGraphicsPipelineState(ID3D12GraphicsCommandList* cmd, bool muzzleSmoke)
 {
     if (!cmd) cmd = dx_->GetCommandList();
 
@@ -345,7 +349,8 @@ void ParticleCommon::SetGraphicsPipelineState(ID3D12GraphicsCommandList* cmd)
 
     const size_t depthIndex = depthTestEnabled_ ? 1 : 0;
     const int idx = static_cast<int>(blendMode_);
-    cmd->SetPipelineState(pso_[depthIndex][idx].Get());
+    const auto& pipeline = muzzleSmoke ? muzzleSmokePso_[depthIndex] : pso_[depthIndex][idx];
+    cmd->SetPipelineState(pipeline.Get());
 
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }

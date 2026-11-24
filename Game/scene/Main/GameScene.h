@@ -36,10 +36,8 @@
 class TemporarySceneTransitionCheck;
 class GameScene : public IScene {
 public:
-    enum class EntryPoint { StageStart, HotelExit };
-    static constexpr const char* kHotelExitScene = "HotelExit";
-    explicit GameScene(bool showroom=false,std::string stageId="stage01",EntryPoint entryPoint=EntryPoint::StageStart)
-        : showroom_(showroom), stageId_(std::move(stageId)), entryPoint_(entryPoint) {}
+    explicit GameScene(bool showroom=false,std::string stageId="stage01")
+        : showroom_(showroom), stageId_(std::move(stageId)) {}
     void OnEnter(GameApp& app) override;
     void OnExit(GameApp& app) override;
     bool IsReadyForTransition() const override { return stageLoaded_; }
@@ -84,7 +82,6 @@ private:
     enum class EscapeMode { Idle, Preview, Clear, Results };
     bool EscapePlaying() const { return escapeMode_==EscapeMode::Preview || escapeMode_==EscapeMode::Clear; }
     void InitializeHotelEscape(GameApp& app);
-    void PrepareHotelExitStart();
     bool BeginHotelEscape(GameApp& app, bool preview);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     bool HandleHotelEscapeKey(GameApp& app);
@@ -148,13 +145,16 @@ private:
     void LoadMuzzleLightSettings();
     void ApplyMuzzleLight(float dt);
     Vector3 ViewMuzzlePosition() const;
+    void EmitMuzzleSmoke(const Vector3& position, const Vector3& direction, float smokeScale, float verticalSmokeScale);
+    void AdvanceMuzzleSmoke(float dt);
+    void ClearMuzzleSmoke();
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
-    void DrawMuzzleEffectSettings();
+    void DrawMuzzleEffectSettings(const WeaponDefinition& weapon);
 #endif
     void UpdatePlayerBullets(float dt);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
     void ShareEnemyAlerts();
-    bool HandleInteraction(bool pressed,bool allowPickup);
+    bool HandleInteraction(bool pressed,bool allowThrowables);
     void OnBulletImpact(const BulletEnemyImpact& impact);
     void OnStageClear(GameApp& app);
     void UpdateClearMenu(GameApp& app);
@@ -165,7 +165,6 @@ private:
     void SyncThrowableVisuals(GameApp& app);
     const char* SceneName() const {
         if (showroom_) return "Showroom";
-        if (entryPoint_==EntryPoint::HotelExit) return kHotelExitScene;
         if (stageId_=="stage03") return "Stage03";
         return stageId_=="stage04" ? "Stage04" : "Game";
     }
@@ -185,7 +184,6 @@ private:
     void DrawShowroomTools(GameApp& app);
     bool showroom_=false, freezeEnemies_=true;
     std::string stageId_;
-    EntryPoint entryPoint_;
     bool showEnemyLabels_=true, showWeaponLabels_=true, showEnemyMarkers_=true;
     bool showEnemyCollision_=false, showEnemyParts_=false, resetEnemiesPending_=false;
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
@@ -314,6 +312,7 @@ private:
     bool suppressFireUntilRelease_ = false;
     float particleDeltaTime_ = 0.0f;
     inline static const std::string kMuzzleFlashFile = "muzzle_flash.json";
+    inline static const std::string kMuzzleVerticalSmokeFile = "muzzle_vertical_smoke.json";
 
     struct MuzzleLightSettings {
         Vector3 color{1.0f, 0.94f, 0.78f};
@@ -324,6 +323,13 @@ private:
     struct MuzzleWeaponScales {
         float light = 1.0f;
         float smoke = 1.0f;
+        float verticalSmoke = 0.0f;
+    };
+    struct PendingMuzzleSmoke {
+        Vector3 position;
+        Vector3 direction;
+        float countScale;
+        float remaining;
     };
     struct MuzzleLightPulse {
         MuzzleLightSettings settings;
@@ -333,6 +339,7 @@ private:
     MuzzleLightSettings muzzleLightSettings_;
     std::map<std::string, MuzzleWeaponScales> muzzleWeaponScales_;
     std::optional<MuzzleLightPulse> muzzleLightPulse_;
+    std::vector<PendingMuzzleSmoke> pendingVerticalSmoke_;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     DebugJsonEditor muzzleLightEditor_;
 #endif

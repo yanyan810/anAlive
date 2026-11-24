@@ -265,8 +265,10 @@ void GameScene::OnEnter(GameApp& app) {
 
     camera_.Update();
     auto* particles = ParticleManager::GetInstance();
-    if (particles->GetGroupNamesLoadedFromFile(kMuzzleFlashFile).empty()) {
-        particles->LoadAdditional(kMuzzleFlashFile, "");
+    for (const auto* file : {&kMuzzleFlashFile, &kMuzzleVerticalSmokeFile}) {
+        if (particles->GetGroupNamesLoadedFromFile(*file).empty()) {
+            particles->LoadAdditional(*file, "");
+        }
     }
     LoadMuzzleLightSettings();
     muzzleLightPulse_.reset();
@@ -354,7 +356,6 @@ void GameScene::OnEnter(GameApp& app) {
     ground_.SetSpotLightIntensity(0.0f);
     BindRemovableMeshes();
     InitializeHotelEscape(app);
-    if (entryPoint_==EntryPoint::HotelExit) PrepareHotelExitStart();
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
         sprite->Initialize(app.SpriteCom(), app.Dx(), "resources/white1x1.png");
         sprite->SetAnchorPoint({0.5f, 0.5f});
@@ -429,7 +430,7 @@ void GameScene::OnEnter(GameApp& app) {
 void GameScene::OnExit(GameApp& app) {
     // Large reinforcement pools must finish GPU work before their instance buffers are released.
     app.Dx()->WaitForGPU();
-    ParticleManager::GetInstance()->ClearParticlesFromFile(kMuzzleFlashFile);
+    ClearMuzzleSmoke();
     app.Render()->ResetDeathPostEffect();
     app.Render()->ResetViewPostPreview();
     gameOver_.Reset(); gameOverMenuTime_=0;
@@ -782,8 +783,8 @@ bool GameScene::LeaveGameOver(GameApp& app,bool retry) {
     if (retry) {
         // Capture the actual stage ID, including editor/test-launched stage02.
         // A fresh scene reloads the saved start position, HP, pool and stage data.
-        app.Scenes().Register("GameOverRetry",[id=stageId_,showroom=showroom_,entryPoint=entryPoint_] {
-            return std::make_unique<GameScene>(showroom,id,entryPoint);
+        app.Scenes().Register("GameOverRetry",[id=stageId_,showroom=showroom_] {
+            return std::make_unique<GameScene>(showroom,id);
         });
     }
     return app.Scenes().TransitionTo(retry ? "GameOverRetry" : "Title",.5f,.5f);
@@ -929,13 +930,21 @@ void GameScene::UpdateADS(
         sensitivityMultiplier);
 }
 
-bool GameScene::HandleInteraction(bool pressed,bool allowPickup) {
+bool GameScene::HandleInteraction(bool pressed,bool allowThrowables) {
     if (!pressed) return false;
     if (level_.shutters.TryInteract(player_.GetTransform().translate)) return false;
     if (level_.doors.TryInteract(level_.collision,player_.GetTransform().translate)) return false;
-    if (IsGameOverDemo() || !allowPickup) return false;
-    if (player_.TryPickupWeapon(weapons_)) return true;
-    throwables_.TryPickup(player_.GetTransform().translate,level_.collision);
+    if (IsGameOverDemo()) return false;
+    if (showroom_) {
+        // Equip reusable display weapons without dropping the temporary test weapon.
+        if (const auto nearby = weapons_.Nearest(player_.GetTransform().translate)) {
+            const auto* definition = weapons_.PickupDefinition(weapons_.Pickups()[*nearby]);
+            if (definition && player_.EquipWeapon(*definition)) return true;
+        }
+    } else if (player_.TryPickupWeapon(weapons_)) {
+        return true;
+    }
+    if (allowThrowables) throwables_.TryPickup(player_.GetTransform().translate,level_.collision);
     return false;
 }
 
@@ -999,14 +1008,14 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     Input& input = *app.GetInput();
     const auto& weapon = player_.CurrentWeapon();
     const bool controls = !IsGameOverDemo() && wasCaptured && input.IsCameraControlEnabled() && input.HasFocus();
-    bool allowPickup=true;
+    bool allowThrowables=true;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
-    allowPickup=!(showroom_ && weaponEditor_.mode==WeaponEditorMode::Test);
+    allowThrowables=!(showroom_ && weaponEditor_.mode==WeaponEditorMode::Test);
 #endif
     // Consume E once: a nearby closed switch takes priority over weapon pickup.
     // Shooting remains on its independent mouse path, including this same frame.
     const bool interact=controls && input.IsKeyTrigger(DIK_E);
-    const bool pickedUp=HandleInteraction(interact,allowPickup);
+    const bool pickedUp=HandleInteraction(interact,allowThrowables);
     const bool allowFire = controls && !pickedUp && !suppressFireUntilRelease_;
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     const bool cancelBurst = !debugPaused_;
@@ -1017,7 +1026,7 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         allowFire, controls, cancelBurst && !pickedUp);
     UpdateEnemySpawns(dt);
     throwables_.Update(dt,level_.collision,enemies_);
-    if (controls && allowPickup && input.IsKeyTrigger(DIK_G)) throwables_.Throw(camera_.GetWorldMatrix());
+    if (controls && allowThrowables && input.IsKeyTrigger(DIK_G)) throwables_.Throw(camera_.GetWorldMatrix());
     playerDamagedFlash_ = std::max(0.0f, playerDamagedFlash_-dt);
     Vector3 projectileDirection{};
     const float projectileDamage=stageLoaded_ ? UpdateStageProjectiles(enemyProjectiles_,dt,player_.GetTransform().translate,level_.collision,&projectileDirection) :
@@ -1069,15 +1078,13 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
         const auto scales = entry != muzzleWeaponScales_.end() ? entry->second : MuzzleWeaponScales{};
         muzzleLightPulse_ = MuzzleLightPulse{muzzleLightSettings_};
         muzzleLightPulse_->settings.intensity *= scales.light;
-        auto* particles = ParticleManager::GetInstance();
         const auto& cameraWorld = camera_.GetWorldMatrix();
         const auto muzzle = ViewMuzzlePosition();
         for (int shot=0; shot<weaponShots; ++shot) {
             ++shotCount_;
             BulletShotPose shotPose;
             bullets_.Spawn(weapon.Definition(),cameraWorld,adsBlend_,pelletRandom_,level_.collision,enemies_,{}, &shotPose);
-            particles->EmitDirectedFromFile(kMuzzleFlashFile, muzzle, shotPose.direction + Vector3{0, 0.20f, 0},
-                camera_, scales.smoke);
+            EmitMuzzleSmoke(muzzle, shotPose.direction, scales.smoke, scales.verticalSmoke);
         }
     }
     for(size_t i=0;i<enemies_.size();++i) {
@@ -1133,6 +1140,7 @@ void GameScene::OnBulletImpact(const BulletEnemyImpact& impact) {
 void GameScene::DrawRender(GameApp& app) {
     auto* particles = ParticleManager::GetInstance();
     const auto dt = std::exchange(particleDeltaTime_, 0.0f);
+    AdvanceMuzzleSmoke(dt);
     particles->Update(dt, camera_);
     ApplyMuzzleLight(dt);
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
@@ -1361,10 +1369,10 @@ void GameScene::DrawImGui(GameApp& app) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
-    if (ImGui::CollapsingHeader("Muzzle Flash")) {
-        DrawMuzzleEffectSettings();
-    }
     const auto& weapon = player_.CurrentWeapon();
+    if (ImGui::CollapsingHeader("Muzzle Flash")) {
+        DrawMuzzleEffectSettings(weapon.Definition());
+    }
     ImGui::BeginDisabled(captured || !stage_.IsPlaying() || weapons_.Definitions().empty());
     const auto& equipped = weapon.Definition();
     if (ImGui::BeginCombo("Equip Weapon (Debug)", equipped.id.empty() ? "No weapon" : equipped.displayName.c_str())) {
@@ -1873,7 +1881,7 @@ bool GameScene::ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path&
 
 void GameScene::ResetShowroomEnemies(GameApp& app) {
     (void)app;
-    ParticleManager::GetInstance()->ClearParticlesFromFile(kMuzzleFlashFile);
+    ClearMuzzleSmoke();
     muzzleLightPulse_.reset();
     enemyPool_.ReleaseAll();
     enemies_.clear(); enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
@@ -2068,7 +2076,7 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
             ImGui::End();
             return;
         }
-        ImGui::TextWrapped("LMB: Fire | RMB: ADS | R: Reload | Tab: Enemy Asset | F5: Reset | Esc: %s",
+        ImGui::TextWrapped("LMB: Fire | RMB: ADS | R: Reload | E: Equip display weapon | Tab: Enemy Asset | F5: Reset | Esc: %s",
             enemyEditorTest_ ? "Enemy Editor" : "Weapon Editor");
         ImGui::Text("Hits: %llu | Last part: %s | Damage: %.1f",static_cast<unsigned long long>(hitCount_),lastHitPartName_.c_str(),lastDamage_);
         DrawEnemyPoolStats();
@@ -2112,7 +2120,9 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         ImGui::SameLine();
         ImGui::Checkbox("Freeze Enemies",&freezeEnemies_);
         DrawEnemyPoolStats();
-    },[&] { DrawShowroomTestAssetControls(); })) {
+    },[&] { DrawShowroomTestAssetControls(); },[&](const WeaponDefinition& selected) {
+        DrawMuzzleEffectSettings(selected);
+    })) {
         debugHistory_.Clear();
         const auto id=saved->empty() ? player_.CurrentWeapon().Definition().id : *saved;
         const auto* definition=weapons_.Find(id);

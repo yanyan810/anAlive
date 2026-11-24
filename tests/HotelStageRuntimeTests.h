@@ -23,8 +23,36 @@ inline void RunHotelStageRuntimeTests(GameApp& app) {
         app.Scenes().Change(app,"Showroom");
         regression=dynamic_cast<GameScene*>(app.Scenes().Current());
         Check(regression && regression->stageLoaded_ && regression->showroom_ && regression->shutterVisuals_.empty(),"Showroom regression");
+#ifdef USE_IMGUI
+        regression->weaponEditor_.mode = WeaponEditorMode::Test;
+        const auto* pistol = regression->weapons_.Find("pistol");
+        Check(pistol != nullptr,"Showroom pistol definition");
+        auto draft = *pistol;
+        ++draft.magazineSize;
+        Check(regression->player_.EquipWeapon(draft),"Equip temporary showroom weapon");
+        const auto& displays = regression->weapons_.Pickups();
+        const auto displayCount = displays.size();
+        for (const std::string_view id : {"pistol", "smg", "pistol"}) {
+            const auto display = std::find_if(displays.begin(), displays.end(), [&](const auto& pickup) {
+                return pickup.weaponId == id;
+            });
+            Check(display != displays.end(),"Showroom display exists");
+            const auto* definition = regression->weapons_.PickupDefinition(*display);
+            Check(definition != nullptr,"Showroom display definition");
+            const Vector3 position{display->position.x, regression->level_.playerPosition.y, display->position.z};
+            regression->player_.SetStage(&regression->level_.collision,position,{});
+            Check(regression->HandleInteraction(true,false),"E equips a display weapon in weapon test mode");
+            const auto& held = regression->player_.CurrentWeapon();
+            Check(held.Definition().id == id && held.Magazine() == definition->magazineSize,
+                "Showroom equips the saved weapon with a full magazine");
+            const auto nearest = regression->weapons_.Nearest(position);
+            Check(displays.size() == displayCount && nearest && displays[*nearest].weaponId == id,
+                "Showroom weapon displays stay available and no loose weapon is created");
+        }
 #endif
-        std::ofstream("generated/hotel-tests/regression.txt")<<"PASS: Stage02 and Debug Showroom initialize without shutters.\n";
+#endif
+        std::ofstream("generated/hotel-tests/regression.txt")<<"PASS: Stage02 and Debug Showroom initialize without shutters. "
+            "Showroom weapon test supports repeat display pickups in Debug with ImGui.\n";
         return;
     }
     // The standalone hotel test covers the full down/up route at all three FPS.

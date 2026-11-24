@@ -6,6 +6,7 @@
 #include "GeometryGenerator.h"
 #include <filesystem>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <imgui.h>
 #include <fstream>
@@ -38,14 +39,20 @@ namespace {
     constexpr int kFlameGlowPrimitive = 13;
     constexpr int kSparkStreakPrimitive = 14;
     constexpr int kSoftDiscPrimitive = 15;
+    constexpr int kProceduralSmokePrimitive = 16;
     const std::string kFlameVolumeModelName = std::to_string(kFlameVolumePrimitive);
     const std::string kFlameGlowModelName = std::to_string(kFlameGlowPrimitive);
     const std::string kSparkStreakModelName = std::to_string(kSparkStreakPrimitive);
     const std::string kSoftDiscModelName = std::to_string(kSoftDiscPrimitive);
+    const std::string kProceduralSmokeModelName = std::to_string(kProceduralSmokePrimitive);
     enum ParticleDrawFlags : uint32_t {
         UseTexture = 1u, FlameFacets = 2u, EmissiveBlend = 4u, FlameGlow = 8u, SparkStreak = 16u, SoftDisc = 32u
     };
     static_assert(sizeof(EmitterData) <= kEmitterStride);
+
+    bool IsProceduralSmoke(const ParticleGroup& group) {
+        return group.modelType == 1 && group.modelName == kProceduralSmokeModelName;
+    }
 
     Vector3 TransformDirection(const Vector3& v, const Matrix4x4& matrix) {
         return {
@@ -210,6 +217,7 @@ namespace {
             break;
         case kSparkStreakPrimitive:
         case kSoftDiscPrimitive:
+        case kProceduralSmokePrimitive:
             vertices = GeometryGenerator::GeneratePlaneTriListXY(2.0f, 2.0f);
             break;
         default: return nullptr;
@@ -1191,12 +1199,13 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
 
     for (const auto* drawGroup : drawGroups_) {
         const auto& group = *drawGroup;
+        const bool proceduralSmoke = IsProceduralSmoke(group);
         // --- Graphics 縺ｫ繧医ｋ謠冗判 ---
         // 笘・繝悶Ξ繝ｳ繝牙・譖ｿ・・SO蛻・崛・・
         if (particleCommon_) {
             particleCommon_->SetBlendMode(group.blendMode);
             particleCommon_->SetDepthTestEnabled(group.depthTestEnabled);
-            particleCommon_->SetGraphicsPipelineState(cmd);
+            particleCommon_->SetGraphicsPipelineState(cmd, proceduralSmoke);
         }
 
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1208,7 +1217,7 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
         // PerView(CBV) 繧・RootParameter 4 縺ｫ繧ｻ繝・ヨ (b0)
         cmd->SetGraphicsRootConstantBufferView(4, perViewResource_->GetGPUVirtualAddress());
         // BillboardMode (RootConstants 32bit) 繧・RootParameter 5 縺ｫ繧ｻ繝・ヨ (b1)
-        const bool textured = !group.texturePath.empty();
+        const bool textured = !proceduralSmoke && !group.texturePath.empty();
         const bool emissive = group.blendMode == ParticleCommon::BlendMode::kBlendModeEmissive;
         uint32_t drawFlags = (textured ? UseTexture : 0u) | (emissive ? EmissiveBlend : 0u);
         if (group.modelType == 1) {
@@ -1217,8 +1226,10 @@ void ParticleManager::Draw(ID3D12GraphicsCommandList* cmd, bool drawPostEffectTa
             else if (group.modelName == kSparkStreakModelName) drawFlags |= SparkStreak;
             else if (group.modelName == kSoftDiscModelName) drawFlags |= SoftDisc;
         }
-        const uint32_t drawSettings[] = {group.billboardMode, group.cameraSpace ? 1u : 0u, drawFlags};
-        cmd->SetGraphicsRoot32BitConstants(5, 3, drawSettings, 0);
+        const uint32_t drawSettings[] = {group.billboardMode, group.cameraSpace ? 1u : 0u,
+            proceduralSmoke ? static_cast<uint32_t>(group.smokeShape) : drawFlags,
+            std::bit_cast<uint32_t>(group.smokeSway), std::bit_cast<uint32_t>(group.smokeNoise)};
+        cmd->SetGraphicsRoot32BitConstants(5, _countof(drawSettings), drawSettings, 0);
 
         srvManager_->SetGraphicsDescriptorTable(2, textured ? group.textureSrvIndex : nullTextureSrvIndex_);
         srvManager_->SetGraphicsDescriptorTable(1, group.instancingSrvIndex);
@@ -1409,7 +1420,9 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
             // 繝悶Ξ繝ｳ繝峨Δ繝ｼ繝・
             const char* blendModes[] = { "None", "Normal", "Add", "Subtract", "Multiply", "Screen", "Emissive" };
             int currentBlend = static_cast<int>(group.blendMode);
-            if (ImGui::Combo("Blend Mode", &currentBlend, blendModes, IM_ARRAYSIZE(blendModes))) {
+            if (IsProceduralSmoke(group)) {
+                ImGui::TextDisabled("Blend Mode: Normal");
+            } else if (ImGui::Combo("Blend Mode", &currentBlend, blendModes, IM_ARRAYSIZE(blendModes))) {
                 group.blendMode = static_cast<ParticleCommon::BlendMode>(currentBlend);
             }
 
@@ -1453,6 +1466,9 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
 
             // 繝｢繝・Ν驕ｸ謚・
             std::string currentModelName = group.model ? "Custom Model / Primitive" : "None (Board Polygon)";
+            if (IsProceduralSmoke(group)) {
+                currentModelName = "Procedural Smoke";
+            }
             if (ImGui::BeginCombo("Model", currentModelName.c_str())) {
                 bool isSelected = (group.model == nullptr);
                 if (ImGui::Selectable("None (Board Polygon)", isSelected)) {
@@ -1466,7 +1482,8 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
                 ImGui::Text("Primitives");
                 const char* primNames[] = {
                     "Ring", "Sphere", "Box", "Plane", "Torus", "Cylinder", "Cone", "Triangle", "Capsule", "Star",
-                    "Diamond", "Flame (Flat)", "Flame Volume", "Flame Glow", "Spark Streak", "Soft Disc"
+                    "Diamond", "Flame (Flat)", "Flame Volume", "Flame Glow", "Spark Streak", "Soft Disc",
+                    "Procedural Smoke"
                 };
                 for (int i = 0; i < IM_ARRAYSIZE(primNames); ++i) {
                     if (ImGui::Selectable(primNames[i], false)) {
@@ -1527,6 +1544,17 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
                 }
             }
 
+            if (IsProceduralSmoke(group)) {
+                const char* smokeShapes[] = { "Normal", "Vertical" };
+                int shape = static_cast<int>(group.smokeShape);
+                if (ImGui::Combo("Smoke Shape", &shape, smokeShapes, IM_ARRAYSIZE(smokeShapes))) {
+                    group.smokeShape = static_cast<SmokeShape>(shape);
+                }
+                constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
+                ImGui::DragFloat("Smoke Sway", &group.smokeSway, 0.001f, 0.0f, 0.05f, "%.3f", clamp);
+                ImGui::DragFloat("Smoke Noise", &group.smokeNoise, 0.01f, 0.0f, 1.0f, "%.2f", clamp);
+            }
+
             // Emitter繝代Λ繝｡繝ｼ繧ｿ
             if (group.mappedEmitter) {
                 ImGui::Separator();
@@ -1582,8 +1610,11 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
                     group.mappedEmitter->lifeTimeMax = std::max(lifetime[0], lifetime[1]);
                 }
 
-                ImGui::DragFloat3("Scale Start", &group.mappedEmitter->scaleStart.x, 0.01f, 0.0f, 20.0f);
-                ImGui::DragFloat3("Scale End", &group.mappedEmitter->scaleEnd.x, 0.01f, 0.0f, 20.0f);
+                const bool smoke = IsProceduralSmoke(group);
+                const bool verticalSmoke = smoke && group.smokeShape == SmokeShape::Vertical;
+                const float scaleStep = smoke ? 0.001f : 0.01f;
+                ImGui::DragFloat3("Scale Start", &group.mappedEmitter->scaleStart.x, scaleStep, 0.0f, 20.0f);
+                ImGui::DragFloat3("Scale End", &group.mappedEmitter->scaleEnd.x, scaleStep, 0.0f, 20.0f);
 
                 if (settingsFile.empty()) {
                     ImGui::DragFloat3("Velocity Base", &group.mappedEmitter->velocityBase.x, 0.01f);
@@ -1591,9 +1622,12 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
                     ImGui::DragFloat("Angle Random Deg", &group.mappedEmitter->angleRandomDeg, 1.0f, 0.0f, 360.0f);
                     ImGui::DragFloat("Jitter Deg", &group.mappedEmitter->jitterDeg, 1.0f, 0.0f, 180.0f);
                 }
-                const float speedStep = settingsFile.empty() ? 0.01f : 0.001f;
-                ImGui::DragFloat("Speed Min", &group.mappedEmitter->speedMin, speedStep, 0.0f, 10.0f);
-                ImGui::DragFloat("Speed Max", &group.mappedEmitter->speedMax, speedStep, 0.0f, 10.0f);
+                const float speedStep = smoke ? 0.0001f : (settingsFile.empty() ? 0.01f : 0.001f);
+                const char* speedFormat = smoke ? "%.4f" : "%.3f";
+                ImGui::DragFloat(verticalSmoke ? "Forward Speed Min" : "Speed Min",
+                    &group.mappedEmitter->speedMin, speedStep, 0.0f, 10.0f, speedFormat);
+                ImGui::DragFloat(verticalSmoke ? "Forward Speed Max" : "Speed Max",
+                    &group.mappedEmitter->speedMax, speedStep, 0.0f, 10.0f, speedFormat);
                 ImGui::DragFloat("Rotation Start Deg", &group.mappedEmitter->rotationStartDeg, 1.0f, -360.0f, 360.0f);
                 ImGui::DragFloat("Rotation Random Deg", &group.mappedEmitter->rotationRandomDeg, 1.0f, 0.0f, 360.0f);
                 float angularVelocity[2] = { group.mappedEmitter->angularVelocityMinDeg, group.mappedEmitter->angularVelocityMaxDeg };
@@ -1601,7 +1635,8 @@ void ParticleManager::DrawImGuiContents(const std::string& settingsFile) {
                     group.mappedEmitter->angularVelocityMinDeg = angularVelocity[0];
                     group.mappedEmitter->angularVelocityMaxDeg = angularVelocity[1];
                 }
-                ImGui::DragFloat3("Acceleration (Gravity)", &group.mappedEmitter->acceleration.x, 0.01f);
+                ImGui::DragFloat3(verticalSmoke ? "Acceleration (Y = Rise)" : "Acceleration (Gravity)",
+                    &group.mappedEmitter->acceleration.x, scaleStep);
 
                 ImGui::ColorEdit4("Start Color", &group.mappedEmitter->startColor.x);
                 ImGui::ColorEdit4("End Color", &group.mappedEmitter->endColor.x);
@@ -1630,6 +1665,11 @@ void ParticleManager::SaveInternal_(const std::string& filename, bool onlyGroups
         g["texturePath"] = group.texturePath;
         g["modelType"] = group.modelType;
         g["modelName"] = group.modelName;
+        if (IsProceduralSmoke(group)) {
+            g["smokeShape"] = group.smokeShape == SmokeShape::Vertical ? "vertical" : "normal";
+            g["smokeSway"] = group.smokeSway;
+            g["smokeNoise"] = group.smokeNoise;
+        }
         g["blendMode"] = static_cast<int>(group.blendMode);
         g["postEffectMode"] = static_cast<int>(group.postEffectMode);
         g["depthTestEnabled"] = group.depthTestEnabled;
@@ -1756,6 +1796,10 @@ void ParticleManager::LoadInternal_(const std::string& filename, bool clearExist
         group.postEffectMode = static_cast<PostEffectMode>(g.value("postEffectMode", static_cast<int>(PostEffectMode::FullScreen)));
         group.depthTestEnabled = g.value("depthTestEnabled", true);
         group.billboardMode = g["billboardMode"];
+        group.smokeShape = g.contains("smokeShape") && g["smokeShape"] == "vertical" ?
+            SmokeShape::Vertical : SmokeShape::Normal;
+        group.smokeSway = std::clamp(g.value("smokeSway", ParticleGroup::kDefaultSmokeSway), 0.0f, 0.05f);
+        group.smokeNoise = std::clamp(g.value("smokeNoise", 1.0f), 0.0f, 1.0f);
         group.cameraSpace = g.value("cameraSpace", false);
         group.drawOrder = g.value("drawOrder", 0);
         group.isAutoEmit = forceAutoEmitOff ? false : g["isAutoEmit"].get<bool>();

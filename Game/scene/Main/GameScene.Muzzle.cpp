@@ -20,6 +20,39 @@ Vector3 GameScene::ViewMuzzlePosition() const {
     return StagePoint(hip + (ads - hip) * adsBlend_, camera_.GetWorldMatrix());
 }
 
+void GameScene::EmitMuzzleSmoke(const Vector3& position, const Vector3& direction,
+    float smokeScale, float verticalSmokeScale) {
+    ParticleManager::GetInstance()->EmitDirectedFromFile(kMuzzleFlashFile, position,
+        direction + Vector3{0.0f, 0.20f, 0.0f}, camera_, smokeScale);
+    if (verticalSmokeScale > 0.0f) {
+        // DrawRender consumes accumulated time from before this shot as well.
+        const float delay = std::max(0.060f, muzzleLightSettings_.duration) + particleDeltaTime_;
+        pendingVerticalSmoke_.push_back({position + direction * 0.022f, direction, verticalSmokeScale, delay});
+    }
+}
+
+void GameScene::AdvanceMuzzleSmoke(float dt) {
+    if (gameOver_.Active() || EscapePlaying()) pendingVerticalSmoke_.clear();
+    if (pendingVerticalSmoke_.empty()) return;
+
+    auto* particles = ParticleManager::GetInstance();
+    for (auto& smoke : pendingVerticalSmoke_) {
+        smoke.remaining -= dt;
+        if (smoke.remaining <= 0.0f) {
+            particles->EmitDirectedFromFile(kMuzzleVerticalSmokeFile, smoke.position, smoke.direction,
+                camera_, smoke.countScale);
+        }
+    }
+    std::erase_if(pendingVerticalSmoke_, [](const PendingMuzzleSmoke& smoke) { return smoke.remaining <= 0.0f; });
+}
+
+void GameScene::ClearMuzzleSmoke() {
+    pendingVerticalSmoke_.clear();
+    auto* particles = ParticleManager::GetInstance();
+    particles->ClearParticlesFromFile(kMuzzleFlashFile);
+    particles->ClearParticlesFromFile(kMuzzleVerticalSmokeFile);
+}
+
 void GameScene::LoadMuzzleLightSettings() {
     try {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
@@ -47,7 +80,8 @@ void GameScene::LoadMuzzleLightSettings() {
         for (const auto& [id, values] : weaponSettings.items()) {
             scales.emplace(id, MuzzleWeaponScales{
                 bounded(values.value("lightScale", 1.0f), 0, 4),
-                bounded(values.value("smokeScale", 1.0f), 0, 4)});
+                bounded(values.value("smokeScale", 1.0f), 0, 4),
+                bounded(values.value("verticalSmokeScale", 0.0f), 0, 4)});
         }
         muzzleLightSettings_ = next;
         muzzleWeaponScales_ = std::move(scales);
@@ -90,25 +124,30 @@ void GameScene::ApplyMuzzleLight(float dt) {
 }
 
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
-void GameScene::DrawMuzzleEffectSettings() {
+void GameScene::DrawMuzzleEffectSettings(const WeaponDefinition& weapon) {
     constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
+    ImGui::SeparatorText("Shared Light Settings");
     ImGui::ColorEdit3("Light Color", &muzzleLightSettings_.color.x);
     ImGui::DragFloat("Light Intensity", &muzzleLightSettings_.intensity, 0.1f, 0.0f, 24.0f, "%.2f", clamp);
     ImGui::DragFloat("Light Duration (s)", &muzzleLightSettings_.duration, 0.001f, 0.005f, 0.15f, "%.3f", clamp);
     ImGui::DragFloat("Light Range", &muzzleLightSettings_.range, 0.05f, 0.2f, 12.0f, "%.2f", clamp);
 
-    const auto& weapon = player_.CurrentWeapon().Definition();
     if (!weapon.id.empty()) {
+        ImGui::SeparatorText("Weapon Scales");
         ImGui::TextUnformatted(weapon.displayName.c_str());
         bool customized = muzzleWeaponScales_.contains(weapon.id);
         if (ImGui::Checkbox("Use weapon-specific scales", &customized)) {
             if (customized) muzzleWeaponScales_.try_emplace(weapon.id);
             else muzzleWeaponScales_.erase(weapon.id);
         }
-        if (const auto entry = muzzleWeaponScales_.find(weapon.id); entry != muzzleWeaponScales_.end()) {
-            ImGui::DragFloat("Weapon Light Scale", &entry->second.light, 0.05f, 0.0f, 4.0f, "%.2f", clamp);
-            ImGui::DragFloat("Weapon Smoke Count Scale", &entry->second.smoke, 0.05f, 0.0f, 4.0f, "%.2f", clamp);
+        float lightScale = 1.0f;
+        if (auto entry = muzzleWeaponScales_.find(weapon.id); entry != muzzleWeaponScales_.end()) {
+            ImGui::DragFloat("Light Scale", &entry->second.light, 0.05f, 0.0f, 4.0f, "%.2f", clamp);
+            ImGui::DragFloat("Short Smoke Count Scale", &entry->second.smoke, 0.05f, 0.0f, 4.0f, "%.2f", clamp);
+            ImGui::DragFloat("Vertical Smoke Count Scale", &entry->second.verticalSmoke, 0.05f, 0.0f, 4.0f, "%.2f", clamp);
+            lightScale = entry->second.light;
         }
+        ImGui::Text("Effective Light Intensity: %.2f", muzzleLightSettings_.intensity * lightScale);
     }
 
     if (ImGui::Button("Save Light & Weapon Scales") && !muzzleLightEditor_.path.empty() && muzzleLightEditor_.document.is_object()) {
@@ -119,6 +158,7 @@ void GameScene::DrawMuzzleEffectSettings() {
         auto weapons = nlohmann::json::object();
         for (const auto& [id, scales] : muzzleWeaponScales_) {
             weapons[id] = {{"lightScale", scales.light}, {"smokeScale", scales.smoke}};
+            if (scales.verticalSmoke > 0.0f) weapons[id]["verticalSmokeScale"] = scales.verticalSmoke;
         }
         document["weapons"] = std::move(weapons);
         muzzleLightEditor_.Save([](const std::string&) { return std::string{}; });
@@ -127,8 +167,13 @@ void GameScene::DrawMuzzleEffectSettings() {
     if (ImGui::Button("Reload Light & Weapon Scales")) LoadMuzzleLightSettings();
     if (!muzzleLightEditor_.error.empty()) ImGui::TextWrapped("%s", muzzleLightEditor_.error.c_str());
 
+    ImGui::SeparatorText("Shared Smoke Presets");
     if (ImGui::TreeNode("Smoke Particles")) {
         ParticleManager::GetInstance()->DrawImGuiContents(kMuzzleFlashFile);
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Vertical Smoke Particles")) {
+        ParticleManager::GetInstance()->DrawImGuiContents(kMuzzleVerticalSmokeFile);
         ImGui::TreePop();
     }
 }

@@ -21,7 +21,8 @@ public:
     // A value signals a successful save; nonempty value requests the shared Debug Equip path.
     std::optional<std::string> Draw(WeaponSystem& live,const std::string& level,bool canEquip,
         const std::function<void()>& preview={},const std::function<void()>& showroomControls={},
-        const std::function<void()>& showroomSidebar={}) {
+        const std::function<void()>& showroomSidebar={},
+        const std::function<void(const WeaponDefinition&)>& muzzleEffects={}) {
         if (!visible || mode!=WeaponEditorMode::Edit) return std::nullopt;
         std::optional<std::string> result;
         ImGuiWindowFlags flags=0;
@@ -135,7 +136,7 @@ public:
             if (const auto* selected=Selected()) {
                 ImGui::TextWrapped("Editing: %s / %s",selected->id.c_str(),selected->displayName.c_str());
                 ImGui::Separator();
-                DrawFields(model_.entries[static_cast<size_t>(selected_)].value,selected_);
+                DrawFields(model_.entries[static_cast<size_t>(selected_)].value,selected_,muzzleEffects);
             } else {
                 ImGui::TextUnformatted("Select a weapon from the Weapon List to edit.");
             }
@@ -168,7 +169,8 @@ private:
         std::copy(value.begin(),value.end(),buffer.begin());
         if (ImGui::InputText(label,buffer.data(),buffer.size())) value=buffer.data();
     }
-    static void DrawFields(WeaponDefinition& w,int selection) {
+    static void DrawFields(WeaponDefinition& w,int selection,
+        const std::function<void(const WeaponDefinition&)>& muzzleEffects) {
         if (!ImGui::BeginTabBar("Categories")) return;
         if (ImGui::BeginTabItem("General")) {
             ImGui::PushID(selection);
@@ -222,6 +224,11 @@ private:
             ImGui::InputFloat("Hip Spread Degrees",&w.hipSpreadDegrees); ImGui::InputFloat("ADS Spread Degrees",&w.adsSpreadDegrees);
             ImGui::InputFloat("ADS FOV",&w.adsFovDegrees); ImGui::InputFloat("ADS Transition Time",&w.adsTransitionTime);
             ImGui::InputFloat("ADS Sensitivity Multiplier",&w.adsSensitivityMultiplier);
+            ImGui::PopID(); ImGui::EndTabItem();
+        }
+        if (muzzleEffects && ImGui::BeginTabItem("Muzzle Flash")) {
+            ImGui::PushID(selection);
+            muzzleEffects(w);
             ImGui::PopID(); ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

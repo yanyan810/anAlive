@@ -382,15 +382,7 @@ bool GameApp::Initialize_() {
     // SceneManager
     sceneMgr_ = std::make_unique<SceneManager>();
     sceneMgr_->Initialize(*this);
-#if defined(NDEBUG) && !defined(DEVELOPMENT_BUILD)
-    // The submission build shows the hotel escape directly from GAME START.
-    sceneMgr_->Register(GameScene::kHotelExitScene, [] {
-        return std::make_unique<GameScene>(false,"stage04",GameScene::EntryPoint::HotelExit);
-    });
-    sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(GameScene::kHotelExitScene); });
-#else
     sceneMgr_->Register("Title", [] { return std::make_unique<TitleScene>(); });
-#endif
     sceneMgr_->Register("EnemyAITest", [] { return std::make_unique<EnemyAITestScene>(); });
     sceneMgr_->Register("EnemyPlacementEditor", [] { return std::make_unique<EnemyPlacementEditorScene>(); });
     sceneMgr_->Register("GameOver", [] { return std::make_unique<GameOverScene>(); });

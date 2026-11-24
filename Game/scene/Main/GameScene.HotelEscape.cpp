@@ -147,30 +147,6 @@ void GameScene::InitializeHotelEscape(GameApp& app) {
         static_cast<float>(WinApp::kClientHeight)/size.height,1});
 }
 
-void GameScene::PrepareHotelExitStart() {
-    if (!escapeCar_) return;
-    const auto& escape=*level_.hotelEscape;
-    const auto goal=std::find_if(stage_.Goals().begin(),stage_.Goals().end(),
-        [&](const auto& item) { return item.id==escape.goal; });
-    auto& shutters=level_.shutters.shutters;
-    const auto shutter=std::find_if(shutters.begin(),shutters.end(),
-        [](const auto& item) { return item.definition.id=="F1_ExitShutter"; });
-    if (goal==stage_.Goals().end() || shutter==shutters.end()) return;
-
-    const Vector3 heading{0,escape.route.front().Heading().y,0};
-    auto feet=goal->position-HotelEscape::CarPose{escape.start,heading}.Forward()*.75f;
-    feet.y=shutter->definition.closedPosition.y;
-    if (!goal->Contains(feet)) return;
-
-    // Start past the open shutter and let the first gameplay update trigger the normal Goal.
-    shutter->state=ShutterState::Open;
-    shutter->elapsedTime=shutter->definition.openDuration;
-    level_.shutters.Sync(level_.collision);
-    SyncShutterVisuals();
-    player_.SetStage(&level_.collision,feet,heading);
-    startSequenceEnabled_=false;
-}
-
 void GameScene::PositionEscapeCar(double elapsed) {
     const auto& escape=*level_.hotelEscape;
     const auto [position,heading]=escape.CarAt(elapsed);

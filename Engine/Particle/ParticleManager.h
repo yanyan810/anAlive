@@ -96,6 +96,8 @@ static constexpr uint32_t kVertexCount = 6;
 // ===============================
 // パーティクルグループ
 // ===============================
+enum class SmokeShape : uint32_t { Normal = 0, Vertical = 1 };
+
 struct ParticleGroup {
     uint32_t textureSrvIndex = 0;
     Model* model = nullptr;
@@ -145,6 +147,10 @@ struct ParticleGroup {
     // 3: Velocity Aligned (camera-facing)
     // 4: Emission Axis (roll around the launch direction)
     uint32_t billboardMode = 0;
+    SmokeShape smokeShape = SmokeShape::Normal;
+    static constexpr float kDefaultSmokeSway = 0.009f;
+    float smokeSway = kDefaultSmokeSway;
+    float smokeNoise = 1.0f;
     bool cameraSpace = false;
     int drawOrder = 0;
 

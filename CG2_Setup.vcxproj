@@ -408,6 +408,12 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <FxCompile Include="resources\shaders\MuzzleSmoke.PS.hlsl">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\MuzzleSmoke.VS.hlsl">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </FxCompile>
     <FxCompile Include="resources\shaders\Object3dEnvMap.PS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
@@ -613,6 +619,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">false</ExcludedFromBuild>
     </None>
     <None Include="resources\shaders\Particle.hlsli" />
+    <None Include="resources\shaders\ParticleVertex.hlsli" />
+    <None Include="resources\shaders\MuzzleSmoke.hlsli" />
     <None Include="resources\shaders\Skybox.hlsli" />
     <None Include="resources\shaders\Sprite2d.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>

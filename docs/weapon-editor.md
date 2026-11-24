@@ -31,7 +31,9 @@ Initial Weaponは設定欄の「Game Start Settings」を開いて選択でき�
 
 保存時にPickupの抽選や復活は行わず、取得済み状態と配置済み武器IDを保持します。Cubeの色とサイズは更新します。Spawn Filterによる新しい抽選結果はStage再起動で確認してください。旧定義への巻き戻りを防ぐため、保存成功時はDebug Timeline履歴をクリアします。
 
-専用モデル・アニメーション・音・Muzzle Flash・Recoil編集は含みません。右ペインのPreviewは将来用の表示枠です。
+Showroomの右ペインにある **Muzzle Flash** タブで、共通のライト設定、選択中の武器の発光・煙量倍率、通常煙と縦型煙の共通設定を調整できます。変更は **Test Weapon** で確認でき、ライトと倍率は **Save Light & Weapon Scales**、煙は各欄の **Save Particles** で保存します。
+
+専用モデル・アニメーション・音・Recoil編集は含みません。
 
 ## 検証
 

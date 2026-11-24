@@ -556,6 +556,12 @@
     <FxCompile Include="resources\shaders\Particle.VS.hlsl">
       <Filter>shaders</Filter>
     </FxCompile>
+    <FxCompile Include="resources\shaders\MuzzleSmoke.PS.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\MuzzleSmoke.VS.hlsl">
+      <Filter>shaders</Filter>
+    </FxCompile>
     <FxCompile Include="resources\shaders\Skinned.VS.hlsl">
       <Filter>shaders</Filter>
     </FxCompile>
@@ -632,6 +638,12 @@
       <Filter>shaders</Filter>
     </None>
     <None Include="resources\shaders\Particle.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="resources\shaders\ParticleVertex.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="resources\shaders\MuzzleSmoke.hlsli">
       <Filter>shaders</Filter>
     </None>
     <None Include="resources\shaders\Sprite2d.hlsli">

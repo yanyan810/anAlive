@@ -1,0 +1,39 @@
+[
+    {
+        "name": "Muzzle Flash - Vertical Smoke",
+        "texturePath": "",
+        "modelType": 1,
+        "modelName": "16",
+        "smokeShape": "vertical",
+        "smokeSway": 0.006,
+        "smokeNoise": 0.9,
+        "blendMode": 1,
+        "billboardMode": 0,
+        "depthTestEnabled": true,
+        "drawOrder": 11,
+        "isAutoEmit": false,
+        "emitter": {
+            "count": 2,
+            "frequency": 0.0,
+            "translate": [0.0, 0.0, 0.0],
+            "radius": 0.003,
+            "lifeTimeMin": 0.37,
+            "lifeTimeMax": 0.58,
+            "velocityBase": [0.0, 0.0, 1.0],
+            "velocityVariance": 0.0,
+            "startColor": [0.54, 0.55, 0.56, 0.064],
+            "endColor": [0.54, 0.55, 0.56, 0.0],
+            "scaleStart": [0.0085, 0.015, 1.0],
+            "scaleEnd": [0.018, 0.033, 1.0],
+            "speedMin": 0.0016,
+            "speedMax": 0.0028,
+            "rotationRandomDeg": 360.0,
+            "angularVelocityMinDeg": -14.0,
+            "angularVelocityMaxDeg": 14.0,
+            "shapeType": 1,
+            "shapeAngle": 0.12,
+            "shapeSize": [0.0, 0.0, 0.0],
+            "acceleration": [0.0, 0.014, 0.0]
+        }
+    }
+]

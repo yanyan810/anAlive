@@ -1,14 +1,24 @@
 {
     "light": {
-        "color": [
-            1.0,
-            0.94,
-            0.78
-        ],
-        "intensity": 0.0,
+        "mode": "point",
+        "directEnabled": true,
+        "indirectEnabled": true,
+        "color": [1.0, 0.96, 0.83],
+        "intensity": 1.35,
         "duration": 0.04,
         "range": 4.0,
-        "decay": 1.5
+        "decay": 2.0,
+        "specularStrength": 0.04,
+        "areaWidth": 0.20,
+        "areaHeight": 0.15,
+        "areaRotationDegrees": [0.0, 0.0, 0.0],
+        "indirectIntensity": 0.16,
+        "indirectRange": 4.0,
+        "offset": [0.135, -0.072, 0.64]
+    },
+    "smoke": {
+        "normalEnabled": true,
+        "verticalEnabled": true
     },
     "weapons": {
         "pistol": {

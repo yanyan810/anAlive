@@ -408,6 +408,7 @@ void Object3d::Draw()
 					object3dCommon->SetGraphicsPipelineState(blendMode_);
 				}
 			}
+			BindLighting_(cmd);
 			cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		};
 
@@ -415,13 +416,6 @@ void Object3d::Draw()
 
 		// Transform (Root 1)
 		cmd->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceModel->GetGPUVirtualAddress());
-
-		BindDirectionalShadow_(cmd);
-
-		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 		BindEnvironmentMapIfNeeded();
 
@@ -462,17 +456,11 @@ void Object3d::Draw()
 						object3dCommon->SetGraphicsPipelineState(blendMode_);
 					}
 				}
+				BindLighting_(cmd);
 				cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 			};
 
 			SetNormalPipelineState();
-
-			BindDirectionalShadow_(cmd);
-
-			cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
-			cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-			cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
-			cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 			// EnvMap (Root 7 : t2)
 			BindEnvironmentMapIfNeeded();
@@ -573,17 +561,11 @@ void Object3d::Draw()
 					object3dCommon->SetGraphicsPipelineState(blendMode_);
 				}
 			}
+			BindLighting_(cmd);
 			cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		};
 
 		SetNormalPipelineState();
-
-		// light/camera CBV
-		BindDirectionalShadow_(cmd);
-		cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
-		cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
 
 		// EnvMap (Root 7 : t2)
 		BindEnvironmentMapIfNeeded();
@@ -715,17 +697,23 @@ void Object3d::Draw()
 	}
 }
 
-void Object3d::BindDirectionalShadow_(ID3D12GraphicsCommandList* cmd, UINT rootIndex) {
-    const auto* light=sceneLight_ ? sceneLight_ : light_.get();
-    auto srv=light->GetDirectionalShadowSrv();
-    if (!srv.ptr) srv=TextureManager::GetInstance()->GetSrvHandleGPU("resources/white1x1.png");
-    cmd->SetGraphicsRootDescriptorTable(rootIndex,srv);
+void Object3d::BindLighting_(ID3D12GraphicsCommandList* cmd) {
+    const auto* light = sceneLight_ ? sceneLight_ : object3dCommon->GetLightingEnvironment();
+    if (!light) light = light_.get();
+    cmd->SetGraphicsRootConstantBufferView(3, light->GetDirectionalLightResource()->GetGPUVirtualAddress());
+    cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
+    cmd->SetGraphicsRootConstantBufferView(5, light->GetPointLightResource()->GetGPUVirtualAddress());
+    cmd->SetGraphicsRootConstantBufferView(6, light->GetSpotLightResource()->GetGPUVirtualAddress());
+    auto shadow = light->GetDirectionalShadowSrv();
+    if (!shadow.ptr) shadow = TextureManager::GetInstance()->GetSrvHandleGPU("resources/white1x1.png");
+    cmd->SetGraphicsRootDescriptorTable(10, shadow);
+    cmd->SetGraphicsRootConstantBufferView(LocalLighting::kObjectRootIndex, object3dCommon->GetLocalLightAddress());
 }
 
 void Object3d::DrawDirectionalShadow(DirectionalShadowMap& shadow, const std::vector<uint32_t>& excludedMeshes) {
     if (!isVisible_ || !model_) return;
     const auto world=CalculateWorldMatrix();
-    const auto casts=[&](uint32_t index) { return std::find(excludedMeshes.begin(),excludedMeshes.end(),index)==excludedMeshes.end(); };
+    const auto casts=[&](uint32_t index) { return IsMeshVisible(index) && std::find(excludedMeshes.begin(),excludedMeshes.end(),index)==excludedMeshes.end(); };
     if (animator_ && animator_->HasAnimation() && !model_->HasSkinning()) {
         const auto& animations=model_->GetAnimations();
         const Animation* animation=nullptr;
@@ -772,12 +760,7 @@ void Object3d::DrawWithOverrideSrv(const D3D12_GPU_DESCRIPTOR_HANDLE& srv)
 		}
 	}
 
-	BindDirectionalShadow_(cmd);
-
-	cmd->SetGraphicsRootConstantBufferView(3, (sceneLight_ ? sceneLight_ : light_.get())->GetDirectionalLightResource()->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(4, cameraResource_->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(5, (sceneLight_ ? sceneLight_ : light_.get())->GetPointLightResource()->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(6, (sceneLight_ ? sceneLight_ : light_.get())->GetSpotLightResource()->GetGPUVirtualAddress());
+	BindLighting_(cmd);
 
 	// RootParameter 7 : t2
 	if (useEnvironmentMap_) {

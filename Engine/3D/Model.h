@@ -214,7 +214,7 @@ public:
 		}
 		return total;
 	}
-	void UpdateVertexPosition(uint32_t index, const Vector3& position);
+	void UpdateVertexPosition(uint32_t index, const Vector3& position, const Vector3* normal = nullptr);
 
 	const std::unordered_map<std::string, Animation>& GetAnimations() const {
 		return modelData_.animations;

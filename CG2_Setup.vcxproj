@@ -524,6 +524,8 @@
     <ClInclude Include="Engine\3D\Object3d.h" />
     <ClInclude Include="Engine\3D\Animator.h" />
     <ClInclude Include="Engine\3D\Object3dLight.h" />
+    <ClInclude Include="Engine\3D\LocalLight.h" />
+    <ClInclude Include="Game\StageLighting.h" />
     <ClInclude Include="Engine\3D\Object3dCommon.h" />
     <ClInclude Include="Engine\3D\PrimitiveCommon.h" />
     <ClInclude Include="Engine\3D\SkinningCommon.h" />
@@ -621,6 +623,9 @@
     <None Include="resources\shaders\Particle.hlsli" />
     <None Include="resources\shaders\ParticleVertex.hlsli" />
     <None Include="resources\shaders\MuzzleSmoke.hlsli" />
+    <None Include="resources\shaders\LocalLighting.hlsli" />
+    <None Include="resources\shaders\LightingMath.hlsli" />
+    <None Include="resources\shaders\ObjectLighting.hlsli" />
     <None Include="resources\shaders\Skybox.hlsli" />
     <None Include="resources\shaders\Sprite2d.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
@@ -668,6 +673,7 @@
     <ClCompile Include="Game\scene\Main\GameScene.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.HotelEscape.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.Muzzle.cpp" />
+    <ClCompile Include="Game\scene\Main\GameScene.Lighting.cpp" />
     <ClCompile Include="Game\scene\Flow\TitleScene.cpp" />
     <ClCompile Include="Game\scene\Flow\GameOverScene.cpp" />
     <ClInclude Include="Game\scene\Flow\GameOverScene.h" />

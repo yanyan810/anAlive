@@ -1115,16 +1115,24 @@ bool Enemy::SpawnFaces(size_t part, const Vector3& direction,bool deathBurst) {
 }
 void Enemy::DrawFaces(float cameraClearance) {
     if (faceShards_.empty() || !faceBatch_) return;
+    const bool stageLit = common_->GetLightingEnvironment() != nullptr;
     uint32_t index=0;
     for (const auto& shard : faceShards_) {
         const auto matrix=Matrix4x4::MakeAffineMatrix({1,1,1},shard.motion.rotation,shard.motion.position);
         if (cameraClearance>0 && camera_ && FirstPersonCamera::NearBounds(camera_->GetTranslate(),
             TransformAABB(shard.motion.bounds,matrix),cameraClearance)) continue;
-        for (const int v : {0,1,2,2,1,0}) faceModel_->UpdateVertexPosition(index++,EnemyPartTransformPoint(shard.vertices[v],matrix));
+        std::array<Vector3, 3> points;
+        for (size_t i = 0; i < points.size(); ++i) points[i] = EnemyPartTransformPoint(shard.vertices[i], matrix);
+        // Opposite winding gets an opposite normal on the double-sided triangle.
+        const auto front = stageLit ? Matrix4x4::Normalize(Matrix4x4::Cross(points[1] - points[0], points[2] - points[0])) : Vector3{};
+        const auto back = front * -1.0f;
+        for (int i : {0, 1, 2}) faceModel_->UpdateVertexPosition(index++, points[i], stageLit ? &front : nullptr);
+        for (int i : {2, 1, 0}) faceModel_->UpdateVertexPosition(index++, points[i], stageLit ? &back : nullptr);
     }
     for (;index<kFaceCapacity*6;++index) faceModel_->UpdateVertexPosition(index,{});
     // Vertices are world-space, but WVP must follow the current FPS camera every frame.
     faceBatch_->Update(0);
+    faceBatch_->SetEnableLighting(stageLit ? 3 : 0);
     ApplySceneLight(*faceBatch_);
     faceBatch_->Draw();
 }

@@ -69,11 +69,7 @@ void GameScene::InitializeHotelEscape(GameApp& app) {
         auto object=std::make_unique<Object3d>();
         object->Initialize(app.ObjCom(),app.Dx());
         object->SetCamera(&camera_);
-        object->SetEnableLighting(2);
-        object->SetDirection({.3f,-1,.5f});
-        object->SetIntensity(1);
-        object->SetPointLightIntensity(0);
-        object->SetSpotLightIntensity(0);
+        object->SetEnableLighting(1);
         return object;
     };
     escapeCar_=makeObject();

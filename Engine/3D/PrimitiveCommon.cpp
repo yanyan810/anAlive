@@ -1,4 +1,5 @@
 #include "PrimitiveCommon.h"
+#include "LocalLight.h"
 
 void PrimitiveCommon::Initialize(DirectXCommon* dxCommon) {
     // 初期化処理
@@ -29,7 +30,7 @@ void PrimitiveCommon::CreateRootSignature() {
     rangeMask.BaseShaderRegister = 3; // t3
     rangeMask.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    D3D12_ROOT_PARAMETER params[11]{};
+    D3D12_ROOT_PARAMETER params[LocalLighting::kObjectRootIndex + 1]{};
 
 
     // b0 material
@@ -93,6 +94,11 @@ void PrimitiveCommon::CreateRootSignature() {
     params[10].ShaderVisibility=D3D12_SHADER_VISIBILITY_PIXEL;
     params[10].DescriptorTable.NumDescriptorRanges=1;
     params[10].DescriptorTable.pDescriptorRanges=&rangeShadow;
+
+    auto& localLight = params[LocalLighting::kObjectRootIndex];
+    localLight.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    localLight.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    localLight.Descriptor.ShaderRegister = LocalLighting::kShaderRegister;
 
     D3D12_STATIC_SAMPLER_DESC samp{};
     samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;

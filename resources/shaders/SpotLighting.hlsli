@@ -1,3 +1,5 @@
+#include "LightingMath.hlsli"
+
 // Layout mirrors Object3dLight::SpotLight (64 bytes per light).
 struct SpotLight
 {
@@ -32,16 +34,12 @@ void CalculateSpotLighting(float3 worldPosition, float3 N, float3 V,
         float3 toLight = light.position - worldPosition;
         float dist = max(length(toLight), 0.001f);
         float3 L = toLight / dist;
-        float attenuation = pow(saturate(1 - dist / max(light.distance, 0.001f)), light.decay);
+        float attenuation = LegacyLightFalloff(dist, light.distance, light.decay);
         float3 axis = light.direction / max(length(light.direction), 0.001f);
         float cosTheta = dot(-L, axis);
-        float falloff = saturate((cosTheta - light.cosAngle) /
-            max(light.cosFalloffStart - light.cosAngle, 1e-6f));
-        float NdotL = dot(N, L);
-        float diff = lightingMode == 2 ? pow(NdotL * 0.5f + 0.5f, 2.0f) : saturate(NdotL);
+        float falloff = SpotConeFalloff(cosTheta, light.cosAngle, light.cosFalloffStart);
         float3 color = light.color.rgb * light.intensity * attenuation * falloff;
-        diffuse += baseColor * color * diff;
-        float3 H = normalize(L + V);
-        specular += color * light.specularStrength * pow(saturate(dot(N, H)), max(shininess, 1.0f));
+        diffuse += baseColor * color * DiffuseFactor(dot(N, L), lightingMode);
+        specular += color * light.specularStrength * BlinnPhongFactor(N, L, V, shininess);
     }
 }

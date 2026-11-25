@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "preset": "standard",
+    "ambient": {
+        "enabled": true,
+        "color": [1, 1, 1],
+        "intensity": 0.12
+    },
+    "directional": {
+        "enabled": true,
+        "color": [1, 1, 1],
+        "intensity": 0.88,
+        "direction": [0.3, -1, 0.5]
+    },
+    "material": {
+        "diffuseMode": "lambert",
+        "specularStrength": 0.2
+    },
+    "shadow": {
+        "enabled": false
+    }
+}

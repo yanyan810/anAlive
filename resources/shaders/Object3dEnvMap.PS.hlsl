@@ -16,25 +16,7 @@ struct Material
     float2 _pad1;
 };
 
-#include "DirectionalLighting.hlsli"
-
-struct Camera
-{
-    float3 worldPosition;
-    float _pad;
-};
-
-struct PointLight
-{
-    float4 color;
-    float3 position;
-    float intensity;
-    float radius;
-    float decay;
-    float2 _pad;
-};
-
-#include "SpotLighting.hlsli"
+#include "ObjectLighting.hlsli"
 
 struct EffectParam {
     // Outline
@@ -60,9 +42,6 @@ Texture2D gMaskTexture : register(t3);
 SamplerState gSampler : register(s0);
 
 ConstantBuffer<Material> gMaterial : register(b0);
-ConstantBuffer<DirectionalLight> gDirectionalLight : register(b1);
-ConstantBuffer<Camera> gCamera : register(b2);
-ConstantBuffer<PointLight> gPointLight : register(b3);
 ConstantBuffer<EffectParam> gEffect : register(b5);
 
 // =====================
@@ -98,78 +77,26 @@ PixelShaderOutput main(VertexShaderOutput input)
         return output;
     }
 
-    float3 N = normalize(input.normal);
     float3 V = normalize(gCamera.worldPosition - input.worldPosition);
-
-    // ---------------------
-    // Directional
-    // ---------------------
-    float3 Ld = normalize(-gDirectionalLight.direction);
-    float NdotLd = dot(N, Ld);
-
-    float diffD =
-        (gMaterial.enableLighting == 2)
-        ? pow(NdotLd * 0.5f + 0.5f, 2.0f)
-        : saturate(NdotLd);
-
-    float3 diffuseD =
-        gMaterial.color.rgb * texColor.rgb *
-        gDirectionalLight.color.rgb *
-        diffD * gDirectionalLight.intensity;
-
-    float3 Hd = normalize(Ld + V);
-    float specD = pow(saturate(dot(N, Hd)), max(gMaterial.shininess, 1.0f));
-    float3 specularD = gDirectionalLight.color.rgb * gDirectionalLight.intensity * specD;
-    float visibilityD = DirectionalVisibility(gDirectionalLight, input.worldPosition, N);
-    diffuseD *= visibilityD;
-    specularD *= visibilityD;
-
-    // ---------------------
-    // Point
-    // ---------------------
-    float3 toP = gPointLight.position - input.worldPosition;
-    float distP = max(length(toP), 0.001f);
-    float3 Lp = toP / distP;
-
-    float t = saturate(1.0f - distP / max(gPointLight.radius, 0.001f));
-    float attenP = pow(t, gPointLight.decay);
-
-    float diffP =
-        (gMaterial.enableLighting == 2)
-        ? pow(dot(N, Lp) * 0.5f + 0.5f, 2.0f)
-        : saturate(dot(N, Lp));
-
-    float3 pointCol = gPointLight.color.rgb * gPointLight.intensity * attenP;
-    float3 diffuseP = gMaterial.color.rgb * texColor.rgb * pointCol * diffP;
-
-    float3 Hp = normalize(Lp + V);
-    float specP = pow(saturate(dot(N, Hp)), max(gMaterial.shininess, 1.0f));
-    float3 specularP = pointCol * specP;
-
-    // ---------------------
-    // Spot
-    // ---------------------
-    float3 diffuseS, specularS;
-    CalculateSpotLighting(input.worldPosition, N, V, gMaterial.color.rgb * texColor.rgb,
-        gMaterial.enableLighting, gMaterial.shininess, diffuseS, specularS);
-
-    // ---------------------
-    // Environment Map
-    // ---------------------
-    float3 cameraToPos = normalize(input.worldPosition - gCamera.worldPosition);
-    float3 reflected = reflect(cameraToPos, N);
-    float3 envColor = gEnvironmentTexture.Sample(gSampler, reflected).rgb;
-
-    // ---------------------
-    // Final
-    // ---------------------
-    float3 finalDiffuse = diffuseD + diffuseP + diffuseS;
-    float3 finalSpecular = specularD + specularP + specularS;
-
+    float3 N = ResolveSurfaceNormal(input.normal, V, gMaterial.enableLighting);
     float3 baseColor = gMaterial.color.rgb * texColor.rgb;
-    float3 finalColor = lerp(baseColor, envColor, gMaterial.environmentCoefficient);
+    int lightingMode = ResolveDiffuseMode(gMaterial.enableLighting);
+    LightTerms directional, pointTerms, spot;
+    EvaluateObjectLighting(input.worldPosition, N, V, baseColor, lightingMode, gMaterial.shininess,
+        directional, pointTerms, spot);
 
-    output.color.rgb = finalColor * (finalDiffuse) + finalSpecular + AmbientFill(gDirectionalLight, finalColor);
+    float3 envColor = gEnvironmentTexture.Sample(gSampler, reflect(-V, N)).rgb;
+    float3 diffuse = directional.diffuse + pointTerms.diffuse + spot.diffuse;
+    float3 specular = directional.specular + pointTerms.specular + spot.specular;
+    output.color.rgb = diffuse + specular + AmbientFill(gDirectionalLight, baseColor) + envColor * gMaterial.environmentCoefficient;
+    if (gDirectionalLight.diffuseMode == 0)
+    {
+        // Keep the original environment-map blend for existing objects with material-defined lighting.
+        float3 mixedColor = lerp(baseColor, envColor, gMaterial.environmentCoefficient);
+        output.color.rgb = mixedColor * diffuse + specular + AmbientFill(gDirectionalLight, mixedColor);
+    }
+    output.color.rgb = ApplyLocalLighting(output.color.rgb, input.worldPosition, N, V,
+        baseColor, lightingMode, gMaterial.shininess);
 
     // Dissolveのエッジ色を加算
     output.color.rgb += edgeFactor * gEffect.dissolveEdgeColor.rgb;

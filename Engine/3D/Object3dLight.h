@@ -6,14 +6,29 @@
 
 class Object3dLight {
 public:
+    enum class DiffuseMode : int { Material = 0, Lambert = 1, HalfLambert = 2 };
+    struct Environment {
+        Vector3 ambientColor{1.0f, 1.0f, 1.0f};
+        float ambientIntensity = 0.0f;
+        Vector3 directionalColor{1.0f, 1.0f, 1.0f};
+        float directionalIntensity = 0.0f;
+        Vector3 direction{0.0f, -1.0f, 0.0f};
+        DiffuseMode diffuseMode = DiffuseMode::Lambert;
+        float specularStrength = 1.0f;
+    };
+
 	struct DirectionalLight {
 		Vector4 color;
 		Vector3 direction;
 		float intensity;
 		Matrix4x4 shadowViewProjection;
 		Vector4 shadowParameters;
+        Vector4 ambient{};
+        DiffuseMode diffuseMode = DiffuseMode::Material;
+        float specularStrength = 1.0f;
+        float padding[2]{};
 	};
-	static_assert(sizeof(DirectionalLight) == 112, "DirectionalLight must match HLSL");
+	static_assert(sizeof(DirectionalLight) == 144, "DirectionalLight must match HLSL");
 
 	struct PointLight {
 		Vector4 color;
@@ -41,6 +56,7 @@ public:
 
 public:
 	void Initialize(DirectXCommon* dx);
+    void SetEnvironment(const Environment& environment);
 
 	// ===== Directional Light =====
 	void SetDirectionalLightColor(const Vector4& color) { if (directionalLightData_) directionalLightData_->color = color; }

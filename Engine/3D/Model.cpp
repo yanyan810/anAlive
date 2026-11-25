@@ -2303,10 +2303,11 @@ Vector3 Model::GetSourceVertexPosition(uint32_t index) const
 	return { 0.0f, 0.0f, 0.0f };
 }
 
-void Model::UpdateVertexPosition(uint32_t index, const Vector3& position)
+void Model::UpdateVertexPosition(uint32_t index, const Vector3& position, const Vector3* normal)
 {
 	if (vertexData_ && index < GetVertexCount()) {
 		vertexData_[index].position = { position.x, position.y, position.z, 1.0f };
+        if (normal) vertexData_[index].normal = *normal;
 	}
 }
 

@@ -4,14 +4,18 @@ struct DirectionalLight
     float3 direction;
     float intensity;
     float4x4 shadowViewProjection;
-    float4 shadowParameters; // strength, depth bias, inverse resolution, ambient fill intensity
+    float4 shadowParameters; // strength, depth bias, inverse resolution, legacy ambient fill
+    float4 ambient; // Independent linear RGB and intensity
+    int diffuseMode; // 0 inherits the material mode
+    float specularStrength;
+    float2 padding;
 };
 Texture2D<float> gDirectionalShadow : register(t4);
 SamplerState gShadowSampler : register(s1);
 
 float3 AmbientFill(DirectionalLight light, float3 baseColor)
 {
-    return baseColor * light.color.rgb * max(light.shadowParameters.w, 0);
+    return baseColor * (light.ambient.rgb * light.ambient.a + light.color.rgb * max(light.shadowParameters.w, 0));
 }
 
 float DirectionalVisibility(DirectionalLight light, float3 worldPosition, float3 normal)

@@ -29,7 +29,13 @@ public:
         try {
             const auto bytes=Read(file);
             auto parsed=nlohmann::json::parse(bytes);
-            path=file; original_=bytes; document=std::move(parsed); dirty=false; error.clear(); return true;
+            path=file; original_=bytes; document=std::move(parsed); newFile_=false; dirty=false; error.clear(); return true;
+        } catch (const std::exception& e) { error=e.what(); return false; }
+    }
+    bool OpenOrCreate(const std::string& file, const nlohmann::json& fallback) {
+        try {
+            if (std::filesystem::exists(file)) return Open(file);
+            path=file; original_.clear(); document=fallback; newFile_=true; dirty=false; error.clear(); return true;
         } catch (const std::exception& e) { error=e.what(); return false; }
     }
     // Validate a sibling temporary file through the production loaders before replacing anything.
@@ -37,18 +43,19 @@ public:
         std::filesystem::path temporary;
         try {
             if (path.empty()) throw std::runtime_error("Select a JSON file first");
-            if (Read(path)!=original_) throw std::runtime_error("File changed externally. Reload before saving.");
+            if (!OriginalMatches_()) throw std::runtime_error("File changed externally. Reload before saving.");
             const auto bytes=document.dump(2)+'\n';
             temporary=std::filesystem::path(path).concat(".debug-tmp");
             { std::ofstream file(temporary,std::ios::binary|std::ios::trunc);
                 if (!file || !(file<<bytes) || !file.flush()) throw std::runtime_error("Cannot write temporary JSON"); }
             const auto validation=validate(temporary.string());
             if (!validation.empty()) throw std::runtime_error(validation);
-            if (Read(path)!=original_) throw std::runtime_error("File changed externally during validation");
-            std::filesystem::copy_file(path,path+".debug-backup",std::filesystem::copy_options::overwrite_existing);
-            if (!MoveFileExW(temporary.c_str(),std::filesystem::path(path).c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
-                throw std::runtime_error("Cannot replace JSON (Windows error "+std::to_string(GetLastError())+")");
-            original_=bytes; dirty=false; error.clear(); return true;
+            if (!OriginalMatches_()) throw std::runtime_error("File changed externally during validation");
+            if (!newFile_) std::filesystem::copy_file(path,path+".debug-backup",std::filesystem::copy_options::overwrite_existing);
+            const DWORD flags = MOVEFILE_WRITE_THROUGH | (newFile_ ? 0 : MOVEFILE_REPLACE_EXISTING);
+            if (!MoveFileExW(temporary.c_str(),std::filesystem::path(path).c_str(),flags))
+                throw std::runtime_error("Cannot save JSON (Windows error "+std::to_string(GetLastError())+")");
+            original_=bytes; newFile_=false; dirty=false; error.clear(); return true;
         } catch (const std::exception& e) {
             error=e.what(); std::error_code ignored;
             if (!temporary.empty()) std::filesystem::remove(temporary,ignored);
@@ -57,6 +64,11 @@ public:
     }
 private:
     std::string original_;
+    bool newFile_ = false;
+    bool OriginalMatches_() const {
+        if (newFile_) return !std::filesystem::exists(path);
+        return Read(path) == original_;
+    }
     static std::string Read(const std::string& path) {
         std::ifstream file(path,std::ios::binary);
         if (!file) throw std::runtime_error("Cannot open "+path);

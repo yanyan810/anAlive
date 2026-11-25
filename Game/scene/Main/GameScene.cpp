@@ -94,9 +94,7 @@ void GameScene::InitializeShutters(GameApp& app) {
         }
         visual.model->SetModel(def.model); visual.model->StopAnimation();
         visual.model->SetMaterialColor({1,1,1,1});
-        visual.model->SetEnableLighting(2);
-        visual.model->SetDirection({.3f,-1,.5f}); visual.model->SetIntensity(1);
-        visual.model->SetPointLightIntensity(0); visual.model->SetSpotLightIntensity(0);
+        visual.model->SetEnableLighting(1);
         visual.lamp->SetModel("cube/cube.obj"); visual.lamp->SetTexture("resources/white1x1.png");
         visual.lamp->SetEnableLighting(0); visual.lamp->SetScale({.12f,.08f,.14f});
         visual.lamp->SetTranslate(def.buttonPosition+Vector3{.2f,.38f,0});
@@ -125,11 +123,7 @@ void GameScene::InitializeDoors(GameApp& app) {
         visual->SetTexture("resources/white1x1.png");
         visual->SetScale(StageDoor::HalfSize(door.closed));
         visual->SetMaterialColor({.36f,.21f,.12f,1});
-        visual->SetEnableLighting(2);
-        visual->SetDirection({.3f,-1,.5f});
-        visual->SetIntensity(1);
-        visual->SetPointLightIntensity(0);
-        visual->SetSpotLightIntensity(0);
+        visual->SetEnableLighting(1);
         doorVisuals_.push_back(std::move(visual));
     }
     SyncDoorVisuals();
@@ -271,7 +265,11 @@ void GameScene::OnEnter(GameApp& app) {
         }
     }
     LoadMuzzleLightSettings();
-    muzzleLightPulse_.reset();
+    muzzleLightBuffer_.Initialize(*app.Dx());
+    ClearMuzzleLight();
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    showMuzzleAnchor_ = false;
+#endif
     particleDeltaTime_ = 0.0f;
     app.ObjCom()->SetDefaultCamera(&camera_);
     player_.Initialize(app.ObjCom(), app.Dx(), &camera_);
@@ -287,6 +285,17 @@ void GameScene::OnEnter(GameApp& app) {
     EnemySpawnSystem nextSpawns;
     StageProgress nextProgress;
     const std::string levelPath=showroom_ ? "resources/levels/showroom/showroom.json" : StagePath();
+    stageLightingPath_ = StageLighting::PathFor(levelPath);
+    stageLighting_ = {};
+    stageShadowReady_ = false;
+    stageLight_.Initialize(app.Dx());
+    stageLight_.SetPointLightIntensity(0);
+    stageLight_.SetSpotLightIntensity(0);
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    stageLightingEditor_ = {};
+    showLightingEditor_ = false;
+#endif
+    LoadStageLighting();
     const auto* stageDraft=placementTestStage_ ? &*placementTestStage_ : nullptr;
     stageLoaded_=enemiesLoaded && nextLevel.Load(levelPath,stageDraft) && nextLevel.ValidateAssets() &&
         nextWeapons.Load("resources/Data/weapons.json",levelPath,weaponSeedOverride_,stageDraft) &&
@@ -349,11 +358,7 @@ void GameScene::OnEnter(GameApp& app) {
         ground_.SetScale({32,.25f,60}); ground_.SetTranslate({0,-.25f,24});
         ground_.SetMaterialColor({.45f,.48f,.52f,1});
     }
-    ground_.SetEnableLighting(stageId_=="stage03" || stageId_=="stage04" ? 2 : 1);
-    ground_.SetDirection({0.3f, -1.0f, 0.5f});
-    ground_.SetIntensity(1.0f);
-    ground_.SetPointLightIntensity(0.0f);
-    ground_.SetSpotLightIntensity(0.0f);
+    ground_.SetEnableLighting(1);
     BindRemovableMeshes();
     InitializeHotelEscape(app);
     for (Sprite* sprite : {&crosshairHorizontal_, &crosshairVertical_}) {
@@ -430,7 +435,10 @@ void GameScene::OnEnter(GameApp& app) {
 void GameScene::OnExit(GameApp& app) {
     // Large reinforcement pools must finish GPU work before their instance buffers are released.
     app.Dx()->WaitForGPU();
+    stageShadowMap_.reset();
+    stageShadowReady_ = false;
     ClearMuzzleSmoke();
+    ClearMuzzleLight();
     app.Render()->ResetDeathPostEffect();
     app.Render()->ResetViewPostPreview();
     gameOver_.Reset(); gameOverMenuTime_=0;
@@ -763,6 +771,7 @@ bool GameScene::ReturnToTitle(GameApp& app) {
 
 void GameScene::BeginGameOver(GameApp& app) {
     if (gameOver_.Active() || !stage_.IsPlaying() || placementTest_) return;
+    ClearMuzzleLight();
     const GameOverSequence::DeathContext death{player_.GetTransform(),
         {camera_.GetTranslate(),camera_.GetRotate(),camera_.GetFovY()},player_.LastImpactDirection(),player_.Settings().cameraHeight};
     startSequence_.Stop(); sequenceOwnsCamera_=false; sequenceDebugCommand_=0;
@@ -955,7 +964,7 @@ void GameScene::SyncWeaponVisuals(GameApp& app) {
         auto visual=std::make_unique<Object3d>();
         visual->Initialize(app.ObjCom(),app.Dx()); visual->SetCamera(&camera_);
         visual->SetModel("cube/cube.obj"); visual->SetTexture("resources/white1x1.png");
-        visual->SetEnableLighting(0); weaponVisuals_.push_back(std::move(visual));
+        visual->SetEnableLighting(1); weaponVisuals_.push_back(std::move(visual));
     }
     for (size_t i=0;i<weapons_.Pickups().size();++i) {
         const auto& pickup=weapons_.Pickups()[i];
@@ -1076,10 +1085,9 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
     if (weaponShots > 0) {
         const auto entry = muzzleWeaponScales_.find(weapon.Definition().id);
         const auto scales = entry != muzzleWeaponScales_.end() ? entry->second : MuzzleWeaponScales{};
-        muzzleLightPulse_ = MuzzleLightPulse{muzzleLightSettings_};
-        muzzleLightPulse_->settings.intensity *= scales.light;
+        StartMuzzleLight(scales.light);
         const auto& cameraWorld = camera_.GetWorldMatrix();
-        const auto muzzle = ResolveMuzzleAnchor().position;
+        const auto muzzle = ResolveMuzzleAnchor(kSmokeHipOffset).position;
         for (int shot=0; shot<weaponShots; ++shot) {
             ++shotCount_;
             BulletShotPose shotPose;
@@ -1142,13 +1150,21 @@ void GameScene::DrawRender(GameApp& app) {
     const auto dt = std::exchange(particleDeltaTime_, 0.0f);
     AdvanceMuzzleSmoke(dt);
     particles->Update(dt, camera_);
-    ApplyMuzzleLight(dt);
     app.Render()->SetDeathPostEffect(gameOver_.PostEffect());
     if (!gameOver_.Active()) app.Render()->ApplyViewPostPreview();
+    if (gameOver_.Active() || EscapePlaying() || escapeMode_ == EscapeMode::Results || app.Scenes().IsTransitioning())
+        ClearMuzzleLight();
     if (escapeMode_==EscapeMode::Results) return;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
-    if (showroom_ && showEnemyEditor_) { enemyEditor_.DrawPreview(); return; }
+    if (showroom_ && showEnemyEditor_) {
+        ClearMuzzleLight();
+        enemyEditor_.DrawPreview();
+        return;
+    }
 #endif
+    PrepareStageLighting();
+    const Object3dCommon::ScopedLightingEnvironment environment(*app.ObjCom(), stageLight_);
+    const Object3dCommon::ScopedLocalLight muzzleLight(*app.ObjCom(), PrepareMuzzleLight());
     ground_.Draw();
     if (EscapePlaying()) for (auto& road:escapeRoad_) road->Draw();
     if (escapeCar_) escapeCar_->Draw();
@@ -1277,7 +1293,11 @@ void GameScene::DrawImGui(GameApp& app) {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     if (showroom_) {
         if (showEnemyEditor_) enemyEditor_.DrawUI(app,showEnemyEditor_);
-        else DrawWeaponWorkspace(app);
+        else {
+            DrawWeaponWorkspace(app);
+            DrawLightingEditor();
+            DrawMuzzleAnchorDebug(app);
+        }
         return;
     }
     ImGui::BeginDisabled(sequenceOwnsCamera_);
@@ -1369,6 +1389,8 @@ void GameScene::DrawImGui(GameApp& app) {
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
+    ImGui::SameLine();
+    if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
     const auto& weapon = player_.CurrentWeapon();
     if (ImGui::CollapsingHeader("Muzzle Flash")) {
         DrawMuzzleEffectSettings(weapon.Definition());
@@ -1563,6 +1585,8 @@ void GameScene::DrawImGui(GameApp& app) {
     }
     ImGui::End();
     }
+    DrawLightingEditor();
+    DrawMuzzleAnchorDebug(app);
     if ((showSpawnDebug_ || showGoalDebug_ || showStageColliders_) && app.ImGui()->GetSceneImageRect(sceneRect))
         DrawEnemySpawnDebug(spawnSystem_, camera_.GetViewProjectionMatrix(),
             {static_cast<float>(sceneRect.left),static_cast<float>(sceneRect.top)},
@@ -1882,7 +1906,7 @@ bool GameScene::ApplyShowroomTestAsset(GameApp& app,const std::filesystem::path&
 void GameScene::ResetShowroomEnemies(GameApp& app) {
     (void)app;
     ClearMuzzleSmoke();
-    muzzleLightPulse_.reset();
+    ClearMuzzleLight();
     enemyPool_.ReleaseAll();
     enemies_.clear(); enemyProjectiles_.Clear(); projectileVisuals_.clear(); bullets_.Clear();
     nextEnemyId_=0; selectedEnemy_=0; lastHitEnemy_=-1; lastHitPart_=EnemyPartType::None; lastHitPartName_="None";
@@ -2060,6 +2084,7 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::Begin("Weapon Test",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|
             ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoDocking);
+        if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
         if (weaponEditor_.mode==WeaponEditorMode::TestThrowables) {
             ImGui::TextWrapped("Click the view to aim | G: Throw | E: Pick up / refill | F5: Reset | Esc: Editor");
             ImGui::BeginDisabled(app.GetInput()->IsCameraControlEnabled());
@@ -2100,6 +2125,8 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         weaponPreviewAspect_=std::max(size.x,1.0f)/std::max(size.y,1.0f);
         app.ImGui()->DrawScenePreview(true);
     },[&] {
+        if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
+        ImGui::SameLine();
         if (ImGui::Button("Open Enemy Editor")) OpenShowroomEnemyEditor();
         if (!throwables_.Pickups().empty()) {
             ImGui::SameLine();

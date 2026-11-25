@@ -1,5 +1,17 @@
 ﻿#include "Object3dLight.h"
 
+void Object3dLight::SetEnvironment(const Environment& environment) {
+    if (!directionalLightData_) return;
+    const auto& ambient = environment.ambientColor;
+    const auto& directional = environment.directionalColor;
+    directionalLightData_->ambient = {ambient.x, ambient.y, ambient.z, environment.ambientIntensity};
+    directionalLightData_->color = {directional.x, directional.y, directional.z, 1.0f};
+    directionalLightData_->intensity = environment.directionalIntensity;
+    directionalLightData_->direction = Matrix4x4::Normalize(environment.direction);
+    directionalLightData_->diffuseMode = environment.diffuseMode;
+    directionalLightData_->specularStrength = environment.specularStrength;
+}
+
 void Object3dLight::Initialize(DirectXCommon* dx) {
 	dx_ = dx;
 

@@ -2,12 +2,15 @@
 #include "IScene.h"
 #include "Camera.h"
 #include "Object3d.h"
+#include "LocalLight.h"
 #include "Player.h"
 #include "Enemy.h"
 #include "EnemyPool.h"
 #include "EnemySpawnSystem.h"
 #include "EnemyProjectile.h"
 #include "StageLoader.h"
+#include "StageLighting.h"
+#include "DirectionalShadowMap.h"
 #include "StageProjectile.h"
 #include "Sprite.h"
 #include "StageProgress.h"
@@ -46,6 +49,7 @@ public:
     }
     void Update(GameApp& app, float dt) override;
     void DrawRender(GameApp& app) override;
+    void DrawShadow(GameApp& app) override;
     void Draw(GameApp&) override {}
     void DrawImGui(GameApp& app) override;
     void DrawOverlay2D(GameApp& app) override;
@@ -138,6 +142,10 @@ private:
     friend void RunEnemyAIStageSmokeTests(GameApp& app,const std::string& stage);
 #if defined(_DEBUG) || defined(DEVELOPMENT_BUILD)
     friend void RunEnemyPoolTests(GameApp& app);
+#ifdef USE_IMGUI
+    friend void RunMuzzleLightRuntimeTests(GameApp& app);
+    friend void RunStageLightingRuntimeTests(GameApp& app);
+#endif
     friend void RunThrowableRuntimeTests(GameApp& app);
     friend void RunTitleSceneTests(GameApp& app);
 #endif
@@ -149,14 +157,18 @@ private:
     };
 
     void LoadMuzzleLightSettings();
-    void ApplyMuzzleLight(float dt);
-    MuzzleAnchor ResolveMuzzleAnchor() const;
+    void StartMuzzleLight(float weaponScale);
+    void ClearMuzzleLight();
+    D3D12_GPU_VIRTUAL_ADDRESS PrepareMuzzleLight();
+    MuzzleAnchor ResolveMuzzleAnchor(const Vector3& hipOffset) const;
+    void ApplyMuzzleSmokeToggles();
 
     void EmitMuzzleSmoke(const Vector3& position, const Vector3& direction, float smokeScale, float verticalSmokeScale);
     void AdvanceMuzzleSmoke(float dt);
     void ClearMuzzleSmoke();
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     void DrawMuzzleEffectSettings(const WeaponDefinition& weapon);
+    void DrawMuzzleAnchorDebug(GameApp& app) const;
 #endif
     void UpdatePlayerBullets(float dt);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
@@ -309,6 +321,20 @@ private:
     float playerDamagedFlash_ = 0;
     float lastEnemyDamage_ = 0;
     Object3d ground_;
+    void LoadStageLighting();
+    void PrepareStageLighting();
+    StageLighting stageLighting_;
+    Object3dLight stageLight_;
+    std::unique_ptr<DirectionalShadowMap> stageShadowMap_;
+    bool stageShadowReady_ = false;
+    std::filesystem::path stageLightingPath_;
+    std::string stageLightingError_;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    void DrawLightingEditor();
+    bool SaveStageLighting();
+    DebugJsonEditor stageLightingEditor_;
+    bool showLightingEditor_ = false;
+#endif
     Sprite crosshairHorizontal_;
     Sprite crosshairVertical_;
 
@@ -321,12 +347,25 @@ private:
     inline static const std::string kMuzzleFlashFile = "muzzle_flash.json";
     inline static const std::string kMuzzleVerticalSmokeFile = "muzzle_vertical_smoke.json";
 
+    inline static const Vector3 kSmokeHipOffset{0.135f, -0.072f, 0.64f};
     struct MuzzleLightSettings {
-        Vector3 color{ 1.0f, 0.94f, 0.78f };
-        float intensity = 2.0f;
+        LocalLighting::Mode mode = LocalLighting::Mode::Point;
+        bool directEnabled = true;
+        bool indirectEnabled = true;
+        bool normalSmokeEnabled = true;
+        bool verticalSmokeEnabled = true;
+        Vector3 color{1.0f, 0.96f, 0.83f};
+        Vector3 offset = kSmokeHipOffset;
+        Vector3 areaRotationDegrees{};
+        float intensity = 1.35f;
         float duration = 0.04f;
         float range = 4.0f;
-        float decay = 1.5f;
+        float decay = 2.0f;
+        float specularStrength = 0.04f;
+        float areaWidth = 0.20f;
+        float areaHeight = 0.15f;
+        float indirectIntensity = 0.16f;
+        float indirectRange = 4.0f;
     };
     struct MuzzleWeaponScales {
         float light = 1.0f;
@@ -340,16 +379,19 @@ private:
         float remaining;
     };
     struct MuzzleLightPulse {
-        MuzzleLightSettings settings;
-        float age = 0.0f;
+        std::chrono::steady_clock::time_point started;
+        float weaponScale = 1.0f;
         bool firstFrame = true;
     };
     MuzzleLightSettings muzzleLightSettings_;
+    LocalLighting::Buffer muzzleLightBuffer_;
     std::map<std::string, MuzzleWeaponScales> muzzleWeaponScales_;
     std::optional<MuzzleLightPulse> muzzleLightPulse_;
     std::vector<PendingMuzzleSmoke> pendingVerticalSmoke_;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     DebugJsonEditor muzzleLightEditor_;
+    std::optional<float> heldMuzzleLightScale_;
+    bool showMuzzleAnchor_ = false;
 #endif
 
 };

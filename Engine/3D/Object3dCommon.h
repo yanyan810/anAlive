@@ -2,9 +2,11 @@
 #include "DirectXCommon.h"
 #include "Camera.h"
 #include "Model.h"
+#include "LocalLight.h"
 
 class SrvManager;
 class SkinningCommon;
+class Object3dLight;
 
 class Object3dCommon
 {
@@ -40,6 +42,37 @@ public:
     void SetDefaultCamera(Camera* camera) { defaultCamera_ = camera; }
     Camera* GetDefaultCamera() const { return defaultCamera_; }
 
+    class ScopedLightingEnvironment {
+    public:
+        ScopedLightingEnvironment(Object3dCommon& common, const Object3dLight& light)
+            : common_(common), previous_(common.lightingEnvironment_) { common_.lightingEnvironment_ = &light; }
+        ~ScopedLightingEnvironment() { common_.lightingEnvironment_ = previous_; }
+        ScopedLightingEnvironment(const ScopedLightingEnvironment&) = delete;
+        ScopedLightingEnvironment& operator=(const ScopedLightingEnvironment&) = delete;
+    private:
+        Object3dCommon& common_;
+        const Object3dLight* previous_;
+    };
+    const Object3dLight* GetLightingEnvironment() const { return lightingEnvironment_; }
+
+    // The caller keeps the uploaded buffer alive until the recorded draws finish.
+    class ScopedLocalLight {
+    public:
+        ScopedLocalLight(Object3dCommon& common, D3D12_GPU_VIRTUAL_ADDRESS address)
+            : common_(common), previous_(common.localLightAddress_) { common_.localLightAddress_ = address; }
+        ~ScopedLocalLight() { common_.localLightAddress_ = previous_; }
+        ScopedLocalLight(const ScopedLocalLight&) = delete;
+        ScopedLocalLight& operator=(const ScopedLocalLight&) = delete;
+
+    private:
+        Object3dCommon& common_;
+        D3D12_GPU_VIRTUAL_ADDRESS previous_;
+    };
+
+    D3D12_GPU_VIRTUAL_ADDRESS GetLocalLightAddress() const {
+        return localLightAddress_ ? localLightAddress_ : disabledLocalLight_.Address();
+    }
+
 private:
     void CreateRootSignature();
     void CreateGraphicsPipelineState();
@@ -51,6 +84,9 @@ private:
     Camera* defaultCamera_ = nullptr;
     SrvManager* srv_ = nullptr;
     SkinningCommon* skinCom_ = nullptr;
+    const Object3dLight* lightingEnvironment_ = nullptr;
+    LocalLighting::Buffer disabledLocalLight_;
+    D3D12_GPU_VIRTUAL_ADDRESS localLightAddress_ = 0;
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pso_[static_cast<int>(BlendMode::kCountOfBlendMode)];

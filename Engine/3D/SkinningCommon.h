@@ -2,6 +2,7 @@
 #include "DirectXCommon.h"
 #include "Camera.h"
 #include "Model.h"
+#include "LocalLight.h"
 
 class SkinningCommon
 {
@@ -18,8 +19,8 @@ public:
 
     void Initialize(DirectXCommon* dxCommon);
 
-    void SetGraphicsPipelineState(BlendMode mode);
-    void SetGraphicsPipelineStateEnvMap(BlendMode mode);
+    void SetGraphicsPipelineState(BlendMode mode, D3D12_GPU_VIRTUAL_ADDRESS localLight = 0);
+    void SetGraphicsPipelineStateEnvMap(BlendMode mode, D3D12_GPU_VIRTUAL_ADDRESS localLight = 0);
 
     void SetDefaultCamera(Camera* camera) { defaultCamera_ = camera; }
     Camera* GetDefaultCamera() const { return defaultCamera_; }
@@ -42,6 +43,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> envMapPso_[static_cast<int>(BlendMode::kCountOfBlendMode)];
     Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState_;
     DirectXCommon* dx_ = nullptr;
+    LocalLighting::Buffer disabledLocalLight_;
 
     Camera* defaultCamera_ = nullptr;
 

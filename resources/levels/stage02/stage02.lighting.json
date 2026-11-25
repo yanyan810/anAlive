@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "preset": "outdoor",
+    "ambient": {
+        "enabled": true,
+        "color": [0.87, 0.94, 1],
+        "intensity": 0.18
+    },
+    "directional": {
+        "enabled": true,
+        "color": [1, 0.97, 0.91],
+        "intensity": 0.94,
+        "direction": [0.4, -1, 0.25]
+    },
+    "material": {
+        "diffuseMode": "lambert",
+        "specularStrength": 0.2
+    },
+    "shadow": {
+        "enabled": false
+    }
+}

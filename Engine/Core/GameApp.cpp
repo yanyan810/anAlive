@@ -58,6 +58,10 @@
 #include "../../tests/ThrowableRuntimeTests.h"
 #include "../../tests/TitleSceneTests.h"
 #include "../../tests/ClothRuntimeTests.h"
+#ifdef USE_IMGUI
+#include "../../tests/MuzzleLightRuntimeTests.h"
+#include "../../tests/StageLightingRuntimeTests.h"
+#endif
 #endif
 
 namespace {
@@ -83,6 +87,30 @@ int GameApp::Run() {
         Finalize_();
         return -1;
     }
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    if (HasLaunchArgument(L"--stage-lighting-test")) {
+        std::filesystem::create_directories("generated/stage-lighting-tests");
+        int result = 0;
+        try { RunStageLightingRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/stage-lighting-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result = 1;
+        }
+        Finalize_();
+        return result;
+    }
+    if (HasLaunchArgument(L"--muzzle-light-test")) {
+        std::filesystem::create_directories("generated/muzzle-light-tests");
+        int result = 0;
+        try { RunMuzzleLightRuntimeTests(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/muzzle-light-tests/result.txt") << "FAIL: " << error.what() << '\n';
+            result = 1;
+        }
+        Finalize_();
+        return result;
+    }
+#endif
     if (HasLaunchArgument(L"--title-gameover-demo-test")) {
         int result=0;
         std::filesystem::create_directories("generated/title-demo-tests");

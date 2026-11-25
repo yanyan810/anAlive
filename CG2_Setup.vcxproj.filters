@@ -323,6 +323,10 @@
     <ClInclude Include="Engine\3D\Object3dLight.h">
       <Filter>Engine\3D</Filter>
     </ClInclude>
+    <ClInclude Include="Game\StageLighting.h" />
+    <ClInclude Include="Engine\3D\LocalLight.h">
+      <Filter>Engine\3D</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\3D\Animator.h">
       <Filter>Engine\3D</Filter>
     </ClInclude>
@@ -646,6 +650,15 @@
     <None Include="resources\shaders\MuzzleSmoke.hlsli">
       <Filter>shaders</Filter>
     </None>
+    <None Include="resources\shaders\LightingMath.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="resources\shaders\ObjectLighting.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="resources\shaders\LocalLighting.hlsli">
+      <Filter>shaders</Filter>
+    </None>
     <None Include="resources\shaders\Sprite2d.hlsli">
       <Filter>shaders</Filter>
     </None>
@@ -694,6 +707,7 @@
     <ClCompile Include="Game\scene\Main\GameScene.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.HotelEscape.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.Muzzle.cpp" />
+    <ClCompile Include="Game\scene\Main\GameScene.Lighting.cpp" />
     <ClCompile Include="Game\scene\Flow\TitleScene.cpp" />
     <ClCompile Include="Game\scene\Flow\GameOverScene.cpp" />
     <ClInclude Include="Game\scene\Flow\GameOverScene.h" />

@@ -4,6 +4,7 @@
 void SkinningCommon::Initialize(DirectXCommon* dxCommon)
 {
     dx_ = dxCommon;
+    disabledLocalLight_.Initialize(*dx_);
     CreateGraphicsPipelineState();
     CreateEnvMapGraphicsPipelineState();
     
@@ -38,7 +39,7 @@ void SkinningCommon::CreateRootSignature()
     rangeMask.BaseShaderRegister = 3; // t3
     rangeMask.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    D3D12_ROOT_PARAMETER params[12]{};
+    D3D12_ROOT_PARAMETER params[LocalLighting::kSkinnedRootIndex + 1]{};
 
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -96,6 +97,11 @@ void SkinningCommon::CreateRootSignature()
     params[11].ShaderVisibility=D3D12_SHADER_VISIBILITY_PIXEL;
     params[11].DescriptorTable.NumDescriptorRanges=1;
     params[11].DescriptorTable.pDescriptorRanges=&rangeShadow;
+
+    auto& localLight = params[LocalLighting::kSkinnedRootIndex];
+    localLight.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    localLight.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    localLight.Descriptor.ShaderRegister = LocalLighting::kShaderRegister;
 
     D3D12_STATIC_SAMPLER_DESC samp{};
     samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -411,19 +417,23 @@ void SkinningCommon::CreateEnvMapGraphicsPipelineState()
     }
 }
 
-void SkinningCommon::SetGraphicsPipelineState(BlendMode mode)
+void SkinningCommon::SetGraphicsPipelineState(BlendMode mode, D3D12_GPU_VIRTUAL_ADDRESS localLight)
 {
     auto* cmd = dx_->GetCommandList();
     cmd->SetGraphicsRootSignature(rootSignature_.Get());
+    cmd->SetGraphicsRootConstantBufferView(LocalLighting::kSkinnedRootIndex,
+        localLight ? localLight : disabledLocalLight_.Address());
     const int idx = static_cast<int>(mode);
     cmd->SetPipelineState(pso_[idx].Get());
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void SkinningCommon::SetGraphicsPipelineStateEnvMap(BlendMode mode)
+void SkinningCommon::SetGraphicsPipelineStateEnvMap(BlendMode mode, D3D12_GPU_VIRTUAL_ADDRESS localLight)
 {
     auto* cmd = dx_->GetCommandList();
     cmd->SetGraphicsRootSignature(rootSignature_.Get());
+    cmd->SetGraphicsRootConstantBufferView(LocalLighting::kSkinnedRootIndex,
+        localLight ? localLight : disabledLocalLight_.Address());
     const int idx = static_cast<int>(mode);
     cmd->SetPipelineState(envMapPso_[idx].Get());
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

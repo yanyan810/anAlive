@@ -30,7 +30,7 @@ public:
         clear.Format=DXGI_FORMAT_D32_FLOAT; clear.DepthStencil.Depth=1;
         check(dx_->GetDevice()->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&texture,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,&clear,IID_PPV_ARGS(&depth_)));
-        depth_->SetName(L"Title Directional Shadow Map");
+        depth_->SetName(L"Directional Shadow Map");
         dsvHeap_=dx_->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV,1,false);
         D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
         dsv.Format=DXGI_FORMAT_D32_FLOAT; dsv.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2D;

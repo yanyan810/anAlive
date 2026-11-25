@@ -225,7 +225,7 @@ private:
     inline static size_t debugInitializationCount_=0; // Main render thread only.
 #endif
 	void EnsureInstanceMaterial_();
-	void BindDirectionalShadow_(ID3D12GraphicsCommandList* cmd, UINT rootIndex=10);
+	void BindLighting_(ID3D12GraphicsCommandList* cmd);
     void PrepareInstanceMeshMaterials_();
 
 	bool useEnvironmentMap_ = false;

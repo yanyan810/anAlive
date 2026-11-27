@@ -16,8 +16,7 @@ void Object3dLight::Initialize(DirectXCommon* dx) {
 	dx_ = dx;
 
 	// 平行光源
-	directionalLightResource_ = dx_->CreateBufferResource(sizeof(DirectionalLight));
-	directionalLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData_));
+	directionalLightResource_ = dx_->CreateMappedBuffer(directionalLightData_);
 	*directionalLightData_ = {};
 	directionalLightData_->shadowViewProjection = Matrix4x4::MakeIdentity4x4();
 	// 初期化
@@ -26,8 +25,7 @@ void Object3dLight::Initialize(DirectXCommon* dx) {
 	directionalLightData_->intensity = 0.0f; // ライトの強度
 
 	// ポイントライト
-	pointLightResource_ = dx_->CreateBufferResource(sizeof(PointLight));
-	pointLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&pointLightData_));
+	pointLightResource_ = dx_->CreateMappedBuffer(pointLightData_);
 	// 初期値
 	pointLightData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	pointLightData_->position = { 0.0f, 3.0f, 0.0f };
@@ -36,8 +34,7 @@ void Object3dLight::Initialize(DirectXCommon* dx) {
 	pointLightData_->decay = 2.0f;
 
 	// スポットライト
-	spotLightResource_ = dx_->CreateBufferResource(sizeof(SpotLights));
-	spotLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&spotLightArrayData_));
+	spotLightResource_ = dx_->CreateMappedBuffer(spotLightArrayData_);
 	*spotLightArrayData_ = {};
 	spotLightData_ = &(*spotLightArrayData_)[0];
 	// 初期値

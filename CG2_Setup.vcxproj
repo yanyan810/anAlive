@@ -670,7 +670,9 @@
     <ClInclude Include="Game\enemy\EnemyExplosion.h" />
     <ClInclude Include="Game\enemy\EnemySpawnSystem.h" />
     <ClInclude Include="Game\enemy\EnemySpawnDebug.h" />
-    <ClCompile Include="Game\scene\Main\GameScene.cpp" />
+    <ClCompile Include="Game\scene\Main\GameScene.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="Game\scene\Main\GameScene.HotelEscape.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.Muzzle.cpp" />
     <ClCompile Include="Game\scene\Main\GameScene.Lighting.cpp" />

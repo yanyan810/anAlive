@@ -233,12 +233,20 @@ bool GameScene::SaveStageLighting() {
     return saved;
 }
 
+void GameScene::DrawLightingEditorButton() {
+    if (ImGui::Button("Lighting Editor")) {
+        showLightingEditor_ = true;
+        focusLightingEditor_ = true;
+    }
+}
+
 void GameScene::DrawLightingEditor() {
     if (!showLightingEditor_) return;
     const auto* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos({viewport->WorkPos.x + std::max(0.0f, viewport->WorkSize.x - 379.0f),
         viewport->WorkPos.y + 14.0f}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({365.0f, 550.0f}, ImGuiCond_FirstUseEver);
+    if (std::exchange(focusLightingEditor_, false)) ImGui::SetNextWindowFocus();
     if (ImGui::Begin("Lighting Editor", &showLightingEditor_)) {
         ImGui::TextUnformatted(level_.id.empty() ? SceneName() : level_.id.c_str());
         constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;

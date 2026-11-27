@@ -294,6 +294,7 @@ void GameScene::OnEnter(GameApp& app) {
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     stageLightingEditor_ = {};
     showLightingEditor_ = false;
+    focusLightingEditor_ = false;
 #endif
     LoadStageLighting();
     const auto* stageDraft=placementTestStage_ ? &*placementTestStage_ : nullptr;
@@ -1092,6 +1093,9 @@ void GameScene::UpdateCombat(GameApp& app, float dt, bool wasCaptured) {
             ++shotCount_;
             BulletShotPose shotPose;
             bullets_.Spawn(weapon.Definition(),cameraWorld,adsBlend_,pelletRandom_,level_.collision,enemies_,{}, &shotPose);
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+            if (shot == 0 && showMuzzleDirections_) muzzleShotPoseDebug_ = shotPose;
+#endif
             EmitMuzzleSmoke(muzzle, shotPose.direction, scales.smoke, scales.verticalSmoke);
         }
     }
@@ -1296,7 +1300,7 @@ void GameScene::DrawImGui(GameApp& app) {
         else {
             DrawWeaponWorkspace(app);
             DrawLightingEditor();
-            DrawMuzzleAnchorDebug(app);
+            DrawMuzzleLightingDebug(app);
         }
         return;
     }
@@ -1390,7 +1394,7 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::Begin("Weapon System");
     if (ImGui::Button("Weapon Editor")) weaponEditor_.visible=true;
     ImGui::SameLine();
-    if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
+    DrawLightingEditorButton();
     const auto& weapon = player_.CurrentWeapon();
     if (ImGui::CollapsingHeader("Muzzle Flash")) {
         DrawMuzzleEffectSettings(weapon.Definition());
@@ -1586,7 +1590,7 @@ void GameScene::DrawImGui(GameApp& app) {
     ImGui::End();
     }
     DrawLightingEditor();
-    DrawMuzzleAnchorDebug(app);
+    DrawMuzzleLightingDebug(app);
     if ((showSpawnDebug_ || showGoalDebug_ || showStageColliders_) && app.ImGui()->GetSceneImageRect(sceneRect))
         DrawEnemySpawnDebug(spawnSystem_, camera_.GetViewProjectionMatrix(),
             {static_cast<float>(sceneRect.left),static_cast<float>(sceneRect.top)},
@@ -2083,8 +2087,8 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         ImGui::SetNextWindowPos(viewport->WorkPos); ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::Begin("Weapon Test",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|
-            ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoDocking);
-        if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
+            ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoDocking|ImGuiWindowFlags_NoBringToFrontOnFocus);
+        DrawLightingEditorButton();
         if (weaponEditor_.mode==WeaponEditorMode::TestThrowables) {
             ImGui::TextWrapped("Click the view to aim | G: Throw | E: Pick up / refill | F5: Reset | Esc: Editor");
             ImGui::BeginDisabled(app.GetInput()->IsCameraControlEnabled());
@@ -2125,7 +2129,7 @@ void GameScene::DrawWeaponWorkspace(GameApp& app) {
         weaponPreviewAspect_=std::max(size.x,1.0f)/std::max(size.y,1.0f);
         app.ImGui()->DrawScenePreview(true);
     },[&] {
-        if (ImGui::Button("Lighting Editor")) showLightingEditor_ = true;
+        DrawLightingEditorButton();
         ImGui::SameLine();
         if (ImGui::Button("Open Enemy Editor")) OpenShowroomEnemyEditor();
         if (!throwables_.Pickups().empty()) {

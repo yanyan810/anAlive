@@ -61,6 +61,7 @@ private:
     friend void RunTitleGameOverDemoTests(class GameApp& app);
     friend void RunCameraSequenceRuntimeTests(class GameApp& app);
     friend void RunUpperHotelRuntimeTests(class GameApp& app);
+    friend void RunMuzzleLightRuntimeTests(class GameApp& app);
     IDirectInput8* directInput_ = nullptr;
     IDirectInputDevice8* keyboardDevice_ = nullptr;
     BYTE keys_[256]{};

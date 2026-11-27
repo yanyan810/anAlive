@@ -59,6 +59,7 @@
 #include "../../tests/TitleSceneTests.h"
 #include "../../tests/ClothRuntimeTests.h"
 #ifdef USE_IMGUI
+#include "../../tests/MuzzleDirectionStudy.h"
 #include "../../tests/MuzzleLightRuntimeTests.h"
 #include "../../tests/StageLightingRuntimeTests.h"
 #endif
@@ -82,12 +83,36 @@ GameApp::GameApp() = default;
 GameApp::~GameApp() = default;
 
 int GameApp::Run() {
+    try {
+        return Run_();
+    } catch (const DirectXCommon::FatalError&) {
+        // DirectXCommon has logged the graphics failure and any available DRED data.
+    } catch (const std::exception& error) {
+        OutputDebugStringA(error.what());
+        OutputDebugStringA("\n");
+    }
+    Finalize_(false);
+    return 1;
+}
+
+int GameApp::Run_() {
     if(std::wstring(GetCommandLineW()).find(L"--prepare-assets")!=std::wstring::npos) return PrepareAssetCaches();
     if (!Initialize_()) {
         Finalize_();
         return -1;
     }
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    if (HasLaunchArgument(L"--muzzle-direction-study")) {
+        std::filesystem::create_directories("generated/muzzle-direction-study");
+        int result = 0;
+        try { RunMuzzleDirectionStudy(*this); }
+        catch (const std::exception& error) {
+            std::ofstream("generated/muzzle-direction-study/result.txt") << "FAIL: " << error.what() << '\n';
+            result = 1;
+        }
+        Finalize_();
+        return result;
+    }
     if (HasLaunchArgument(L"--stage-lighting-test")) {
         std::filesystem::create_directories("generated/stage-lighting-tests");
         int result = 0;
@@ -443,10 +468,13 @@ bool GameApp::Initialize_() {
 }
 
 
-void GameApp::Finalize_() {
+void GameApp::Finalize_(bool runSceneExit) {
 
-    if (dx_) dx_->WaitForGPU();
-    if (sceneMgr_ && sceneMgr_->Current()) sceneMgr_->Current()->OnExit(*this);
+    if (dx_) {
+        try { dx_->WaitForGPU(); }
+        catch (const DirectXCommon::FatalError&) { if (runSceneExit) throw; }
+    }
+    if (runSceneExit && sceneMgr_ && sceneMgr_->Current()) sceneMgr_->Current()->OnExit(*this);
     transitionCheck_.reset();
     sceneMgr_.reset();
     Enemy::ReleasePreloadedAssets();
@@ -485,6 +513,7 @@ void GameApp::Update(float dt) {
 
 void GameApp::Update(float dt, float unscaledDt) {
 
+    dx_->CheckDevice();
     input_->Update();
     render_->UpdateViewPostPreview(unscaledDt);
 #ifdef USE_IMGUI
@@ -533,6 +562,7 @@ void GameApp::Update(float dt, float unscaledDt) {
 
 void GameApp::Draw() {
 
+    dx_->CheckDevice();
     srv_->PreDraw();
 
     sceneMgr_->DrawShadow(*this);

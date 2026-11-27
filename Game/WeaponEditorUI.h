@@ -31,7 +31,9 @@ public:
             ImGui::SetNextWindowPos(viewport->WorkPos);
             ImGui::SetNextWindowSize(viewport->WorkSize);
             ImGui::SetNextWindowViewport(viewport->ID);
-            flags=ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoDocking;
+            // Keep the full-screen workspace behind floating tools when it receives focus.
+            flags=ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoDocking|
+                ImGuiWindowFlags_NoBringToFrontOnFocus;
         } else ImGui::SetNextWindowSize({1080,660},ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Weapon Editor",preview ? nullptr : &visible,flags)) { ImGui::End(); return result; }
         if (!model_.IsOpen()) {

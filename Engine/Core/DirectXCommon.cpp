@@ -1,7 +1,12 @@
 #include "../Utility/AssetLoadProfile.h"
 #include "DirectXCommon.h"
+#include "LocalLight.h"
 #include <cassert>
+#include <d3d12shader.h>
 #include <dxgidebug.h>
+#include <exception>
+#include <filesystem>
+#include <fstream>
 
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "d3d12.lib")
@@ -11,6 +16,103 @@
 
 using namespace Logger;
 using namespace StringUtility;
+
+namespace {
+void EnableDred() {
+	Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedDataSettings> settings;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&settings)))) {
+		settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+		settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+	}
+}
+
+std::string DredName(const char* name, const wchar_t* wideName) {
+	if (wideName) return ConvertString(wideName);
+	return name ? name : "(unnamed)";
+}
+
+void WriteDred(ID3D12Device& device, const char* summary) {
+	std::error_code directoryError;
+	std::filesystem::create_directories("Dumps", directoryError);
+	const auto path = std::format("Dumps/d3d12-device-removed-{}-{}.log", GetCurrentProcessId(), GetTickCount64());
+	std::ofstream log(path);
+	if (!log) {
+		OutputDebugStringA("[DirectXCommon] Could not write the DRED log.\n");
+		return;
+	}
+	log << summary;
+	Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedData> dred;
+	if (FAILED(device.QueryInterface(IID_PPV_ARGS(&dred)))) {
+		log << "DRED interface unavailable\n";
+		return;
+	}
+	constexpr unsigned maxNodes = 128;
+	constexpr unsigned historySize = 65536;
+	D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT breadcrumbs{};
+	const HRESULT breadcrumbStatus = dred->GetAutoBreadcrumbsOutput(&breadcrumbs);
+	log << "Breadcrumb result 0x" << std::hex << static_cast<unsigned>(breadcrumbStatus) << std::dec << '\n';
+	if (SUCCEEDED(breadcrumbStatus)) {
+		unsigned count = 0;
+		for (auto* node = breadcrumbs.pHeadAutoBreadcrumbNode; node && count < maxNodes; node = node->pNext, ++count) {
+			const unsigned completed = node->pLastBreadcrumbValue ? *node->pLastBreadcrumbValue : 0;
+			log << DredName(node->pCommandQueueDebugNameA, node->pCommandQueueDebugNameW)
+				<< " / " << DredName(node->pCommandListDebugNameA, node->pCommandListDebugNameW)
+				<< " completed " << completed << '/' << node->BreadcrumbCount;
+			if (node->pCommandHistory && completed > 0 && completed <= node->BreadcrumbCount) {
+				log << ", last completed op " << node->pCommandHistory[(completed - 1) % historySize];
+			}
+			if (node->pCommandHistory && completed < node->BreadcrumbCount) {
+				log << ", next op " << node->pCommandHistory[completed % historySize];
+			}
+			log << '\n';
+		}
+	}
+	D3D12_DRED_PAGE_FAULT_OUTPUT fault{};
+	const HRESULT pageStatus = dred->GetPageFaultAllocationOutput(&fault);
+	log << "Page fault result 0x" << std::hex << static_cast<unsigned>(pageStatus) << '\n';
+	if (SUCCEEDED(pageStatus)) {
+		log << "Faulting GPU virtual address 0x" << fault.PageFaultVA << std::dec << '\n';
+		const auto writeAllocations = [&log](const char* label, const D3D12_DRED_ALLOCATION_NODE* node) {
+			for (unsigned count = 0; node && count < maxNodes; node = node->pNext, ++count) {
+				log << label << ": type " << node->AllocationType << ", "
+					<< DredName(node->ObjectNameA, node->ObjectNameW) << '\n';
+			}
+		};
+		writeAllocations("Existing allocation", fault.pHeadExistingAllocationNode);
+		writeAllocations("Recently freed allocation", fault.pHeadRecentFreedAllocationNode);
+	}
+}
+
+void ValidateLocalLightShader(const std::wstring& path, IDxcUtils& utils, IDxcResult& result) {
+	const auto name = std::filesystem::path(path).filename();
+	if (name != L"Object3d.PS.hlsl" && name != L"Object3dEnvMap.PS.hlsl" && name != L"SkinnedObjectEnvMap.PS.hlsl") return;
+
+	using LocalLighting::Parameters;
+	Microsoft::WRL::ComPtr<IDxcBlob> data;
+	Microsoft::WRL::ComPtr<ID3D12ShaderReflection> reflection;
+	const auto fail = [&path] {
+		throw std::runtime_error(std::format("{}: expected the b6 local light layout ({} bytes)",
+			ConvertString(path), sizeof(Parameters)));
+	};
+	if (FAILED(result.GetOutput(DXC_OUT_REFLECTION, IID_PPV_ARGS(&data), nullptr)) || !data) fail();
+	const DxcBuffer buffer{data->GetBufferPointer(), data->GetBufferSize(), 0};
+	if (FAILED(utils.CreateReflection(&buffer, IID_PPV_ARGS(&reflection)))) fail();
+	D3D12_SHADER_INPUT_BIND_DESC binding{};
+	if (FAILED(reflection->GetResourceBindingDescByName("gLocalLight", &binding)) ||
+		binding.Type != D3D_SIT_CBUFFER || binding.BindPoint != LocalLighting::kShaderRegister ||
+		binding.Space != 0 || binding.BindCount != 1) fail();
+
+	auto* constants = reflection->GetConstantBufferByName("gLocalLight");
+	D3D12_SHADER_BUFFER_DESC desc{};
+	if (FAILED(constants->GetDesc(&desc)) || desc.Size != sizeof(Parameters)) fail();
+	auto* type = constants->GetVariableByIndex(0)->GetType();
+	D3D12_SHADER_TYPE_DESC bounces{}, visibility{};
+	if (FAILED(type->GetMemberTypeByName("bounces")->GetDesc(&bounces)) ||
+		bounces.Offset != offsetof(Parameters, bounces) || bounces.Elements != LocalLighting::kMaxBounceLights ||
+		FAILED(type->GetMemberTypeByName("visibility")->GetDesc(&visibility)) ||
+		visibility.Offset != offsetof(Parameters, visibility) || visibility.Elements != 1 + LocalLighting::kMaxBounceLights) fail();
+}
+}
 
 const uint32_t DirectXCommon::kMaxSRVCount = 512;
 
@@ -26,7 +128,7 @@ Microsoft::WRL::ComPtr <ID3D12DescriptorHeap>   DirectXCommon::CreateDescriptorH
 	descriptorHeapDesc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	HRESULT hr = device_->CreateDescriptorHeap(
 		&descriptorHeapDesc, IID_PPV_ARGS(&descriptorHeap));
-	assert(SUCCEEDED(hr));
+	CheckGpuResult(hr, "CreateDescriptorHeap");
 	return descriptorHeap;
 }
 
@@ -58,7 +160,7 @@ DirectXCommon::CreateDepthStencilResource(int32_t width, int32_t height) {
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		&depthClearValue,
 		IID_PPV_ARGS(&resource));
-	assert(SUCCEEDED(hr));
+	CheckGpuResult(hr, "CreateCommittedResource (DepthStencil)");
 
 	resource->SetName(L"DepthStencil");
 
@@ -102,10 +204,10 @@ Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompilesSharder(
 	const wchar_t* profile) {
 	Log(ConvertString(std::format(L"Compile Shader: {}\n", filePath)));
 
-	IDxcBlobEncoding* shaderSource = nullptr;
-	HRESULT hr = dxcUtils->LoadFile(filePath.c_str(), nullptr, &shaderSource);
-
-	assert(SUCCEEDED(hr));
+	Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource;
+	if (FAILED(dxcUtils->LoadFile(filePath.c_str(), nullptr, &shaderSource))) {
+		throw std::runtime_error("Failed to load shader: " + ConvertString(filePath));
+	}
 
 	DxcBuffer shaderSourceBuffer;
 	shaderSourceBuffer.Ptr = shaderSource->GetBufferPointer();
@@ -120,32 +222,35 @@ Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompilesSharder(
 	L"-Zpr",
 	};
 
-	IDxcResult* shaderResult = nullptr;
-	hr = dxcCompiler->Compile(
+	Microsoft::WRL::ComPtr<IDxcResult> shaderResult;
+	HRESULT hr = dxcCompiler->Compile(
 		&shaderSourceBuffer,
 		arguments,
 		_countof(arguments),
 		includeHandler,
 		IID_PPV_ARGS(&shaderResult));
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr)) throw std::runtime_error("DXC invocation failed: " + ConvertString(filePath));
 
-	IDxcBlobUtf8* shaderError = nullptr;
+	Microsoft::WRL::ComPtr<IDxcBlobUtf8> shaderError;
 	shaderResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&shaderError), nullptr);
-	if (shaderError != nullptr && shaderError->GetStringLength() != 0) {
+	if (shaderError && shaderError->GetStringLength() != 0) {
 		Log(shaderError->GetStringPointer());
-		assert(false);
 	}
 
-	IDxcBlob* shaderBlob = nullptr;
-	hr = shaderResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&shaderBlob), nullptr);
-	assert(SUCCEEDED(hr));
-	Log(ConvertString(std::format(L"Compile Succeded,path:{},profile\n", filePath, profile)));
-	shaderSource->Release();
+	HRESULT status = E_FAIL;
+	Microsoft::WRL::ComPtr<IDxcBlob> shaderBlob;
+	if (FAILED(shaderResult->GetStatus(&status)) || FAILED(status) ||
+		FAILED(shaderResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&shaderBlob), nullptr)) || !shaderBlob) {
+		throw std::runtime_error("Failed to compile shader: " + ConvertString(filePath));
+	}
+	ValidateLocalLightShader(filePath, *dxcUtils, *shaderResult.Get());
+	Log(ConvertString(std::format(L"Compile succeeded: {} ({})\n", filePath, profile)));
 	return shaderBlob;
 
 }
 
-Microsoft::WRL::ComPtr<ID3D12Resource>DirectXCommon::CreateBufferResource( size_t sizeInBytes) {
+Microsoft::WRL::ComPtr<ID3D12Resource>DirectXCommon::CreateBufferResource(size_t sizeInBytes) {
+	if (gpuFailed_) throw FatalError{};
 	if (sizeInBytes == 0) {
 		OutputDebugStringA("[DirectXCommon] CreateBufferResource requested zero bytes. Using 256 bytes instead.\n");
 		sizeInBytes = 256;
@@ -172,14 +277,14 @@ Microsoft::WRL::ComPtr<ID3D12Resource>DirectXCommon::CreateBufferResource( size_
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&buffer));
-	assert(SUCCEEDED(hr));
-
 	if (FAILED(hr) || !buffer) {
-		HRESULT reason = device_ ? device_->GetDeviceRemovedReason() : E_POINTER;
+		const HRESULT reason = device_->GetDeviceRemovedReason();
 		char msg[256]{};
 		sprintf_s(msg, "[DirectXCommon] CreateBufferResource failed. size=%zu hr=0x%08X reason=0x%08X\n",
 			sizeInBytes, static_cast<unsigned>(hr), static_cast<unsigned>(reason));
 		OutputDebugStringA(msg);
+		if (FAILED(reason) || hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET ||
+			hr == DXGI_ERROR_DEVICE_HUNG) FailGpu(hr, reason, "CreateBufferResource");
 		return nullptr;
 	}
 	buffer->SetName(L"GenericUploadBuffer");
@@ -211,7 +316,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource>DirectXCommon::CreateTextureResource(const
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
 		IID_PPV_ARGS(&resource));
-	assert(SUCCEEDED(hr));
+	CheckGpuResult(hr, "CreateCommittedResource (TextureResource)");
 
 	resource->SetName(L"TextureResource");
 
@@ -224,20 +329,24 @@ void DirectXCommon::UploadTextureData(
 	const DirectX::ScratchImage& mipImages)
 {
 	std::vector<D3D12_SUBRESOURCE_DATA> subresources;
-	DirectX::PrepareUpload(device_.Get(),
+	CheckGpuResult(DirectX::PrepareUpload(device_.Get(),
 		mipImages.GetImages(),
 		mipImages.GetImageCount(),
 		mipImages.GetMetadata(),
-		subresources);
+		subresources), "Prepare texture upload");
 
 	const UINT numSubresources = UINT(subresources.size());
 	const UINT64 intermediateSize = GetRequiredIntermediateSize(texture.Get(), 0, numSubresources);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediate = CreateBufferResource(intermediateSize);
+	if (!intermediate) throw std::runtime_error("Failed to create a texture upload buffer");
 
 	if (!textureUploadList_) {
-        HRESULT hr=device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&textureUploadAllocator_)); assert(SUCCEEDED(hr));
-        hr=device_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,textureUploadAllocator_.Get(),nullptr,IID_PPV_ARGS(&textureUploadList_)); assert(SUCCEEDED(hr));
-    }
+		CheckGpuResult(device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+			IID_PPV_ARGS(&textureUploadAllocator_)), "Create texture upload allocator");
+		CheckGpuResult(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+			textureUploadAllocator_.Get(), nullptr, IID_PPV_ARGS(&textureUploadList_)), "Create texture upload list");
+		textureUploadList_->SetName(L"Texture upload");
+	}
 	UpdateSubresources(textureUploadList_.Get(),
 		texture.Get(),
 		intermediate.Get(),
@@ -260,21 +369,30 @@ void DirectXCommon::UploadTextureData(
         FlushTextureUploads();
 }
 
+DirectXCommon::TextureUploadBatch::~TextureUploadBatch() noexcept(false) {
+	if (std::uncaught_exceptions() == 0) {
+		dx_->EndTextureUploadBatch();
+		return;
+	}
+	try { dx_->EndTextureUploadBatch(); }
+	catch (const FatalError&) { /* The next device check will rethrow the latched failure. */ }
+}
+
 void DirectXCommon::BeginTextureUploadBatch() { ++textureUploadBatchDepth_; }
 void DirectXCommon::EndTextureUploadBatch() {
     assert(textureUploadBatchDepth_>0);
-    if(--textureUploadBatchDepth_==0) FlushTextureUploads();
+    if (--textureUploadBatchDepth_ == 0 && !gpuFailed_) FlushTextureUploads();
 }
 void DirectXCommon::FlushTextureUploads() {
     if(textureUploadStaging_.empty()) return;
     AssetLoading::Timer timer("texture.gpu-submit-wait");
-    HRESULT hr=textureUploadList_->Close(); assert(SUCCEEDED(hr));
+    CheckGpuResult(textureUploadList_->Close(), "Close texture upload list");
     ID3D12CommandList* lists[]{textureUploadList_.Get()}; commandQueue->ExecuteCommandLists(1,lists);
     ++textureUploadSubmissions_;
     WaitForGPU();
     textureUploadStaging_.clear(); textureUploadBytes_=0;
-    hr=textureUploadAllocator_->Reset(); assert(SUCCEEDED(hr));
-    hr=textureUploadList_->Reset(textureUploadAllocator_.Get(),nullptr); assert(SUCCEEDED(hr));
+    CheckGpuResult(textureUploadAllocator_->Reset(), "Reset texture upload allocator");
+    CheckGpuResult(textureUploadList_->Reset(textureUploadAllocator_.Get(), nullptr), "Reset texture upload list");
 }
 
 void DirectXCommon::SetDescriptorHeaps(ID3D12DescriptorHeap* srvHeap)
@@ -293,6 +411,9 @@ void DirectXCommon::Initialize(WinApp* winApp) {
 
 	DeviceInitialize();
 	CommandInitialize();
+	commandQueue->SetName(L"Main direct queue");
+	commandList->SetName(L"Frame graphics");
+	computeCommandList->SetName(L"Frame compute");
 	SwapChainSpawn();
 	DepthBufferSpawn();
 	DethCriptorHeapSpawn();
@@ -323,6 +444,7 @@ DirectXCommon::~DirectXCommon() {
 
 void DirectXCommon::DeviceInitialize() {
 
+	EnableDred();
 	HRESULT hr;
 
 
@@ -670,65 +792,75 @@ void DirectXCommon::PostDraw() {
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	commandList->ResourceBarrier(1, &barrier);
 
-	HRESULT hr = commandList->Close(); assert(SUCCEEDED(hr));
-	hr = computeCommandList->Close(); assert(SUCCEEDED(hr));
-	
+	CheckGpuResult(commandList->Close(), "Close graphics command list");
+	CheckGpuResult(computeCommandList->Close(), "Close compute command list");
+
 	ID3D12CommandList* lists[] = { computeCommandList.Get(), commandList.Get() };
 	commandQueue->ExecuteCommandLists(2, lists);
 
 	UpdateFixFPS();
 
-	hr = swapChain->Present(1, 0);
-	if (FAILED(hr)) {
-		char buf[256];
-		sprintf_s(buf, "[Present] hr=0x%08X\n", hr);
-		OutputDebugStringA(buf);
+	const HRESULT hr = swapChain->Present(1, 0);
+	CheckGpuResult(hr, "Present");
+	if (hr == DXGI_STATUS_OCCLUDED) Sleep(16);
 
-		HRESULT reason = device_->GetDeviceRemovedReason();
-		sprintf_s(buf, "[DeviceRemovedReason] 0x%08X\n", reason);
-		OutputDebugStringA(buf);
-	}
-
-	if (hr == DXGI_STATUS_OCCLUDED) {
-		Sleep(16);
-	}
-
-	fenceValue++;
-	hr = commandQueue->Signal(fence.Get(), fenceValue); assert(SUCCEEDED(hr));
-	if (fence->GetCompletedValue() < fenceValue) {
-		hr = fence->SetEventOnCompletion(fenceValue, fenceEvent); assert(SUCCEEDED(hr));
-		WaitForSingleObject(fenceEvent, INFINITE);
-	}
-	hr = commandAllocator->Reset();                           assert(SUCCEEDED(hr));
-	hr = commandList->Reset(commandAllocator.Get(), nullptr); assert(SUCCEEDED(hr));
-
-	hr = computeCommandAllocator->Reset(); assert(SUCCEEDED(hr));
-	hr = computeCommandList->Reset(computeCommandAllocator.Get(), nullptr); assert(SUCCEEDED(hr));
-
-	// const UINT idxAfter = swapChain->GetCurrentBackBufferIndex();
-	// OutputDebugStringA(std::format("[After Present] backBufferIndex = {}\n", idxAfter).c_str());
+	WaitForGPU();
+	CheckGpuResult(commandAllocator->Reset(), "Reset graphics allocator");
+	CheckGpuResult(commandList->Reset(commandAllocator.Get(), nullptr), "Reset graphics command list");
+	CheckGpuResult(computeCommandAllocator->Reset(), "Reset compute allocator");
+	CheckGpuResult(computeCommandList->Reset(computeCommandAllocator.Get(), nullptr), "Reset compute command list");
 }
 
 void DirectXCommon::WaitForGPU() {
-	if (!commandQueue || !fence || !fenceEvent) {
-		return;
-	}
+	if (deviceRemoved_) throw FatalError{};
+	if (!commandQueue || !fence) return;
+	if (!fenceEvent) CheckGpuResult(E_HANDLE, "Wait for GPU fence");
 
-	++fenceValue;
-	HRESULT hr = commandQueue->Signal(fence.Get(), fenceValue);
-	if (FAILED(hr)) {
-		OutputDebugStringA("[DirectXCommon] WaitForGPU Signal failed.\n");
-		return;
-	}
+	const UINT64 target = ++fenceValue;
+	CheckGpuResult(commandQueue->Signal(fence.Get(), target), "Signal GPU fence");
+	UINT64 completed = fence->GetCompletedValue();
+	if (completed == UINT64_MAX) CheckGpuResult(DXGI_ERROR_DEVICE_REMOVED, "Read GPU fence");
+	if (completed >= target) return;
 
-	if (fence->GetCompletedValue() < fenceValue) {
-		hr = fence->SetEventOnCompletion(fenceValue, fenceEvent);
-		if (SUCCEEDED(hr)) {
-			WaitForSingleObject(fenceEvent, INFINITE);
-		} else {
-			OutputDebugStringA("[DirectXCommon] WaitForGPU SetEventOnCompletion failed.\n");
+	CheckGpuResult(fence->SetEventOnCompletion(target, fenceEvent), "Register GPU fence event");
+	for (;;) {
+		const DWORD wait = WaitForSingleObject(fenceEvent, 1000);
+		if (wait == WAIT_FAILED) CheckGpuResult(HRESULT_FROM_WIN32(GetLastError()), "Wait for GPU fence");
+		completed = fence->GetCompletedValue();
+		if (completed == UINT64_MAX) CheckGpuResult(DXGI_ERROR_DEVICE_REMOVED, "Read GPU fence after wait");
+		if (completed >= target) return;
+		if (wait == WAIT_TIMEOUT) CheckDevice();
+	}
+}
+
+void DirectXCommon::CheckDevice() {
+	if (gpuFailed_) throw FatalError{};
+	if (!device_) return;
+	const HRESULT reason = device_->GetDeviceRemovedReason();
+	if (FAILED(reason)) FailGpu(reason, reason, "Check D3D12 device");
+}
+
+void DirectXCommon::CheckGpuResult(HRESULT hr, const char* operation) {
+	if (SUCCEEDED(hr)) return;
+	const HRESULT reason = device_ ? device_->GetDeviceRemovedReason() : S_OK;
+	FailGpu(hr, reason, operation);
+}
+
+void DirectXCommon::FailGpu(HRESULT hr, HRESULT reason, const char* operation) {
+	gpuFailed_ = true;
+	char summary[512]{};
+	sprintf_s(summary, "[DirectXCommon] %s failed, hr=0x%08X, removal reason=0x%08X\n", operation,
+		static_cast<unsigned>(hr), static_cast<unsigned>(reason));
+	OutputDebugStringA(summary);
+	if (!deviceRemoved_ && (FAILED(reason) || hr == DXGI_ERROR_DEVICE_REMOVED ||
+		hr == DXGI_ERROR_DEVICE_RESET || hr == DXGI_ERROR_DEVICE_HUNG)) {
+		deviceRemoved_ = true;
+		if (device_) {
+			try { WriteDred(*device_.Get(), summary); }
+			catch (...) { OutputDebugStringA("[DirectXCommon] DRED logging failed.\n"); }
 		}
 	}
+	throw FatalError{};
 }
 
 void DirectXCommon::ReportLiveObjects()
@@ -827,7 +959,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateRenderTextureResourc
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		&clearValue,
 		IID_PPV_ARGS(&resource));
-	assert(SUCCEEDED(hr));
+	CheckGpuResult(hr, "CreateCommittedResource (RenderTexture)");
 
 	resource->SetName(L"RenderTexture");
 

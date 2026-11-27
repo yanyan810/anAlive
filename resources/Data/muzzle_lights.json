@@ -1,48 +1,73 @@
 {
-    "light": {
-        "mode": "point",
-        "directEnabled": true,
-        "indirectEnabled": true,
-        "color": [1.0, 0.96, 0.83],
-        "intensity": 1.35,
-        "duration": 0.04,
-        "range": 4.0,
-        "decay": 2.0,
-        "specularStrength": 0.04,
-        "areaWidth": 0.20,
-        "areaHeight": 0.15,
-        "areaRotationDegrees": [0.0, 0.0, 0.0],
-        "indirectIntensity": 0.16,
-        "indirectRange": 4.0,
-        "offset": [0.135, -0.072, 0.64]
+  "bounce": {
+    "decay": 1.0,
+    "enabled": true,
+    "intensity": 1.0,
+    "maxLights": 4,
+    "occlusionEnabled": true,
+    "range": 6.0,
+    "rayCount": 16,
+    "rayDistance": 6.0,
+    "surfaceOffset": 0.029999999329447746
+  },
+  "light": {
+    "areaHeight": 0.15000000596046448,
+    "areaRotationDegrees": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "areaWidth": 0.20000000298023224,
+    "color": [
+      1.0,
+      0.9599999785423279,
+      0.8299999833106995
+    ],
+    "decay": 2.0,
+    "directEnabled": false,
+    "duration": 0.03999999910593033,
+    "indirectEnabled": false,
+    "indirectIntensity": 0.30000001192092896,
+    "indirectRange": 8.0,
+    "intensity": 1.350000023841858,
+    "mode": "point",
+    "offset": [
+      0.13500000536441803,
+      -0.07199999690055847,
+      0.6399999856948853
+    ],
+    "range": 4.0,
+    "specularStrength": 0.03999999910593033
+  },
+  "smoke": {
+    "normalEnabled": true,
+    "verticalEnabled": true
+  },
+  "weapons": {
+    "auto_shotgun": {
+      "lightScale": 1.1200000047683716,
+      "smokeScale": 1.0
     },
-    "smoke": {
-        "normalEnabled": true,
-        "verticalEnabled": true
+    "double_shotgun": {
+      "lightScale": 1.5,
+      "smokeScale": 1.25
     },
-    "weapons": {
-        "pistol": {
-            "verticalSmokeScale": 1.0
-        },
-        "smg": {
-            "lightScale": 0.68,
-            "smokeScale": 0.5
-        },
-        "shotgun": {
-            "lightScale": 1.35,
-            "smokeScale": 1.25
-        },
-        "pump_shotgun": {
-            "lightScale": 1.35,
-            "smokeScale": 1.25
-        },
-        "auto_shotgun": {
-            "lightScale": 1.12,
-            "smokeScale": 1.0
-        },
-        "double_shotgun": {
-            "lightScale": 1.5,
-            "smokeScale": 1.25
-        }
+    "pistol": {
+      "lightScale": 1.0,
+      "smokeScale": 1.0,
+      "verticalSmokeScale": 1.0
+    },
+    "pump_shotgun": {
+      "lightScale": 1.350000023841858,
+      "smokeScale": 1.25
+    },
+    "shotgun": {
+      "lightScale": 1.350000023841858,
+      "smokeScale": 1.25
+    },
+    "smg": {
+      "lightScale": 0.6800000071525574,
+      "smokeScale": 0.5
     }
+  }
 }

@@ -57,8 +57,9 @@ public:
     DebugAIManager* DebugAI() const { return debugAI_.get(); }
 
 private:
+    int Run_();
     bool Initialize_();
-    void Finalize_();
+    void Finalize_(bool runSceneExit = true);
 
 private:
     bool quit_ = false;

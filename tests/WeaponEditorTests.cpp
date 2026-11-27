@@ -114,6 +114,12 @@ int main() {
         if (i>0) assert(ImGui::GetDrawData()->TotalVtxCount>0);
     }
     int previews=0, muzzlePanels=0;
+    const auto drawLightingWindow=[] {
+        ImGui::SetNextWindowPos({901,14},ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({365,550},ImGuiCond_FirstUseEver);
+        ImGui::Begin("Lighting Editor");
+        ImGui::End();
+    };
     const auto drawShowroomEditor=[&] {
         ImGui::NewFrame();
         assert(!ui.Draw(live,level,true,[&] { ++previews; ImGui::TextUnformatted("3D scene texture"); },{}, {},
@@ -122,6 +128,7 @@ int main() {
                 ++muzzlePanels;
                 ImGui::TextUnformatted("Muzzle effect controls");
             }));
+        drawLightingWindow();
         ImGui::Render();
     };
     drawShowroomEditor(); drawShowroomEditor();
@@ -141,8 +148,11 @@ int main() {
     ui.mode=WeaponEditorMode::Test;
     ImGui::NewFrame();
     assert(!ui.Draw(live,level,true,[&] { ++previews; }));
+    drawLightingWindow();
     ImGui::Render(); assert(previews==3);
     ui.mode=WeaponEditorMode::Edit;
+    drawShowroomEditor();
+    assert(ImGui::IsWindowAbove(ImGui::FindWindowByName("Lighting Editor"),ImGui::FindWindowByName("Weapon Editor")));
     // Test equips an owned draft copy: no save, no live definition replacement.
     const auto diskBeforeTest=ReadBytes(path);
     const float savedInterval=live.Find("pistol")->fireInterval;

@@ -49,6 +49,7 @@ void SrvManager::CollectRetired() {
 
 D3D12_CPU_DESCRIPTOR_HANDLE SrvManager::GetCPUDescriptionHandle(uint32_t index)
 {
+    if (index >= kMaxSRVCount) throw std::out_of_range("SRV descriptor index exceeds heap capacity");
     D3D12_CPU_DESCRIPTOR_HANDLE h = descriptorHeap->GetCPUDescriptorHandleForHeapStart();
     h.ptr += (descriptorSize * index);
     return h;
@@ -56,6 +57,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE SrvManager::GetCPUDescriptionHandle(uint32_t index)
 
 D3D12_GPU_DESCRIPTOR_HANDLE SrvManager::GetGPUDescriptionHandle(uint32_t index)
 {
+    if (index >= kMaxSRVCount) throw std::out_of_range("SRV descriptor index exceeds heap capacity");
     D3D12_GPU_DESCRIPTOR_HANDLE h = descriptorHeap->GetGPUDescriptorHandleForHeapStart();
     h.ptr += (descriptorSize * index);
     return h;

@@ -144,6 +144,7 @@ private:
     friend void RunEnemyPoolTests(GameApp& app);
 #ifdef USE_IMGUI
     friend void RunMuzzleLightRuntimeTests(GameApp& app);
+    friend void RunMuzzleDirectionStudy(GameApp& app);
     friend void RunStageLightingRuntimeTests(GameApp& app);
 #endif
     friend void RunThrowableRuntimeTests(GameApp& app);
@@ -168,7 +169,7 @@ private:
     void ClearMuzzleSmoke();
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     void DrawMuzzleEffectSettings(const WeaponDefinition& weapon);
-    void DrawMuzzleAnchorDebug(GameApp& app) const;
+    void DrawMuzzleLightingDebug(GameApp& app) const;
 #endif
     void UpdatePlayerBullets(float dt);
     void UpdateEnemySpawns(float dt, bool processTriggers = true);
@@ -330,10 +331,12 @@ private:
     std::filesystem::path stageLightingPath_;
     std::string stageLightingError_;
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+    void DrawLightingEditorButton();
     void DrawLightingEditor();
     bool SaveStageLighting();
     DebugJsonEditor stageLightingEditor_;
     bool showLightingEditor_ = false;
+    bool focusLightingEditor_ = false;
 #endif
     Sprite crosshairHorizontal_;
     Sprite crosshairVertical_;
@@ -348,6 +351,18 @@ private:
     inline static const std::string kMuzzleVerticalSmokeFile = "muzzle_vertical_smoke.json";
 
     inline static const Vector3 kSmokeHipOffset{0.135f, -0.072f, 0.64f};
+    static constexpr int kMaxBounceRays = 64;
+    struct MuzzleBounceSettings {
+        bool enabled = true;
+        bool occlusionEnabled = true;
+        float intensity = 0.25f;
+        float range = 4.0f;
+        int rayCount = 16;
+        float rayDistance = 6.0f;
+        int maxLights = static_cast<int>(LocalLighting::kMaxBounceLights);
+        float surfaceOffset = 0.03f;
+        float decay = 2.0f;
+    };
     struct MuzzleLightSettings {
         LocalLighting::Mode mode = LocalLighting::Mode::Point;
         bool directEnabled = true;
@@ -364,8 +379,10 @@ private:
         float specularStrength = 0.04f;
         float areaWidth = 0.20f;
         float areaHeight = 0.15f;
+        float forwardBias = 0.45f;
         float indirectIntensity = 0.16f;
         float indirectRange = 4.0f;
+        MuzzleBounceSettings bounce;
     };
     struct MuzzleWeaponScales {
         float light = 1.0f;
@@ -378,10 +395,41 @@ private:
         float countScale;
         float remaining;
     };
+    struct MuzzleBouncePoint {
+        Vector3 position{};
+        Vector3 normal{};
+        Vector3 reflectance{1.0f, 1.0f, 1.0f};
+        float weight = 0.0f;
+        size_t colliderIndex = 0;
+        Matrix4x4 colliderWorld{};
+    };
+    struct MuzzleBounceSample {
+        Vector3 origin{};
+        std::array<MuzzleBouncePoint, LocalLighting::kMaxBounceLights> points{};
+        size_t count = 0;
+        float emissionScale = 1.0f;
+        float calculationMs = 0.0f;
+#if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
+        struct Ray {
+            Vector3 end;
+            bool hit;
+            Vector3 normal;
+            float weight;
+            size_t colliderIndex;
+        };
+        std::array<Ray, kMaxBounceRays> rays{};
+        size_t rayCount = 0;
+#endif
+    };
+    MuzzleBounceSample FindMuzzleBouncePoints() const;
+    uint32_t PrepareMuzzleBounceLights(const MuzzleBounceSample& sample, float envelope,
+        LocalLighting::Parameters& light) const;
+    LocalLighting::Parameters BuildMuzzleLightParameters(float envelope, const MuzzleBounceSample* sample) const;
     struct MuzzleLightPulse {
         std::chrono::steady_clock::time_point started;
         float weaponScale = 1.0f;
         bool firstFrame = true;
+        MuzzleBounceSample bounce{};
     };
     MuzzleLightSettings muzzleLightSettings_;
     LocalLighting::Buffer muzzleLightBuffer_;
@@ -391,7 +439,15 @@ private:
 #if (defined(_DEBUG) || defined(DEVELOPMENT_BUILD)) && defined(USE_IMGUI)
     DebugJsonEditor muzzleLightEditor_;
     std::optional<float> heldMuzzleLightScale_;
+    std::optional<MuzzleBounceSample> heldMuzzleBounce_;
+    MuzzleBounceSample muzzleBounceDebug_;
+    uint32_t activeMuzzleBounceLights_ = 0;
     bool showMuzzleAnchor_ = false;
+    bool showMuzzleDirections_ = false;
+    std::optional<BulletShotPose> muzzleShotPoseDebug_;
+    bool showBounceRays_ = false;
+    bool showBouncePoints_ = false;
+    bool showBounceNormals_ = false;
 #endif
 
 };

@@ -56,13 +56,16 @@ void SceneManager::RetirePrevious_() {
 void SceneManager::RecoverScene_(GameApp& app, const std::string& error) {
     lastError_ = error;
     if (current_) {
-        try { current_->OnExit(app); } catch (...) { /* Preserve the original load error. */ }
+        try { current_->OnExit(app); }
+        catch (const DirectXCommon::FatalError&) { throw; }
+        catch (...) { /* Preserve the original load error. */ }
         retiredScenes_.push_back(std::move(current_));
     }
     current_ = std::move(previousScene_);
     currentName_ = std::move(previousName_);
     if (current_) {
         try { current_->OnEnter(app); }
+        catch (const DirectXCommon::FatalError&) { throw; }
         catch (...) {
             lastError_ += "; previous scene initialization also failed";
             retiredScenes_.push_back(std::move(current_));
@@ -98,6 +101,8 @@ bool SceneManager::ChangeScene_(GameApp& app, const std::string& name, bool awai
             if (!error.empty()) throw std::runtime_error(error);
         } else RetirePrevious_();
         lastError_.clear();
+    } catch (const DirectXCommon::FatalError&) {
+        throw;
     } catch (const std::exception& error) {
         RecoverScene_(app, error.what()); changingScene_ = false; return false;
     } catch (...) {
@@ -158,6 +163,8 @@ void SceneManager::UpdateTransition(GameApp& app, float unscaledDt) {
                     transition_ = Transition::AwaitIncomingFrame;
                 }
             }
+        } catch (const DirectXCommon::FatalError&) {
+            throw;
         } catch (const std::exception& error) {
             RecoverScene_(app, error.what());
             transition_ = current_ && !current_->IsReadyForTransition() ?

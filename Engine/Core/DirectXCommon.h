@@ -9,6 +9,7 @@
 #include <array>
 #include <dxcapi.h>
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 #include "MathStruct.h"
@@ -24,6 +25,10 @@ public:
 	//描画後処理
 	void PostDraw();
 	void WaitForGPU();
+	void CheckDevice();
+
+	// Rendering cannot resume after this failure. Asset-loading fallbacks catch std::exception.
+	struct FatalError {};
 
 	~DirectXCommon(); // デストラクタを宣言
 
@@ -69,6 +74,20 @@ public:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource>CreateBufferResource(size_t sizeInBytes);
 
+	template<class T>
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateMappedBuffer(T*& mapped) {
+		auto resource = CreateBufferResource(sizeof(T));
+		if (!resource) throw std::runtime_error("Failed to create an upload buffer");
+
+		void* data = nullptr;
+		const HRESULT hr = resource->Map(0, nullptr, &data);
+		if (FAILED(hr) || !data) {
+			CheckDevice();
+			throw std::runtime_error("Failed to map an upload buffer");
+		}
+		mapped = static_cast<T*>(data);
+		return resource;
+	}
 	Microsoft::WRL::ComPtr<ID3D12Resource>CreateTextureResource(const DirectX::TexMetadata& metadata);
 
 	void UploadTextureData(const Microsoft::WRL::ComPtr<ID3D12Resource>& texture, const DirectX::ScratchImage& mipImages);
@@ -81,7 +100,7 @@ public:
 		DirectXCommon* dx_;
 	public:
 		explicit TextureUploadBatch(DirectXCommon* dx) : dx_(dx) { dx_->BeginTextureUploadBatch(); }
-		~TextureUploadBatch() { dx_->EndTextureUploadBatch(); }
+		~TextureUploadBatch() noexcept(false);
 		TextureUploadBatch(const TextureUploadBatch&) = delete;
 		TextureUploadBatch& operator=(const TextureUploadBatch&) = delete;
 	};
@@ -159,6 +178,11 @@ public:
 private:
 
     friend void RunEnemyPlacementEditorTests(class GameApp& app);
+
+	void CheckGpuResult(HRESULT hr, const char* operation);
+	[[noreturn]] void FailGpu(HRESULT hr, HRESULT reason, const char* operation);
+	bool gpuFailed_ = false;
+	bool deviceRemoved_ = false;
 
 	void DeviceInitialize();
 	void CommandInitialize();

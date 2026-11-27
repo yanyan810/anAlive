@@ -67,18 +67,11 @@ void Object3d::Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx, Srv
 	srvManager_ = srv;
 	skinningCommon_ = skinCom;
 
-	if (!dx_) {
-		OutputDebugStringA("[Object3d] Initialize failed: DirectXCommon is null.\n");
-		return;
+	if (!dx_ || !object3dCommon) {
+		throw std::invalid_argument("Object3d requires a renderer");
 	}
 
-	transformationMatrixResourceModel= dx->CreateBufferResource(sizeof(TransformationMatrix));
-	if (!transformationMatrixResourceModel) {
-		OutputDebugStringA("[Object3d] Initialize failed: transformationMatrixResourceModel is null.\n");
-		return;
-	}
-	transformationMatrixResourceModel->Map(0, nullptr,
-		reinterpret_cast<void**>(&transformationMatrixDataModel));
+	transformationMatrixResourceModel = dx_->CreateMappedBuffer(transformationMatrixDataModel);
 	transformationMatrixDataModel->WVP = Matrix4x4::MakeIdentity4x4();
 	transformationMatrixDataModel->World = Matrix4x4::MakeIdentity4x4();
 
@@ -109,11 +102,8 @@ void Object3d::Initialize(Object3dCommon* object3dCommon, DirectXCommon* dx, Srv
 
 	this->camera_ = object3dCommon->GetDefaultCamera();
 
-	cameraResource_ = dx_->CreateBufferResource(sizeof(CameraGPU));
-	cameraResource_->Map(0, nullptr, reinterpret_cast<void**>(&cameraData_));
-
-	effectParamResource_ = dx_->CreateBufferResource(sizeof(EffectParam));
-	effectParamResource_->Map(0, nullptr, reinterpret_cast<void**>(&effectParamData_));
+	cameraResource_ = dx_->CreateMappedBuffer(cameraData_);
+	effectParamResource_ = dx_->CreateMappedBuffer(effectParamData_);
 	if (effectParamData_) {
 		effectParamData_->outlineColor = outlineColor_;
 		effectParamData_->outlineThickness = outlineThickness_;

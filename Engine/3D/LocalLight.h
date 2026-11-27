@@ -11,14 +11,34 @@ namespace LocalLighting {
     inline constexpr UINT kObjectRootIndex = 11;
     inline constexpr UINT kSkinnedRootIndex = 12;
     inline constexpr UINT kShaderRegister = 6;
-    inline constexpr size_t kMaxOccluders = 24;
+    inline constexpr size_t kMaxOccluders = 32;
+    inline constexpr size_t kMaxBounceLights = 4;
 
-    enum class Mode : uint32_t { None, Point, Spot, Area };
+    enum class Mode : uint32_t { None, Point, Spot, Area, Forward };
 
     struct Occluder {
         // Bounds are relative to the light. Only rotated boxes transform the ray to local space.
         Vector4 inverseX{}, inverseY{}, inverseZ{};
         Vector4 minimum{}, maximum{};
+    };
+
+    struct Visibility {
+        uint32_t occluderCount = 0;
+        uint32_t axisAlignedOccluderCount = 0;
+        float nearestOmittedRange = 0.0f;
+        uint32_t padding = 0;
+        // Conservative range limits per world-space octant when the box budget is exhausted.
+        std::array<float, 8> omittedRanges{};
+        std::array<Occluder, kMaxOccluders> occluders{};
+    };
+
+    struct BounceLight {
+        Vector3 position{};
+        float range = 0.0f;
+        Vector3 normal{};
+        float surfaceOffset = 0.0f;
+        Vector3 radiance{};
+        float decay = 0.0f;
     };
 
     struct Parameters {
@@ -34,24 +54,29 @@ namespace LocalLighting {
         float specularStrength = 0.0f;
         float indirectIntensity = 0.0f;
         float indirectRange = 0.0f;
-        uint32_t occluderCount = 0;
-        float visibilityRange = 0.0f;
-        uint32_t axisAlignedOccluderCount = 0;
-        uint32_t padding[3]{};
-        std::array<Occluder, kMaxOccluders> occluders{};
+        uint32_t bounceCount = 0;
+        float forwardBias = 0.0f;
+        std::array<BounceLight, kMaxBounceLights> bounces{};
+        // Slot zero is shared by direct and indirect light. Each bounce has its own origin.
+        std::array<Visibility, 1 + kMaxBounceLights> visibility{};
     };
     static_assert(sizeof(Occluder) == 80);
-    static_assert(offsetof(Parameters, occluders) == 112);
-    static_assert(sizeof(Parameters) == 112 + 80 * kMaxOccluders);
+    static_assert(offsetof(Visibility, omittedRanges) == 16);
+    static_assert(offsetof(Visibility, occluders) == 48);
+    static_assert(sizeof(Visibility) == 48 + 80 * kMaxOccluders);
+    static_assert(sizeof(BounceLight) == 48);
+    static_assert(offsetof(Parameters, bounces) == 96);
+    static_assert(offsetof(Parameters, visibility) == 96 + 48 * kMaxBounceLights);
+    static_assert(sizeof(Parameters) == 96 + 48 * kMaxBounceLights + sizeof(Visibility) * (1 + kMaxBounceLights));
+
+    static_assert(sizeof(Parameters) <= 64 * 1024);
 
     class Buffer {
     public:
         void Initialize(DirectXCommon& dx) {
             if (resource_) return;
-            resource_ = dx.CreateBufferResource((sizeof(Parameters) + 255) & ~size_t{255});
-            if (!resource_ || FAILED(resource_->Map(0, nullptr, reinterpret_cast<void**>(&mapped_)))) {
-                throw std::runtime_error("Failed to create the local light constant buffer");
-            }
+            resource_ = dx.CreateMappedBuffer(mapped_);
+            resource_->SetName(L"Local light constant buffer");
             *mapped_ = {};
         }
 
